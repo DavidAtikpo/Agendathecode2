@@ -1,5 +1,4 @@
 import { NextResponse } from 'next/server';
-import type { User } from '@prisma/client';
 import { prisma } from '@/app/lib/prisma';
 import { getSessionUserId } from '@/app/lib/auth';
 import { toPublicUser } from '@/app/lib/user-public';
@@ -19,9 +18,7 @@ export async function GET() {
     orderBy: { createdAt: 'asc' },
   });
 
-  return NextResponse.json(
-    links.map((link: { member: User }) => toPublicUser(link.member))
-  );
+  return NextResponse.json(links.map((link) => toPublicUser(link.member)));
 }
 
 /** Ajouter un collaborateur par son email (doit déjà avoir un compte) */
