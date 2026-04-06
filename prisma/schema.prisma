@@ -7,6 +7,83 @@ datasource db {
   schemas  = ["agenda"]
 }
 
+model User {
+  id                   String        @id @default(cuid())
+  email                String        @unique
+  /// Null si le compte est uniquement « Connexion Google »
+  passwordHash         String?
+  name                 String
+  color                String
+  initials             String
+  createdAt            DateTime      @default(now())
+  /// Identifiant unique Google (sub)
+  googleId             String?       @unique
+  plan                 Plan          @default(free)
+  stripeCustomerId     String?       @unique
+  stripeSubscriptionId String?       @unique
+  /// Fin de période payée (affichage / grâce)
+  subscriptionEndsAt   DateTime?
+  notes                Note[]
+  tasksAssigned        Task[]        @relation("AssignedTo")
+  tasksCreated         Task[]        @relation("CreatedBy")
+  teamContactsAsMember TeamContact[] @relation("TeamContactMember")
+  teamContactsAdded    TeamContact[] @relation("TeamContactOwner")
+
+  @@schema("agenda")
+}
+
+/// Lien « j’ai ajouté ce collègue par email » — seuls ces membres sont assignables aux tâches.
+model TeamContact {
+  id        String   @id @default(cuid())
+  ownerId   String
+  memberId  String
+  createdAt DateTime @default(now())
+  member    User     @relation("TeamContactMember", fields: [memberId], references: [id], onDelete: Cascade)
+  owner     User     @relation("TeamContactOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+
+  @@unique([ownerId, memberId])
+  @@index([ownerId])
+  @@schema("agenda")
+}
+
+model Note {
+  id                  String    @id @default(cuid())
+  title               String
+  content             String    @default("")
+  pinned              Boolean   @default(false)
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+  /// Date/heure du rappel (optionnel)
+  remindAt            DateTime?
+  /// Envoyer un e-mail automatique à l’heure du rappel (compte connecté uniquement)
+  reminderByEmail     Boolean   @default(true)
+  /// Horodatage d’envoi réussi (évite les doublons)
+  reminderEmailSentAt DateTime?
+  userId              String?
+  user                User?     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([remindAt])
+  @@schema("agenda")
+}
+
+model Task {
+  id           String       @id @default(cuid())
+  title        String
+  description  String       @default("")
+  status       TaskStatus   @default(todo)
+  priority     TaskPriority @default(medium)
+  dueDate      DateTime?
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+  assignedToId String?
+  createdById  String
+  assignedTo   User?        @relation("AssignedTo", fields: [assignedToId], references: [id])
+  createdBy    User         @relation("CreatedBy", fields: [createdById], references: [id])
+
+  @@schema("agenda")
+}
+
 enum TaskStatus {
   todo
   doing
@@ -27,91 +104,6 @@ enum TaskPriority {
 enum Plan {
   free
   pro
-
-  @@schema("agenda")
-}
-
-model User {
-  id           String   @id @default(cuid())
-  email        String   @unique
-  /// Null si le compte est uniquement « Connexion Google »
-  passwordHash String?
-  /// Identifiant unique Google (sub)
-  googleId     String?  @unique
-  name         String
-  color        String
-  initials     String
-  createdAt    DateTime @default(now())
-
-  plan Plan @default(free)
-
-  stripeCustomerId     String? @unique
-  stripeSubscriptionId String? @unique
-  /// Fin de période payée (affichage / grâce)
-  subscriptionEndsAt   DateTime?
-
-  tasksAssigned Task[] @relation("AssignedTo")
-  tasksCreated  Task[] @relation("CreatedBy")
-
-  teamContactsAdded    TeamContact[] @relation("TeamContactOwner")
-  teamContactsAsMember TeamContact[] @relation("TeamContactMember")
-
-  notes Note[]
-
-  @@schema("agenda")
-}
-
-/// Lien « j’ai ajouté ce collègue par email » — seuls ces membres sont assignables aux tâches.
-model TeamContact {
-  id        String   @id @default(cuid())
-  ownerId   String
-  memberId  String
-  createdAt DateTime @default(now())
-
-  owner  User @relation("TeamContactOwner", fields: [ownerId], references: [id], onDelete: Cascade)
-  member User @relation("TeamContactMember", fields: [memberId], references: [id], onDelete: Cascade)
-
-  @@unique([ownerId, memberId])
-  @@index([ownerId])
-  @@schema("agenda")
-}
-
-model Note {
-  id        String    @id @default(cuid())
-  userId    String?
-  user      User?     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  title     String
-  content   String    @default("")
-  pinned    Boolean   @default(false)
-  /// Date/heure du rappel (optionnel)
-  remindAt  DateTime?
-  /// Envoyer un e-mail automatique à l’heure du rappel (compte connecté uniquement)
-  reminderByEmail       Boolean   @default(true)
-  /// Horodatage d’envoi réussi (évite les doublons)
-  reminderEmailSentAt   DateTime?
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
-
-  @@index([userId])
-  @@index([remindAt])
-  @@schema("agenda")
-}
-
-model Task {
-  id          String       @id @default(cuid())
-  title       String
-  description String       @default("")
-  status      TaskStatus   @default(todo)
-  priority    TaskPriority @default(medium)
-  dueDate     DateTime?
-  createdAt   DateTime     @default(now())
-  updatedAt   DateTime     @updatedAt
-
-  assignedTo   User?  @relation("AssignedTo", fields: [assignedToId], references: [id])
-  assignedToId String?
-
-  createdBy   User   @relation("CreatedBy", fields: [createdById], references: [id])
-  createdById String
 
   @@schema("agenda")
 }
