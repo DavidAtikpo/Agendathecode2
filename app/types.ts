@@ -1,0 +1,47 @@
+export interface User {
+  id: string;
+  email: string;
+  name: string;
+  color: string;
+  initials: string;
+  /** Abonnement Stripe — défaut free si absent (anciennes sessions) */
+  plan?: 'free' | 'pro';
+}
+
+export type TaskStatus = 'todo' | 'doing' | 'done' | 'review';
+export type TaskPriority = 'low' | 'medium' | 'high';
+
+export interface Note {
+  id: string;
+  title: string;
+  content: string;
+  createdAt: string;
+  updatedAt: string;
+  pinned: boolean;
+  /** ISO 8601 — rappel planifié (optionnel) */
+  remindAt?: string | null;
+  /** Envoyer un e-mail à l’heure du rappel (compte connecté + cron serveur) */
+  reminderByEmail?: boolean;
+  /** Horodatage d’envoi e-mail réussi */
+  reminderEmailSentAt?: string | null;
+}
+
+export interface Task {
+  id: string;
+  title: string;
+  description: string;
+  status: TaskStatus;
+  assignedTo: string | null;
+  createdBy: string;
+  priority: TaskPriority;
+  createdAt: string;
+  updatedAt: string;
+  dueDate?: string;
+}
+
+export interface ChatMessage {
+  id: string;
+  role: 'user' | 'assistant';
+  content: string;
+  timestamp: string;
+}
