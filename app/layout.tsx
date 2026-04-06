@@ -16,6 +16,9 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "Agenda — Idées & Tâches",
   description: "Capturez vos idées et gérez vos tâches en équipe avec l'aide de l'IA",
+  icons: {
+    icon: "/logo (1).jpg",
+  },
 };
 
 export const viewport = {
