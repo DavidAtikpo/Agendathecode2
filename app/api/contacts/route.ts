@@ -18,7 +18,7 @@ export async function GET() {
     orderBy: { createdAt: 'asc' },
   });
 
-  return NextResponse.json(links.map(l => toPublicUser(l.member)));
+  return NextResponse.json(links.map(({ member }) => toPublicUser(member)));
 }
 
 /** Ajouter un collaborateur par son email (doit déjà avoir un compte) */
