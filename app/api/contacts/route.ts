@@ -1,12 +1,8 @@
 import { NextResponse } from 'next/server';
-import type { Prisma } from '@prisma/client';
+import type { User } from '@prisma/client';
 import { prisma } from '@/app/lib/prisma';
 import { getSessionUserId } from '@/app/lib/auth';
 import { toPublicUser } from '@/app/lib/user-public';
-
-type TeamContactWithMember = Prisma.TeamContactGetPayload<{
-  include: { member: true };
-}>;
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -17,13 +13,15 @@ export async function GET() {
     return NextResponse.json({ error: 'Non autorisé' }, { status: 401 });
   }
 
-  const links: TeamContactWithMember[] = await prisma.teamContact.findMany({
+  const links = await prisma.teamContact.findMany({
     where: { ownerId: sessionId },
     include: { member: true },
     orderBy: { createdAt: 'asc' },
   });
 
-  return NextResponse.json(links.map((link) => toPublicUser(link.member)));
+  return NextResponse.json(
+    links.map((link: { member: User }) => toPublicUser(link.member))
+  );
 }
 
 /** Ajouter un collaborateur par son email (doit déjà avoir un compte) */
