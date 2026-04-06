@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { User } from '../types';
+import styles from './Sidebar.module.css';
 
 interface SidebarProps {
   activeView: 'notes' | 'tasks';
@@ -70,8 +71,16 @@ export default function Sidebar({
 
   const afterNav = () => onNavAction?.();
 
+  // Generate CSS for dynamic avatar colors
+  const avatarColorStyles = [
+    ...assignableUsers.map(user => `.avatar-${user.id} { --avatar-color: ${user.color}; }`),
+    `.avatar-current { --avatar-color: ${currentUser.color}; }`
+  ].join('\n');
+
   return (
-    <aside
+    <>
+      <style>{avatarColorStyles}</style>
+      <aside
       className={`w-64 bg-slate-800 border-r border-slate-700 flex flex-col flex-shrink-0 min-h-0 ${className}`.trim()}
     >
       {isGuest && (
@@ -107,7 +116,7 @@ export default function Sidebar({
       {/* Brand */}
       <div className="p-5 border-b border-slate-700">
         <div className="flex items-center gap-3">
-          <div className="w-9 h-9 bg-gradient-to-br from-indigo-500 to-violet-600 rounded-xl flex items-center justify-center shadow-lg">
+          <div className={styles.brandAvatar}>
             <span className="text-white font-bold text-base">A</span>
           </div>
           <div>
@@ -229,8 +238,7 @@ export default function Sidebar({
               }`}
             >
               <div
-                className="w-7 h-7 rounded-full flex items-center justify-center text-white text-xs font-semibold flex-shrink-0 shadow-sm"
-                style={{ backgroundColor: user.color }}
+                className={`${styles.userAvatar} avatar-${user.id}`}
               >
                 {user.initials}
               </div>
@@ -259,64 +267,62 @@ export default function Sidebar({
       <div className="p-3 border-t border-slate-700/50 space-y-2">
         <div className="flex items-center gap-2.5 px-1">
           <div
-            className="w-8 h-8 rounded-full flex items-center justify-center text-white text-sm font-semibold flex-shrink-0 ring-2 ring-indigo-500/40"
-            style={{ backgroundColor: currentUser.color }}
+            className={`${styles.currentUserAvatar} avatar-current`}
           >
             {currentUser.initials}
           </div>
           <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2">
-              <p className="text-sm font-medium text-slate-200 truncate">{currentUser.name}</p>
-              {!isGuest && currentUser.plan === 'pro' ? (
-                <span className="shrink-0 rounded-md bg-amber-500/20 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-300">
-                  Pro
-                </span>
-              ) : null}
-            </div>
+            <p className="text-sm font-medium text-slate-200 truncate">{currentUser.name}</p>
             <p className="text-xs text-slate-500 truncate">
               {isGuest ? 'Données locales uniquement' : currentUser.email}
             </p>
           </div>
+          {!isGuest && currentUser.plan === 'pro' ? (
+            <span className="shrink-0 rounded-md bg-amber-500/20 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-300">
+              Pro
+            </span>
+          ) : null}
         </div>
-        {!isGuest && currentUser.plan !== 'pro' ? (
-          <button
-            type="button"
-            onClick={() => {
-              void onUpgrade();
-              afterNav();
-            }}
-            className="w-full rounded-lg bg-gradient-to-r from-amber-500 to-orange-500 px-3 py-2.5 text-center text-xs font-semibold text-white shadow-lg shadow-amber-500/20 transition-opacity hover:opacity-95 touch-manipulation"
-          >
-            {proPriceLabel
-              ? `Passer à Pro — ${proPriceLabel}`
-              : 'Passer à Pro — soutenir Agenda'}
-          </button>
-        ) : null}
-        {!isGuest && currentUser.plan === 'pro' ? (
-          <button
-            type="button"
-            onClick={() => {
-              void onManageBilling();
-              afterNav();
-            }}
-            className="w-full rounded-lg border border-slate-600 bg-slate-800/80 px-3 py-2 text-center text-xs font-medium text-slate-300 transition-colors hover:bg-slate-700 touch-manipulation"
-          >
-            Facturation & abonnement
-          </button>
-        ) : null}
         {!isGuest && (
-          <button
-            type="button"
-            onClick={() => {
-              onLogout();
-              afterNav();
-            }}
-            className="w-full text-left text-xs text-slate-500 hover:text-red-400 px-1 py-1.5 rounded-lg hover:bg-slate-700/50 transition-colors touch-manipulation"
-          >
-            Se déconnecter
-          </button>
+          <div className="space-y-1.5 pt-1">
+            {currentUser.plan === 'pro' ? (
+              <button
+                type="button"
+                onClick={() => {
+                  void onManageBilling();
+                  afterNav();
+                }}
+                className="w-full text-left text-xs text-slate-400 hover:text-slate-300 px-2 py-1.5 rounded-lg hover:bg-slate-700/50 transition-colors touch-manipulation"
+              >
+                Facturation
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={() => {
+                  void onUpgrade();
+                  afterNav();
+                }}
+                className="w-full text-left text-xs text-slate-400 hover:text-amber-300 px-2 py-1.5 rounded-lg hover:bg-slate-700/50 transition-colors touch-manipulation flex items-center justify-between"
+              >
+                <span>Passer à Pro</span>
+                <span className="text-amber-400 text-[10px]">✨</span>
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={() => {
+                onLogout();
+                afterNav();
+              }}
+              className="w-full text-left text-xs text-slate-500 hover:text-red-400 px-2 py-1.5 rounded-lg hover:bg-slate-700/50 transition-colors touch-manipulation"
+            >
+              Se déconnecter
+            </button>
+          </div>
         )}
       </div>
-    </aside>
+      </aside>
+    </>
   );
 }
