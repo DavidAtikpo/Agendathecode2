@@ -51,7 +51,7 @@ export async function POST(request: Request) {
     });
 
     const token = await createSessionToken(user.id);
-    const res = NextResponse.json(toPublicUser(user), { status: 201 });
+    const res = NextResponse.json({ ...toPublicUser(user), token }, { status: 201 });
     res.cookies.set(getCookieName(), token, sessionCookieOptions());
     return res;
   } catch (err: unknown) {

@@ -6,6 +6,8 @@ export interface User {
   initials: string;
   /** Abonnement Stripe — défaut free si absent (anciennes sessions) */
   plan?: 'free' | 'pro';
+  /** Présent après login/register — utile clients mobiles (Bearer), ignoré par le web */
+  token?: string;
 }
 
 export type TaskStatus = 'todo' | 'doing' | 'done' | 'review';

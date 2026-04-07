@@ -3,8 +3,11 @@ import { prisma } from '@/app/lib/prisma';
 import { sendReminderEmail } from '@/app/lib/email';
 
 /**
- * À appeler par un cron (ex. Vercel Cron toutes les 5 min) avec :
+ * À appeler par un cron (Vercel Hobby : au plus une fois par jour — ex. 08:00 UTC) avec :
  *   Authorization: Bearer <CRON_SECRET>
+ *
+ * Les e-mails de rappel peuvent donc partir jusqu’à ~24 h après l’heure `remindAt` selon le créneau du cron.
+ * Pour une fréquence plus élevée, il faudrait un plan Vercel Pro ou un déclencheur externe (cron-job.org, etc.).
  */
 export async function GET(request: Request) {
   const secret = process.env.CRON_SECRET;

@@ -1,4 +1,4 @@
-import { cookies } from 'next/headers';
+import { cookies, headers } from 'next/headers';
 import { SignJWT, jwtVerify } from 'jose';
 import { hash as bcryptHash, compare as bcryptCompare } from 'bcryptjs';
 
@@ -38,13 +38,29 @@ export async function verifySessionToken(token: string) {
 
 export async function getSessionUserId(): Promise<string | null> {
   const store = await cookies();
-  const token = store.get(COOKIE_NAME)?.value;
-  if (!token) return null;
-  try {
-    return await verifySessionToken(token);
-  } catch {
-    return null;
+  const cookieToken = store.get(COOKIE_NAME)?.value;
+  if (cookieToken) {
+    try {
+      return await verifySessionToken(cookieToken);
+    } catch {
+      return null;
+    }
   }
+
+  const h = await headers();
+  const auth = h.get('authorization');
+  if (auth?.startsWith('Bearer ')) {
+    const bearer = auth.slice(7).trim();
+    if (bearer) {
+      try {
+        return await verifySessionToken(bearer);
+      } catch {
+        return null;
+      }
+    }
+  }
+
+  return null;
 }
 
 export function sessionCookieOptions() {
