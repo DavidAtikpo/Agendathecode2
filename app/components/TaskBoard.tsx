@@ -1,7 +1,19 @@
 'use client';
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, type ComponentType } from 'react';
 import { Task, User, TaskStatus, TaskPriority } from '../types';
+import {
+  IconAlertTriangle,
+  IconBolt,
+  IconCalendar,
+  IconCheckCircle,
+  IconClipboardList,
+  IconPencil,
+  IconPlus,
+  IconSearch,
+  IconTrash,
+  IconX,
+} from './icons';
 
 interface TaskBoardProps {
   tasks: Task[];
@@ -16,7 +28,7 @@ interface TaskBoardProps {
 const COLUMNS: {
   id: TaskStatus;
   label: string;
-  emoji: string;
+  Icon: ComponentType<{ className?: string }>;
   color: string;
   dimColor: string;
   bg: string;
@@ -25,7 +37,7 @@ const COLUMNS: {
   {
     id: 'todo',
     label: 'À faire',
-    emoji: '📝',
+    Icon: IconClipboardList,
     color: 'text-blue-300',
     dimColor: 'text-blue-400/60',
     bg: 'bg-blue-500/10',
@@ -34,7 +46,7 @@ const COLUMNS: {
   {
     id: 'doing',
     label: 'En cours',
-    emoji: '⚡',
+    Icon: IconBolt,
     color: 'text-amber-300',
     dimColor: 'text-amber-400/60',
     bg: 'bg-amber-500/10',
@@ -43,7 +55,7 @@ const COLUMNS: {
   {
     id: 'done',
     label: 'Terminé',
-    emoji: '✅',
+    Icon: IconCheckCircle,
     color: 'text-emerald-300',
     dimColor: 'text-emerald-400/60',
     bg: 'bg-emerald-500/10',
@@ -52,7 +64,7 @@ const COLUMNS: {
   {
     id: 'review',
     label: 'Révision',
-    emoji: '🔍',
+    Icon: IconSearch,
     color: 'text-purple-300',
     dimColor: 'text-purple-400/60',
     bg: 'bg-purple-500/10',
@@ -195,7 +207,7 @@ export default function TaskBoard({ tasks, users, currentUser, onAdd, onUpdate, 
         <div className="hidden items-center gap-3 md:flex md:ml-4">
           {COLUMNS.map(col => (
             <div key={col.id} className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg ${col.bg} border ${col.border}`}>
-              <span className="text-sm">{col.emoji}</span>
+              <col.Icon className={`h-4 w-4 ${col.color}`} />
               <span className={`text-xs font-semibold ${col.color}`}>{tasksByStatus[col.id].length}</span>
             </div>
           ))}
@@ -206,7 +218,7 @@ export default function TaskBoard({ tasks, users, currentUser, onAdd, onUpdate, 
           onClick={() => openAdd('todo')}
           className="flex w-full shrink-0 touch-manipulation items-center justify-center gap-2 rounded-xl bg-indigo-500 px-4 py-3 text-sm font-medium text-white shadow-lg shadow-indigo-500/20 transition-all hover:bg-indigo-400 sm:ml-auto sm:w-auto sm:py-2"
         >
-          <span className="text-base leading-none">+</span>
+          <IconPlus className="h-4 w-4" />
           <span>Nouvelle tâche</span>
         </button>
       </div>
@@ -221,7 +233,7 @@ export default function TaskBoard({ tasks, users, currentUser, onAdd, onUpdate, 
                 {/* Column Header */}
                 <div className={`flex items-center justify-between px-3 py-2.5 rounded-xl ${col.bg} border ${col.border}`}>
                   <div className="flex items-center gap-2">
-                    <span className="text-base">{col.emoji}</span>
+                    <col.Icon className={`h-5 w-5 shrink-0 ${col.color}`} />
                     <span className={`font-semibold text-sm ${col.color}`}>{col.label}</span>
                     <span className={`text-xs font-bold px-1.5 py-0.5 rounded-full bg-slate-900/40 ${col.color}`}>
                       {colTasks.length}
@@ -275,8 +287,13 @@ export default function TaskBoard({ tasks, users, currentUser, onAdd, onUpdate, 
                           </span>
                           <div className="flex items-center gap-1.5 ml-auto">
                             {task.dueDate && (
-                              <span className={`text-xs ${overdue ? 'text-red-400' : 'text-slate-500'}`}>
-                                {overdue ? '⚠️' : '📅'} {formatDate(task.dueDate)}
+                              <span className={`inline-flex items-center gap-1 text-xs ${overdue ? 'text-red-400' : 'text-slate-500'}`}>
+                                {overdue ? (
+                                  <IconAlertTriangle className="h-3.5 w-3.5 shrink-0" />
+                                ) : (
+                                  <IconCalendar className="h-3.5 w-3.5 shrink-0" />
+                                )}
+                                {formatDate(task.dueDate)}
                               </span>
                             )}
                             {assignedUser && (
@@ -320,8 +337,9 @@ export default function TaskBoard({ tasks, users, currentUser, onAdd, onUpdate, 
               <button
                 onClick={() => setSelectedTask(null)}
                 className="text-slate-500 hover:text-slate-300 transition-colors w-7 h-7 flex items-center justify-center rounded-lg hover:bg-slate-700 flex-shrink-0"
+                aria-label="Fermer"
               >
-                ✕
+                <IconX className="h-5 w-5" />
               </button>
             </div>
 
@@ -344,7 +362,7 @@ export default function TaskBoard({ tasks, users, currentUser, onAdd, onUpdate, 
                           : 'border-slate-700 text-slate-500 hover:border-slate-600 hover:text-slate-300'
                       }`}
                     >
-                      <span>{col.emoji}</span>
+                      <col.Icon className={`h-3.5 w-3.5 shrink-0 ${col.color}`} />
                       <span>{col.label}</span>
                     </button>
                   ))}
@@ -392,8 +410,12 @@ export default function TaskBoard({ tasks, users, currentUser, onAdd, onUpdate, 
               {selectedTask.dueDate && (
                 <div>
                   <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Date limite</p>
-                  <p className={`text-sm ${isOverdue(selectedTask.dueDate, selectedTask.status) ? 'text-red-400' : 'text-slate-300'}`}>
-                    {isOverdue(selectedTask.dueDate, selectedTask.status) ? '⚠️ ' : '📅 '}
+                  <p className={`flex items-center gap-2 text-sm ${isOverdue(selectedTask.dueDate, selectedTask.status) ? 'text-red-400' : 'text-slate-300'}`}>
+                    {isOverdue(selectedTask.dueDate, selectedTask.status) ? (
+                      <IconAlertTriangle className="h-4 w-4 shrink-0" />
+                    ) : (
+                      <IconCalendar className="h-4 w-4 shrink-0 text-slate-500" />
+                    )}
                     {formatDate(selectedTask.dueDate)}
                   </p>
                 </div>
@@ -407,15 +429,17 @@ export default function TaskBoard({ tasks, users, currentUser, onAdd, onUpdate, 
             <div className="flex items-center justify-between border-t border-slate-700 p-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] sm:pb-5">
               <button
                 onClick={() => { onDelete(selectedTask.id); setSelectedTask(null); }}
-                className="text-sm text-red-400 hover:text-red-300 transition-colors px-3 py-1.5 rounded-lg hover:bg-red-500/10"
+                className="inline-flex items-center gap-2 text-sm text-red-400 hover:text-red-300 transition-colors px-3 py-1.5 rounded-lg hover:bg-red-500/10"
               >
-                🗑️ Supprimer
+                <IconTrash className="h-4 w-4" />
+                Supprimer
               </button>
               <button
                 onClick={() => openEdit(selectedTask)}
-                className="bg-indigo-500 hover:bg-indigo-400 text-white px-4 py-2 rounded-xl text-sm font-medium transition-all"
+                className="inline-flex items-center gap-2 bg-indigo-500 hover:bg-indigo-400 text-white px-4 py-2 rounded-xl text-sm font-medium transition-all"
               >
-                ✏️ Modifier
+                <IconPencil className="h-4 w-4" />
+                Modifier
               </button>
             </div>
           </div>
@@ -433,14 +457,25 @@ export default function TaskBoard({ tasks, users, currentUser, onAdd, onUpdate, 
             onClick={e => e.stopPropagation()}
           >
             <div className="p-5 border-b border-slate-700 flex items-center justify-between">
-              <h3 className="font-semibold text-white">
-                {editingTask ? '✏️ Modifier la tâche' : '📋 Nouvelle tâche'}
+              <h3 className="font-semibold text-white flex items-center gap-2">
+                {editingTask ? (
+                  <>
+                    <IconPencil className="h-5 w-5 text-indigo-400" />
+                    Modifier la tâche
+                  </>
+                ) : (
+                  <>
+                    <IconClipboardList className="h-5 w-5 text-indigo-400" />
+                    Nouvelle tâche
+                  </>
+                )}
               </h3>
               <button
                 onClick={() => setShowModal(false)}
                 className="text-slate-500 hover:text-slate-300 transition-colors w-7 h-7 flex items-center justify-center rounded-lg hover:bg-slate-700"
+                aria-label="Fermer"
               >
-                ✕
+                <IconX className="h-5 w-5" />
               </button>
             </div>
 
@@ -502,9 +537,9 @@ export default function TaskBoard({ tasks, users, currentUser, onAdd, onUpdate, 
                     onChange={e => setForm(f => ({ ...f, priority: e.target.value as TaskPriority }))}
                     className="w-full bg-slate-700 border border-slate-600 rounded-xl px-3 py-2.5 text-sm text-slate-200 focus:outline-none focus:border-indigo-500 transition-colors"
                   >
-                    <option value="low">🔵 Basse</option>
-                    <option value="medium">🟡 Moyenne</option>
-                    <option value="high">🔴 Haute</option>
+                    <option value="low">Basse</option>
+                    <option value="medium">Moyenne</option>
+                    <option value="high">Haute</option>
                   </select>
                 </div>
               </div>
@@ -521,7 +556,7 @@ export default function TaskBoard({ tasks, users, currentUser, onAdd, onUpdate, 
                   >
                     {COLUMNS.map(c => (
                       <option key={c.id} value={c.id}>
-                        {c.emoji} {c.label}
+                        {c.label}
                       </option>
                     ))}
                   </select>

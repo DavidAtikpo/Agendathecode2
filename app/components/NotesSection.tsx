@@ -10,6 +10,20 @@ import {
   requestReminderPermission,
 } from '../lib/useNoteReminders';
 import { normalizeWhatsAppPhone } from '../lib/whatsappReminder';
+import {
+  IconBell,
+  IconChevronDown,
+  IconChevronUp,
+  IconEnvelope,
+  IconLightBulb,
+  IconMicrophone,
+  IconPencil,
+  IconPin,
+  IconPlus,
+  IconSearch,
+  IconTrash,
+  IconX,
+} from './icons';
 
 interface NotesSectionProps {
   notes: Note[];
@@ -231,7 +245,7 @@ export default function NotesSection({
         </div>
         <div className="w-full min-w-0 sm:max-w-sm sm:flex-1">
           <div className="relative">
-            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 text-sm select-none">🔍</span>
+            <IconSearch className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
             <input
               type="text"
               value={search}
@@ -246,7 +260,7 @@ export default function NotesSection({
           onClick={openAdd}
           className="flex w-full shrink-0 touch-manipulation items-center justify-center gap-2 rounded-xl bg-indigo-500 px-4 py-3 text-sm font-medium text-white shadow-lg shadow-indigo-500/20 transition-all hover:bg-indigo-400 sm:ml-auto sm:w-auto sm:py-2"
         >
-          <span className="text-base leading-none">+</span>
+          <IconPlus className="h-4 w-4" />
           <span>Nouvelle idée</span>
         </button>
       </div>
@@ -288,7 +302,7 @@ export default function NotesSection({
             </span>
           </label>
           <p className="text-[10px] leading-relaxed text-slate-600">
-            WhatsApp ne permet pas d’envoyer une vraie notification push depuis Agenda sans API Business. Ici, une
+            WhatsApp ne permet pas d’envoyer une vraie notification push depuis Neurix sans API Business. Ici, une
             conversation s’ouvre avec le texte du rappel — en général vers votre propre numéro pour vous l’envoyer.
             Avec les notifications activées, un clic sur la notification ouvre aussi WhatsApp.
           </p>
@@ -308,8 +322,9 @@ export default function NotesSection({
                 onClick={() => openEdit(n)}
                 className="flex-shrink-0 touch-manipulation rounded-xl border border-amber-500/25 bg-amber-500/10 px-3 py-2 text-left transition-colors hover:bg-amber-500/15"
               >
-                <span className="block max-w-[14rem] truncate text-xs font-medium text-amber-100">
-                  🔔 {n.title}
+                <span className="flex max-w-[14rem] items-center gap-1.5 truncate text-xs font-medium text-amber-100">
+                  <IconBell className="h-3.5 w-3.5 shrink-0 text-amber-300/90" />
+                  {n.title}
                 </span>
                 <span className="mt-0.5 block text-[10px] text-amber-200/80">
                   {formatReminderRelative(n.remindAt!)}
@@ -324,7 +339,9 @@ export default function NotesSection({
       <div className="flex-1 overflow-y-auto p-4 sm:p-6">
         {notes.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full text-center">
-            <div className="text-7xl mb-5">💡</div>
+            <div className="mb-5 flex justify-center">
+              <IconLightBulb className="h-20 w-20 text-slate-600" aria-hidden />
+            </div>
             <h3 className="text-lg font-semibold text-slate-300 mb-2">Aucune idée pour l&apos;instant</h3>
             <p className="text-slate-500 mb-6 max-w-xs">
               Capturez vos premières idées avant qu&apos;elles ne s&apos;envolent !
@@ -338,7 +355,9 @@ export default function NotesSection({
           </div>
         ) : filtered.length === 0 ? (
           <div className="text-center py-16 text-slate-500">
-            <p className="text-4xl mb-3">🔍</p>
+            <div className="mb-3 flex justify-center">
+              <IconSearch className="h-12 w-12 text-slate-600" aria-hidden />
+            </div>
             <p>Aucune note ne correspond à &quot;{search}&quot;</p>
           </div>
         ) : (
@@ -346,7 +365,8 @@ export default function NotesSection({
             {pinned.length > 0 && (
               <section>
                 <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3 flex items-center gap-2">
-                  <span>📌</span> Épinglées
+                  <IconPin className="h-3.5 w-3.5 text-amber-500/80" />
+                  Épinglées
                 </p>
                 <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
                   {pinned.map(note => (
@@ -401,14 +421,25 @@ export default function NotesSection({
           >
             {/* Modal Header */}
             <div className="p-5 border-b border-slate-700 flex items-center justify-between">
-              <h3 className="font-semibold text-white">
-                {editingNote ? '✏️ Modifier la note' : '💡 Nouvelle idée'}
+              <h3 className="font-semibold text-white flex items-center gap-2">
+                {editingNote ? (
+                  <>
+                    <IconPencil className="h-5 w-5 text-indigo-400" />
+                    Modifier la note
+                  </>
+                ) : (
+                  <>
+                    <IconLightBulb className="h-5 w-5 text-indigo-400" />
+                    Nouvelle idée
+                  </>
+                )}
               </h3>
               <button
                 onClick={() => { if (recording) toggleMic(); setShowModal(false); }}
                 className="text-slate-500 hover:text-slate-300 transition-colors w-7 h-7 flex items-center justify-center rounded-lg hover:bg-slate-700"
+                aria-label="Fermer"
               >
-                ✕
+                <IconX className="h-5 w-5" />
               </button>
             </div>
 
@@ -456,7 +487,7 @@ export default function NotesSection({
                         </>
                       ) : (
                         <>
-                          <span>🎙️</span>
+                          <IconMicrophone className="h-3.5 w-3.5" />
                           <span>Dicter</span>
                         </>
                       )}
@@ -471,8 +502,8 @@ export default function NotesSection({
                     onChange={e => setForm(f => ({ ...f, content: e.target.value }))}
                     placeholder={
                       recording
-                        ? '🎙️ Parlez maintenant, votre texte apparaît ici…'
-                        : 'Développez votre idée ici, ou utilisez le micro 🎙️'
+                        ? 'Parlez maintenant, votre texte apparaît ici…'
+                        : 'Développez votre idée ici, ou utilisez le bouton Dicter.'
                     }
                     rows={7}
                     className={`w-full bg-slate-700 border rounded-xl px-4 py-3 text-sm text-slate-200 placeholder-slate-500 focus:outline-none resize-none transition-colors ${
@@ -614,17 +645,17 @@ function NoteCard({ note, expanded, onToggleExpand, onEdit, onDelete, onTogglePi
         <div className={`flex items-center gap-1 transition-opacity flex-shrink-0 ${hover ? 'opacity-100' : 'opacity-0'}`}>
           <button
             onClick={onTogglePin}
-            className="text-slate-500 hover:text-amber-400 transition-colors p-0.5"
+            className={`text-slate-500 hover:text-amber-400 transition-colors p-0.5 ${note.pinned ? 'text-amber-400' : ''}`}
             title={note.pinned ? 'Désépingler' : 'Épingler'}
           >
-            {note.pinned ? '📌' : '📍'}
+            <IconPin className="h-4 w-4" />
           </button>
           <button
             onClick={onEdit}
             className="text-slate-500 hover:text-indigo-400 transition-colors p-0.5"
             title="Modifier"
           >
-            ✏️
+            <IconPencil className="h-4 w-4" />
           </button>
           {confirmDelete ? (
             <button
@@ -639,7 +670,7 @@ function NoteCard({ note, expanded, onToggleExpand, onEdit, onDelete, onTogglePi
               className="text-slate-500 hover:text-red-400 transition-colors p-0.5"
               title="Supprimer"
             >
-              🗑️
+              <IconTrash className="h-4 w-4" />
             </button>
           )}
         </div>
@@ -654,9 +685,19 @@ function NoteCard({ note, expanded, onToggleExpand, onEdit, onDelete, onTogglePi
           {needsExpand && (
             <button
               onClick={onToggleExpand}
-              className="text-indigo-400 hover:text-indigo-300 text-xs mt-1.5 transition-colors"
+              className="inline-flex items-center gap-1 text-indigo-400 hover:text-indigo-300 text-xs mt-1.5 transition-colors"
             >
-              {expanded ? '▲ Voir moins' : '▼ Voir plus'}
+              {expanded ? (
+                <>
+                  <IconChevronUp className="h-3.5 w-3.5" />
+                  Voir moins
+                </>
+              ) : (
+                <>
+                  <IconChevronDown className="h-3.5 w-3.5" />
+                  Voir plus
+                </>
+              )}
             </button>
           )}
         </div>
@@ -667,11 +708,11 @@ function NoteCard({ note, expanded, onToggleExpand, onEdit, onDelete, onTogglePi
         <div className="flex flex-wrap items-center justify-between gap-2">
           {note.remindAt ? (
             <span
-              className={`text-[11px] font-medium ${
+              className={`inline-flex items-center gap-1 text-[11px] font-medium ${
                 new Date(note.remindAt).getTime() > Date.now() ? 'text-amber-400/95' : 'text-slate-500'
               }`}
             >
-              🔔{' '}
+              <IconBell className="h-3 w-3 shrink-0 opacity-90" />
               {new Date(note.remindAt).getTime() > Date.now()
                 ? formatReminderRelative(note.remindAt)
                 : `Prévu ${formatReminderLabel(note.remindAt)}`}
@@ -682,15 +723,19 @@ function NoteCard({ note, expanded, onToggleExpand, onEdit, onDelete, onTogglePi
           <span className="text-slate-600 text-xs">{timeAgo(note.updatedAt)}</span>
         </div>
         {note.reminderEmailSentAt ? (
-          <p className="text-[10px] text-emerald-500/90">
-            ✉️ E-mail envoyé · {formatReminderLabel(note.reminderEmailSentAt)}
+          <p className="text-[10px] text-emerald-500/90 flex items-center gap-1">
+            <IconEnvelope className="h-3 w-3 shrink-0" />
+            E-mail envoyé · {formatReminderLabel(note.reminderEmailSentAt)}
           </p>
         ) : null}
         {!note.reminderEmailSentAt &&
         note.remindAt &&
         note.reminderByEmail !== false &&
         new Date(note.remindAt).getTime() > Date.now() ? (
-          <p className="text-[10px] text-slate-600">✉️ E-mail automatique prévu à cette heure</p>
+          <p className="text-[10px] text-slate-600 flex items-center gap-1">
+            <IconEnvelope className="h-3 w-3 shrink-0 opacity-70" />
+            E-mail automatique prévu à cette heure
+          </p>
         ) : null}
       </div>
     </div>

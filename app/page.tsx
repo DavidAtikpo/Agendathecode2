@@ -3,14 +3,30 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import Sidebar from './components/Sidebar';
+import CollaboratorsModal from './components/CollaboratorsModal';
+import {
+  IconAlertTriangle,
+  IconArrowLeft,
+  IconBars3,
+  IconBell,
+  IconClipboardList,
+  IconLightBulb,
+  IconSparkles,
+} from './components/icons';
 import NotesSection from './components/NotesSection';
 import TaskBoard from './components/TaskBoard';
 import ChatPanel from './components/ChatPanel';
+import ProPlanBanner from './components/ProPlanBanner';
+import ProFeaturesModal from './components/ProFeaturesModal';
 import { Note, Task, User, ChatMessage, TaskStatus } from './types';
 import { useNoteReminders, formatReminderLabel } from './lib/useNoteReminders';
 import { normalizeWhatsAppPhone } from './lib/whatsappReminder';
 
 const fetchOpts: RequestInit = { credentials: 'include' };
+
+/** Logo dans `public/` (fichier avec espace dans le nom) */
+const BRAND_LOGO = '/logo (1).png';
+const BRAND_NAME = 'Neurix';
 
 const GUEST_USER_ID = '__guest__';
 const GUEST_USER: User = {
@@ -18,7 +34,7 @@ const GUEST_USER: User = {
   email: 'mode-essai@local',
   name: 'Mode essai',
   color: '#64748b',
-  initials: '✦',
+  initials: 'M',
   plan: 'free',
 };
 
@@ -188,12 +204,20 @@ function AuthModal({
         <button
           type="button"
           onClick={onClose}
-          className="text-slate-500 hover:text-slate-300 text-sm mb-4 flex items-center gap-1 transition-colors"
+          className="text-slate-500 hover:text-slate-300 text-sm mb-4 flex items-center gap-1.5 transition-colors"
         >
-          ← Fermer
+          <IconArrowLeft className="h-4 w-4" />
+          Fermer
         </button>
-        <div className="w-14 h-14 bg-gradient-to-br from-indigo-500 to-violet-600 rounded-2xl flex items-center justify-center mx-auto mb-5 shadow-lg">
-          <span className="text-white font-bold text-2xl">A</span>
+        <div className="flex flex-col items-center mx-auto mb-5">
+          <img
+            src={BRAND_LOGO}
+            alt=""
+            width={56}
+            height={56}
+            className="h-14 w-14 object-contain drop-shadow-lg"
+          />
+          <p className="mt-3 text-lg font-bold tracking-tight text-white">{BRAND_NAME}</p>
         </div>
         <h2 className="text-xl font-bold text-white text-center mb-1">Sauvegarder sur le cloud</h2>
         <p className="text-slate-400 text-sm text-center mb-6">
@@ -347,7 +371,9 @@ function ErrorScreen({ message }: { message: string }) {
   return (
     <div className="flex items-center justify-center min-h-screen bg-slate-900">
       <div className="bg-slate-800 border border-red-500/30 rounded-2xl p-8 w-full max-w-md text-center">
-        <p className="text-4xl mb-4">⚠️</p>
+        <div className="mb-4 flex justify-center">
+          <IconAlertTriangle className="h-12 w-12 text-red-400/90" aria-hidden />
+        </div>
         <h2 className="text-lg font-semibold text-red-400 mb-2">Erreur</h2>
         <p className="text-slate-400 text-sm">{message}</p>
       </div>
@@ -358,10 +384,15 @@ function ErrorScreen({ message }: { message: string }) {
 function LoadingScreen() {
   return (
     <div className="flex items-center justify-center min-h-screen bg-slate-900">
-      <div className="flex flex-col items-center gap-3">
-        <div className="w-10 h-10 bg-gradient-to-br from-indigo-500 to-violet-600 rounded-2xl flex items-center justify-center animate-pulse">
-          <span className="text-white font-bold">A</span>
-        </div>
+      <div className="flex flex-col items-center gap-4 px-6">
+        <img
+          src={BRAND_LOGO}
+          alt=""
+          width={72}
+          height={72}
+          className="h-[4.5rem] w-[4.5rem] object-contain animate-pulse"
+        />
+        <p className="text-xl font-bold tracking-tight text-white">{BRAND_NAME}</p>
         <p className="text-slate-500 text-sm">Chargement…</p>
       </div>
     </div>
@@ -399,6 +430,8 @@ export default function HomePage() {
   const [authOauthError, setAuthOauthError] = useState<string | null>(null);
   const [chatOpen, setChatOpen] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [collaboratorsModalOpen, setCollaboratorsModalOpen] = useState(false);
+  const [proFeaturesModalOpen, setProFeaturesModalOpen] = useState(false);
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const [loading, setLoading] = useState(true);
   const [dbError, setDbError] = useState<string | null>(null);
@@ -421,6 +454,11 @@ export default function HomePage() {
 
   const isGuest = currentUser === null;
   const displayUser = currentUser ?? GUEST_USER;
+
+  const chatTier = useMemo(() => {
+    if (isGuest) return 'guest' as const;
+    return currentUser?.plan === 'pro' ? ('pro' as const) : ('free' as const);
+  }, [isGuest, currentUser?.plan]);
 
   const assignableUsers = useMemo(() => {
     if (isGuest) return [GUEST_USER];
@@ -609,16 +647,40 @@ export default function HomePage() {
     const params = new URLSearchParams(window.location.search);
     if (params.get('billing') !== 'success') return;
     let cancelled = false;
-    (async () => {
+    let attempt = 0;
+    const maxAttempts = 20;
+    const delayMs = 700;
+
+    const trySyncPro = async () => {
       const r = await fetch('/api/auth/me', fetchOpts);
       if (!r.ok || cancelled) return;
       const me: User = await r.json();
-      await hydrateFromSession(me);
-      if (!cancelled) {
-        setBillingFlash('Merci ! Agenda Pro est activé sur votre compte.');
+      if (me.plan === 'pro') {
+        try {
+          localStorage.removeItem('neurix-pro-banner-dismiss');
+        } catch {
+          /* ignore */
+        }
+        await hydrateFromSession(me);
+        if (!cancelled) {
+          setBillingFlash('Merci ! Neurix Pro est activé sur votre compte.');
+        }
+        router.replace('/', { scroll: false });
+        return;
       }
-      router.replace('/', { scroll: false });
-    })();
+      attempt += 1;
+      if (attempt < maxAttempts && !cancelled) {
+        setTimeout(() => void trySyncPro(), delayMs);
+      } else if (!cancelled) {
+        await hydrateFromSession(me);
+        setBillingFlash(
+          'Paiement enregistré. Le statut Pro peut prendre quelques secondes : actualisez la page si le badge Pro n’apparaît pas.',
+        );
+        router.replace('/', { scroll: false });
+      }
+    };
+
+    void trySyncPro();
     return () => {
       cancelled = true;
     };
@@ -839,7 +901,7 @@ export default function HomePage() {
         const msg = err instanceof Error ? err.message : 'Erreur inconnue';
         setChatMessages(prev => [
           ...prev,
-          { id: genId(), role: 'assistant', content: `⚠️ ${msg}`, timestamp: new Date().toISOString() },
+          { id: genId(), role: 'assistant', content: `Erreur : ${msg}`, timestamp: new Date().toISOString() },
         ]);
       }
     },
@@ -856,10 +918,18 @@ export default function HomePage() {
   if (loading) return <LoadingScreen />;
   if (dbError) return <ErrorScreen message={dbError} />;
 
+  const openCollaboratorsPanel = () => {
+    if (isGuest) {
+      setAuthTab('login');
+      setAuthModalOpen(true);
+    } else {
+      setCollaboratorsModalOpen(true);
+    }
+  };
+
   const sidebarProps = {
     activeView,
     onViewChange: setActiveView,
-    assignableUsers,
     currentUser: displayUser,
     isGuest,
     onOpenLogin: () => {
@@ -870,8 +940,6 @@ export default function HomePage() {
       setAuthTab('register');
       setAuthModalOpen(true);
     },
-    onAddContact: addContactByEmail,
-    onRemoveContact: removeContact,
     onLogout: logout,
     noteCount: notes.length,
     taskCount: tasks.filter(t => t.status !== 'done').length,
@@ -880,6 +948,7 @@ export default function HomePage() {
     onUpgrade: startCheckout,
     onManageBilling: openBillingPortal,
     proPriceLabel,
+    onOpenProFeatures: () => setProFeaturesModalOpen(true),
   };
 
   return (
@@ -902,9 +971,7 @@ export default function HomePage() {
           role="status"
         >
           <div className="flex items-start gap-3">
-            <span className="text-xl" aria-hidden>
-              🔔
-            </span>
+            <IconBell className="h-6 w-6 shrink-0 text-amber-400/90" aria-hidden />
             <div className="min-w-0 flex-1">
               <p className="text-sm font-semibold text-amber-100">Rappel : {inAppReminder.title}</p>
               {inAppReminder.content?.trim() ? (
@@ -960,7 +1027,33 @@ export default function HomePage() {
         )}
 
         <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-          <header className="flex shrink-0 items-center gap-3 border-b border-slate-800 bg-slate-900/95 px-3 py-3 pt-[max(0.75rem,env(safe-area-inset-top))] md:hidden">
+          <header className="hidden shrink-0 items-center justify-between gap-3 border-b border-slate-800 bg-slate-900/95 px-4 py-2.5 md:flex">
+            <h2 className="text-sm font-medium text-slate-300">
+              {activeView === 'notes' ? 'Idées & notes' : 'Tableau des tâches'}
+            </h2>
+            <button
+              type="button"
+              onClick={openCollaboratorsPanel}
+              className="inline-flex items-center gap-2 rounded-xl border border-slate-600 bg-slate-800 px-3 py-2 text-xs font-medium text-slate-200 hover:bg-slate-700 touch-manipulation"
+            >
+              <svg className="h-4 w-4 shrink-0 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"
+                />
+              </svg>
+              Collaborateurs
+              {!isGuest && assignableUsers.length > 1 ? (
+                <span className="rounded-full bg-indigo-500/25 px-1.5 py-0.5 text-[10px] font-semibold tabular-nums text-indigo-200">
+                  {assignableUsers.length}
+                </span>
+              ) : null}
+            </button>
+          </header>
+
+          <header className="flex shrink-0 items-center gap-2 border-b border-slate-800 bg-slate-900/95 px-3 py-3 pt-[max(0.75rem,env(safe-area-inset-top))] md:hidden">
             <button
               type="button"
               className="-ml-1 touch-manipulation rounded-xl p-2.5 text-slate-300 hover:bg-slate-800 active:bg-slate-700"
@@ -971,34 +1064,67 @@ export default function HomePage() {
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
               </svg>
             </button>
-            <span className="font-semibold text-white">Agenda</span>
+            <span className="min-w-0 flex-1 truncate font-semibold text-white">{BRAND_NAME}</span>
+            <button
+              type="button"
+              onClick={openCollaboratorsPanel}
+              className="relative touch-manipulation rounded-xl p-2.5 text-slate-300 hover:bg-slate-800 active:bg-slate-700"
+              aria-label={
+                !isGuest && assignableUsers.length > 1
+                  ? `Collaborateurs (${assignableUsers.length})`
+                  : 'Collaborateurs'
+              }
+            >
+              <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"
+                />
+              </svg>
+              {!isGuest && assignableUsers.length > 1 ? (
+                <span className="absolute -right-0.5 -top-0.5 flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-indigo-500 px-0.5 text-[10px] font-bold leading-none text-white">
+                  {assignableUsers.length}
+                </span>
+              ) : null}
+            </button>
           </header>
 
-          <main className="min-h-0 flex-1 overflow-hidden pb-[calc(4rem+env(safe-area-inset-bottom))] md:pb-0">
-            {activeView === 'notes' ? (
-              <NotesSection
-                notes={notes}
-                onAdd={addNote}
-                onUpdate={updateNote}
-                onDelete={deleteNote}
-                currentUser={displayUser}
-                isGuest={isGuest}
-                whatsappPhone={whatsappPhone}
-                onWhatsappPhoneChange={setWhatsappPhone}
-                whatsappAutoOpen={whatsappAutoOpen}
-                onWhatsappAutoOpenChange={setWhatsappAutoOpen}
-              />
-            ) : (
-              <TaskBoard
-                tasks={tasks}
-                users={assignableUsers}
-                currentUser={displayUser}
-                onAdd={addTask}
-                onUpdate={updateTask}
-                onDelete={deleteTask}
-                onMove={moveTask}
-              />
-            )}
+          <main className="flex min-h-0 flex-1 flex-col overflow-hidden pb-[calc(4rem+env(safe-area-inset-bottom))] md:pb-0">
+            <ProPlanBanner
+              isGuest={isGuest}
+              plan={currentUser?.plan}
+              proPriceLabel={proPriceLabel}
+              onUpgrade={startCheckout}
+              onOpenDetails={() => setProFeaturesModalOpen(true)}
+            />
+            <div className="min-h-0 flex-1 overflow-hidden">
+              {activeView === 'notes' ? (
+                <NotesSection
+                  notes={notes}
+                  onAdd={addNote}
+                  onUpdate={updateNote}
+                  onDelete={deleteNote}
+                  currentUser={displayUser}
+                  isGuest={isGuest}
+                  whatsappPhone={whatsappPhone}
+                  onWhatsappPhoneChange={setWhatsappPhone}
+                  whatsappAutoOpen={whatsappAutoOpen}
+                  onWhatsappAutoOpenChange={setWhatsappAutoOpen}
+                />
+              ) : (
+                <TaskBoard
+                  tasks={tasks}
+                  users={assignableUsers}
+                  currentUser={displayUser}
+                  onAdd={addTask}
+                  onUpdate={updateTask}
+                  onDelete={deleteTask}
+                  onMove={moveTask}
+                />
+              )}
+            </div>
           </main>
 
           <nav
@@ -1012,9 +1138,7 @@ export default function HomePage() {
                 activeView === 'notes' ? 'text-indigo-300' : 'text-slate-500'
               }`}
             >
-              <span className="text-lg leading-none" aria-hidden>
-                💡
-              </span>
+              <IconLightBulb className="h-6 w-6" />
               Notes
             </button>
             <button
@@ -1024,9 +1148,7 @@ export default function HomePage() {
                 activeView === 'tasks' ? 'text-indigo-300' : 'text-slate-500'
               }`}
             >
-              <span className="text-lg leading-none" aria-hidden>
-                📋
-              </span>
+              <IconClipboardList className="h-6 w-6" />
               Tâches
             </button>
             <button
@@ -1036,9 +1158,7 @@ export default function HomePage() {
                 chatOpen ? 'text-violet-300' : 'text-slate-500'
               }`}
             >
-              <span className="text-lg leading-none" aria-hidden>
-                🤖
-              </span>
+              <IconSparkles className="h-6 w-6" />
               IA
             </button>
             <button
@@ -1046,9 +1166,7 @@ export default function HomePage() {
               onClick={() => setMobileMenuOpen(true)}
               className="flex min-h-[48px] min-w-0 flex-1 touch-manipulation flex-col items-center justify-center gap-0.5 px-1 text-[11px] font-medium text-slate-500"
             >
-              <span className="text-lg leading-none" aria-hidden>
-                ☰
-              </span>
+              <IconBars3 className="h-6 w-6" />
               Plus
             </button>
           </nav>
@@ -1060,9 +1178,29 @@ export default function HomePage() {
             onSendMessage={sendChatMessage}
             onClose={() => setChatOpen(false)}
             onClear={clearChat}
+            chatTier={chatTier}
           />
         )}
       </div>
+
+      <CollaboratorsModal
+        open={collaboratorsModalOpen}
+        onClose={() => setCollaboratorsModalOpen(false)}
+        assignableUsers={assignableUsers}
+        currentUser={displayUser}
+        isGuest={isGuest}
+        onAddContact={addContactByEmail}
+        onRemoveContact={removeContact}
+      />
+
+      <ProFeaturesModal
+        open={proFeaturesModalOpen}
+        onClose={() => setProFeaturesModalOpen(false)}
+        plan={currentUser?.plan}
+        isGuest={isGuest}
+        proPriceLabel={proPriceLabel}
+        onUpgrade={startCheckout}
+      />
 
       <AuthModal
         open={authModalOpen}

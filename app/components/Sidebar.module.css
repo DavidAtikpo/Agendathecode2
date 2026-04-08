@@ -28,17 +28,3 @@
   background-color: var(--avatar-color);
   box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.4);
 }
-
-.brandAvatar {
-  width: 2.25rem;
-  height: 2.25rem;
-  border-radius: 0.75rem;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: linear-gradient(135deg, #4f46e5, #7c3aed);
-  color: white;
-  font-weight: 700;
-  font-size: 1rem;
-  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
-}

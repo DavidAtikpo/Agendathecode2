@@ -2,12 +2,17 @@
 
 import { useState, useRef, useEffect } from 'react';
 import { ChatMessage } from '../types';
+import { IconArrowRight, IconSparkles, IconTrash, IconX } from './icons';
+
+export type ChatTier = 'guest' | 'free' | 'pro';
 
 interface ChatPanelProps {
   messages: ChatMessage[];
   onSendMessage: (content: string) => Promise<void>;
   onClose: () => void;
   onClear: () => void;
+  /** Différencie l’affichage et la limite côté API (gratuit vs Pro). */
+  chatTier: ChatTier;
 }
 
 const SUGGESTIONS = [
@@ -22,7 +27,18 @@ function formatTime(iso: string) {
   return new Date(iso).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
 }
 
-export default function ChatPanel({ messages, onSendMessage, onClose, onClear }: ChatPanelProps) {
+function tierSubtitle(tier: ChatTier) {
+  switch (tier) {
+    case 'pro':
+      return 'Neurix Pro · réponses IA étendues';
+    case 'free':
+      return 'Gratuit · réponses standard';
+    default:
+      return 'Mode essai · connectez-vous pour tout sauvegarder';
+  }
+}
+
+export default function ChatPanel({ messages, onSendMessage, onClose, onClear, chatTier }: ChatPanelProps) {
   const [input, setInput] = useState('');
   const [sending, setSending] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -76,18 +92,19 @@ export default function ChatPanel({ messages, onSendMessage, onClose, onClear }:
             <span className="text-sm"></span>
           </div>
           <div>
-            <p className="font-semibold text-sm text-white">thecode2 IA</p>
-            <p className="text-xs text-slate-500">Propulsé par GPT-4o mini</p>
+            <p className="font-semibold text-sm text-white">Neurix IA</p>
+            <p className="text-xs text-slate-500">{tierSubtitle(chatTier)}</p>
           </div>
         </div>
         <div className="flex items-center gap-1">
           {messages.length > 0 && (
             <button
               onClick={onClear}
-              className="text-slate-500 hover:text-slate-300 transition-colors text-xs px-2 py-1 rounded-lg hover:bg-slate-700"
+              className="text-slate-500 hover:text-slate-300 transition-colors p-2 rounded-lg hover:bg-slate-700"
               title="Effacer la conversation"
+              aria-label="Effacer la conversation"
             >
-              🗑️
+              <IconTrash className="h-4 w-4" />
             </button>
           )}
           <button
@@ -96,7 +113,7 @@ export default function ChatPanel({ messages, onSendMessage, onClose, onClear }:
             className="flex h-10 w-10 min-h-[44px] min-w-[44px] touch-manipulation items-center justify-center rounded-xl text-slate-500 transition-colors hover:bg-slate-700 hover:text-slate-300 md:h-7 md:w-7 md:min-h-0 md:min-w-0"
             aria-label="Fermer l’assistant"
           >
-            ✕
+            <IconX className="h-5 w-5 md:h-4 md:w-4" />
           </button>
         </div>
       </div>
@@ -107,7 +124,10 @@ export default function ChatPanel({ messages, onSendMessage, onClose, onClear }:
           <div className="space-y-4">
             {/* Welcome card */}
             <div className="bg-violet-500/10 border border-violet-500/20 rounded-2xl p-4">
-              <p className="text-sm font-medium text-violet-300 mb-2">👋 Bonjour !</p>
+              <p className="text-sm font-medium text-violet-300 mb-2 flex items-center gap-2">
+                <IconSparkles className="h-4 w-4 text-violet-400 shrink-0" />
+                Bonjour
+              </p>
               <p className="text-xs text-slate-400 leading-relaxed">
                 Je suis votre assistant IA. Je connais vos notes et tâches, et je peux vous aider à :
               </p>
@@ -229,12 +249,13 @@ export default function ChatPanel({ messages, onSendMessage, onClose, onClear }:
             onClick={handleSend}
             disabled={!input.trim() || sending}
             className="bg-violet-500 hover:bg-violet-400 disabled:opacity-40 disabled:cursor-not-allowed text-white w-9 h-9 flex items-center justify-center rounded-xl text-sm transition-all flex-shrink-0 shadow-lg shadow-violet-500/20"
+            aria-label="Envoyer"
           >
-            →
+            <IconArrowRight className="h-5 w-5" />
           </button>
         </div>
         <p className="text-xs text-slate-600 mt-1.5 text-center">
-          ↵ Envoyer · ⇧↵ Nouvelle ligne
+          Entrée pour envoyer · Maj+Entrée pour une nouvelle ligne
         </p>
       </div>
     </div>
