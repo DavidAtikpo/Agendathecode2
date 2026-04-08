@@ -21,6 +21,12 @@ import ProFeaturesModal from './components/ProFeaturesModal';
 import { Note, Task, User, ChatMessage, TaskStatus } from './types';
 import { useNoteReminders, formatReminderLabel } from './lib/useNoteReminders';
 import { normalizeWhatsAppPhone } from './lib/whatsappReminder';
+import {
+  DEFAULT_USER_PREFERENCES,
+  normalizePreferences,
+  type UserPreferences,
+} from './lib/user-preferences';
+import SettingsModal from './components/SettingsModal';
 
 const fetchOpts: RequestInit = { credentials: 'include' };
 
@@ -36,6 +42,7 @@ const GUEST_USER: User = {
   color: '#64748b',
   initials: 'M',
   plan: 'free',
+  preferences: DEFAULT_USER_PREFERENCES,
 };
 
 const LS_NOTES = 'agenda-guest-notes';
@@ -44,6 +51,7 @@ const LS_CHAT_GUEST = 'agenda-guest-chat';
 const LS_CHAT_USER = 'agenda-chat';
 const LS_WHATSAPP_PHONE = 'agenda-whatsapp-phone';
 const LS_WHATSAPP_AUTO = 'agenda-whatsapp-reminder-auto';
+const LS_GUEST_PREFERENCES = 'agenda-guest-preferences';
 
 function genId() {
   return Math.random().toString(36).slice(2, 9) + Date.now().toString(36);
@@ -432,6 +440,7 @@ export default function HomePage() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [collaboratorsModalOpen, setCollaboratorsModalOpen] = useState(false);
   const [proFeaturesModalOpen, setProFeaturesModalOpen] = useState(false);
+  const [settingsModalOpen, setSettingsModalOpen] = useState(false);
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const [loading, setLoading] = useState(true);
   const [dbError, setDbError] = useState<string | null>(null);
@@ -451,9 +460,27 @@ export default function HomePage() {
       return false;
     }
   });
+  const [guestPreferences, setGuestPreferences] = useState<UserPreferences>(() => {
+    if (typeof window === 'undefined') return DEFAULT_USER_PREFERENCES;
+    try {
+      const raw = localStorage.getItem(LS_GUEST_PREFERENCES);
+      if (!raw) return DEFAULT_USER_PREFERENCES;
+      return normalizePreferences(JSON.parse(raw));
+    } catch {
+      return DEFAULT_USER_PREFERENCES;
+    }
+  });
 
   const isGuest = currentUser === null;
-  const displayUser = currentUser ?? GUEST_USER;
+  const displayUser = useMemo((): User => {
+    if (currentUser) return currentUser;
+    return { ...GUEST_USER, preferences: guestPreferences };
+  }, [currentUser, guestPreferences]);
+
+  const layoutPreferences = useMemo(
+    () => displayUser.preferences ?? DEFAULT_USER_PREFERENCES,
+    [displayUser],
+  );
 
   const chatTier = useMemo(() => {
     if (isGuest) return 'guest' as const;
@@ -915,6 +942,20 @@ export default function HomePage() {
     whatsappAutoOpen,
   });
 
+  const handleSettingsSaved = useCallback((u: User) => {
+    if (currentUser === null) {
+      const p = u.preferences ?? DEFAULT_USER_PREFERENCES;
+      setGuestPreferences(p);
+      try {
+        localStorage.setItem(LS_GUEST_PREFERENCES, JSON.stringify(p));
+      } catch {
+        /* ignore */
+      }
+    } else {
+      setCurrentUser(u);
+    }
+  }, [currentUser]);
+
   if (loading) return <LoadingScreen />;
   if (dbError) return <ErrorScreen message={dbError} />;
 
@@ -949,6 +990,7 @@ export default function HomePage() {
     onManageBilling: openBillingPortal,
     proPriceLabel,
     onOpenProFeatures: () => setProFeaturesModalOpen(true),
+    onOpenSettings: () => setSettingsModalOpen(true),
   };
 
   return (
@@ -1112,6 +1154,8 @@ export default function HomePage() {
                   onWhatsappPhoneChange={setWhatsappPhone}
                   whatsappAutoOpen={whatsappAutoOpen}
                   onWhatsappAutoOpenChange={setWhatsappAutoOpen}
+                  compactLayout={layoutPreferences.density === 'compact'}
+                  showWhatsAppSection={layoutPreferences.notesShowWhatsApp !== false}
                 />
               ) : (
                 <TaskBoard
@@ -1122,6 +1166,7 @@ export default function HomePage() {
                   onUpdate={updateTask}
                   onDelete={deleteTask}
                   onMove={moveTask}
+                  compactLayout={layoutPreferences.density === 'compact'}
                 />
               )}
             </div>
@@ -1200,6 +1245,14 @@ export default function HomePage() {
         isGuest={isGuest}
         proPriceLabel={proPriceLabel}
         onUpgrade={startCheckout}
+      />
+
+      <SettingsModal
+        open={settingsModalOpen}
+        onClose={() => setSettingsModalOpen(false)}
+        user={displayUser}
+        onSaved={handleSettingsSaved}
+        isGuest={isGuest}
       />
 
       <AuthModal

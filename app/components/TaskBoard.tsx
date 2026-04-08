@@ -23,6 +23,7 @@ interface TaskBoardProps {
   onUpdate: (id: string, data: Partial<Task>) => void | Promise<void>;
   onDelete: (id: string) => void | Promise<void>;
   onMove: (id: string, status: TaskStatus) => void | Promise<void>;
+  compactLayout?: boolean;
 }
 
 const COLUMNS: {
@@ -96,7 +97,18 @@ function isOverdue(dueDate: string | undefined, status: TaskStatus) {
   return new Date(dueDate) < new Date();
 }
 
-export default function TaskBoard({ tasks, users, currentUser, onAdd, onUpdate, onDelete, onMove }: TaskBoardProps) {
+export default function TaskBoard({
+  tasks,
+  users,
+  currentUser,
+  onAdd,
+  onUpdate,
+  onDelete,
+  onMove,
+  compactLayout = false,
+}: TaskBoardProps) {
+  const padHeader = compactLayout ? 'px-3 py-3 sm:px-4 sm:py-4' : 'px-4 py-4 sm:px-6 sm:py-5';
+  const padMain = compactLayout ? 'p-3 sm:p-4' : 'p-4 sm:p-6';
   const [showModal, setShowModal] = useState(false);
   const [editingTask, setEditingTask] = useState<Task | null>(null);
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
@@ -195,7 +207,9 @@ export default function TaskBoard({ tasks, users, currentUser, onAdd, onUpdate, 
   return (
     <div className="h-full flex flex-col">
       {/* Header */}
-      <div className="flex flex-shrink-0 flex-col gap-3 border-b border-slate-700 px-4 py-4 sm:flex-row sm:items-center sm:gap-4 sm:px-6 sm:py-5">
+      <div
+        className={`flex flex-shrink-0 flex-col gap-3 border-b border-slate-700 sm:flex-row sm:items-center sm:gap-4 ${padHeader}`}
+      >
         <div className="min-w-0">
           <h2 className="text-lg font-bold text-white sm:text-xl">Tableau des tâches</h2>
           <p className="mt-0.5 text-xs text-slate-500">
@@ -224,7 +238,7 @@ export default function TaskBoard({ tasks, users, currentUser, onAdd, onUpdate, 
       </div>
 
       {/* Kanban */}
-      <div className="flex-1 overflow-x-auto overscroll-x-contain p-4 sm:p-6">
+      <div className={`flex-1 overflow-x-auto overscroll-x-contain ${padMain}`}>
         <div className="flex h-full min-w-max gap-4 pb-2 sm:gap-5">
           {COLUMNS.map(col => {
             const colTasks = tasksByStatus[col.id];

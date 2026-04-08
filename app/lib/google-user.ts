@@ -1,13 +1,6 @@
 import { prisma } from '@/app/lib/prisma';
 import type { GoogleProfile } from '@/app/lib/google-oauth';
-
-const COLORS = ['#6366f1', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4', '#f97316'];
-
-function makeInitials(name: string) {
-  const parts = name.trim().split(/\s+/);
-  if (parts.length >= 2) return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
-  return name.slice(0, 2).toUpperCase();
-}
+import { initialsFromName, USER_AVATAR_COLORS } from '@/app/lib/user-display';
 
 export async function findOrCreateGoogleUser(profile: GoogleProfile) {
   const email = profile.email.toLowerCase();
@@ -35,8 +28,8 @@ export async function findOrCreateGoogleUser(profile: GoogleProfile) {
       passwordHash: null,
       googleId: profile.sub,
       name,
-      color: COLORS[count % COLORS.length],
-      initials: makeInitials(name),
+      color: USER_AVATAR_COLORS[count % USER_AVATAR_COLORS.length],
+      initials: initialsFromName(name),
     },
   });
 }

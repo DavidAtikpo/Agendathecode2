@@ -4,6 +4,20 @@ import { useState, useRef, useEffect } from 'react';
 import { ChatMessage } from '../types';
 import { IconArrowRight, IconSparkles, IconTrash, IconX } from './icons';
 
+/** Même ressource que la sidebar / écran de chargement (`public/logo (1).png`). */
+const BRAND_LOGO = '/logo (1).png';
+
+function AssistantLogoMark({ size = 'md' }: { size?: 'sm' | 'md' }) {
+  const box = size === 'sm' ? 'h-6 w-6' : 'h-8 w-8';
+  return (
+    <div
+      className={`${box} shrink-0 overflow-hidden rounded-xl bg-slate-900/40 ring-1 ring-violet-500/25`}
+    >
+      <img src={BRAND_LOGO} alt="" className="h-full w-full object-contain p-0.5" />
+    </div>
+  );
+}
+
 export type ChatTier = 'guest' | 'free' | 'pro';
 
 interface ChatPanelProps {
@@ -88,9 +102,7 @@ export default function ChatPanel({ messages, onSendMessage, onClose, onClear, c
       {/* Header */}
       <div className="flex flex-shrink-0 items-center justify-between border-b border-slate-700 px-4 py-3.5">
         <div className="flex items-center gap-2.5">
-          <div className="w-8 h-8 bg-gradient-to-br from-violet-500 to-purple-600 rounded-xl flex items-center justify-center shadow-sm">
-            <span className="text-sm"></span>
-          </div>
+          <AssistantLogoMark size="md" />
           <div>
             <p className="font-semibold text-sm text-white">Neurix IA</p>
             <p className="text-xs text-slate-500">{tierSubtitle(chatTier)}</p>
@@ -169,8 +181,8 @@ export default function ChatPanel({ messages, onSendMessage, onClose, onClear, c
             {messages.map(msg => (
               <div key={msg.id} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
                 {msg.role === 'assistant' && (
-                  <div className="w-6 h-6 bg-gradient-to-br from-violet-500 to-purple-600 rounded-full flex items-center justify-center text-xs mr-2 mt-0.5 flex-shrink-0">
-                    Thc2IA
+                  <div className="mr-2 mt-0.5 flex-shrink-0">
+                    <AssistantLogoMark size="sm" />
                   </div>
                 )}
                 <div
@@ -195,8 +207,8 @@ export default function ChatPanel({ messages, onSendMessage, onClose, onClear, c
             {/* Typing indicator */}
             {sending && (
               <div className="flex justify-start">
-                <div className="w-6 h-6 bg-gradient-to-br from-violet-500 to-purple-600 rounded-full flex items-center justify-center text-xs mr-2 mt-0.5 flex-shrink-0">
-                  Thc2IA
+                <div className="mr-2 mt-0.5 flex-shrink-0">
+                  <AssistantLogoMark size="sm" />
                 </div>
                 <div className="bg-slate-700 rounded-2xl rounded-bl-sm px-4 py-3">
                   <div className="flex gap-1.5 items-center">

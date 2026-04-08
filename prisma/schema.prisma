@@ -23,6 +23,8 @@ model User {
   stripeSubscriptionId String?       @unique
   /// Fin de période payée (affichage / grâce)
   subscriptionEndsAt   DateTime?
+  /// Préférences UI / produit (JSON — voir `user-preferences.ts` côté app)
+  preferences          Json             @default("{}")
   notes                Note[]
   tasksAssigned        Task[]        @relation("AssignedTo")
   tasksCreated         Task[]        @relation("CreatedBy")

@@ -33,6 +33,10 @@ interface NotesSectionProps {
   currentUser: User;
   /** Mode essai : pas d’e-mail automatique serveur */
   isGuest: boolean;
+  /** Préférences : liste plus serrée */
+  compactLayout?: boolean;
+  /** Préférences : afficher le bloc WhatsApp sous l’en-tête */
+  showWhatsAppSection?: boolean;
   whatsappPhone: string;
   onWhatsappPhoneChange: (value: string) => void;
   whatsappAutoOpen: boolean;
@@ -140,7 +144,13 @@ export default function NotesSection({
   onWhatsappPhoneChange,
   whatsappAutoOpen,
   onWhatsappAutoOpenChange,
+  compactLayout = false,
+  showWhatsAppSection = true,
 }: NotesSectionProps) {
+  const padHeader = compactLayout ? 'px-3 py-3 sm:px-4 sm:py-4' : 'px-4 py-4 sm:px-6 sm:py-5';
+  const padSection = compactLayout ? 'px-3 sm:px-4' : 'px-4 sm:px-6';
+  const padContent = compactLayout ? 'p-3 sm:p-4' : 'p-4 sm:p-6';
+
   const [search, setSearch] = useState('');
   const [showModal, setShowModal] = useState(false);
   const [editingNote, setEditingNote] = useState<Note | null>(null);
@@ -236,7 +246,9 @@ export default function NotesSection({
   return (
     <div className="h-full flex flex-col">
       {/* Header */}
-      <div className="flex flex-shrink-0 flex-col gap-3 border-b border-slate-700 px-4 py-4 sm:flex-row sm:items-center sm:gap-4 sm:px-6 sm:py-5">
+      <div
+        className={`flex flex-shrink-0 flex-col gap-3 border-b border-slate-700 sm:flex-row sm:items-center sm:gap-4 ${padHeader}`}
+      >
         <div className="min-w-0">
           <h2 className="text-lg font-bold text-white sm:text-xl">Idées & Notes</h2>
           <p className="mt-0.5 text-xs text-slate-500">
@@ -265,7 +277,8 @@ export default function NotesSection({
         </button>
       </div>
 
-      <details className="flex-shrink-0 border-b border-slate-700/60 bg-slate-900/40 px-4 py-2 sm:px-6">
+      {showWhatsAppSection ? (
+      <details className={`flex-shrink-0 border-b border-slate-700/60 bg-slate-900/40 py-2 ${padSection}`}>
         <summary className="cursor-pointer list-none text-xs text-slate-500 marker:content-none [&::-webkit-details-marker]:hidden">
           <span className="text-slate-400 hover:text-slate-300">Rappels via WhatsApp</span>
           <span className="ml-2 text-[10px] text-slate-600">(optionnel)</span>
@@ -308,9 +321,10 @@ export default function NotesSection({
           </p>
         </div>
       </details>
+      ) : null}
 
       {upcomingReminders.length > 0 && (
-        <div className="flex-shrink-0 border-b border-slate-700/80 bg-slate-800/30 px-4 py-3 sm:px-6">
+        <div className={`flex-shrink-0 border-b border-slate-700/80 bg-slate-800/30 py-3 ${padSection}`}>
           <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-slate-500">
             Prochains rappels
           </p>
@@ -336,7 +350,7 @@ export default function NotesSection({
       )}
 
       {/* Content */}
-      <div className="flex-1 overflow-y-auto p-4 sm:p-6">
+      <div className={`flex-1 overflow-y-auto ${padContent}`}>
         {notes.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full text-center">
             <div className="mb-5 flex justify-center">

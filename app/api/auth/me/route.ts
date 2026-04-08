@@ -14,5 +14,5 @@ export async function GET() {
     return NextResponse.json({ error: 'Session invalide' }, { status: 401 });
   }
 
-  return NextResponse.json(toPublicUser(user));
+  return NextResponse.json(toPublicUser(user, { includePasswordLoginHint: true }));
 }

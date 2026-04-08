@@ -26,7 +26,7 @@ export async function POST(request: Request) {
 
     const user = await findOrCreateGoogleUser(profile);
     const token = await createSessionToken(user.id);
-    const res = NextResponse.json({ ...toPublicUser(user), token });
+    const res = NextResponse.json({ ...toPublicUser(user, { includePasswordLoginHint: true }), token });
     res.cookies.set(getCookieName(), token, sessionCookieOptions());
     return res;
   } catch (e: unknown) {

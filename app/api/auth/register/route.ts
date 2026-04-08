@@ -2,16 +2,9 @@ import { NextResponse } from 'next/server';
 import { prisma } from '@/app/lib/prisma';
 import { hashPassword, createSessionToken, sessionCookieOptions, getCookieName } from '@/app/lib/auth';
 import { toPublicUser } from '@/app/lib/user-public';
+import { initialsFromName, USER_AVATAR_COLORS } from '@/app/lib/user-display';
 
 export const runtime = 'nodejs';
-
-const COLORS = ['#6366f1', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4', '#f97316'];
-
-function makeInitials(name: string) {
-  const parts = name.trim().split(/\s+/);
-  if (parts.length >= 2) return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
-  return name.slice(0, 2).toUpperCase();
-}
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -45,13 +38,13 @@ export async function POST(request: Request) {
         email,
         passwordHash,
         name,
-        color: COLORS[count % COLORS.length],
-        initials: makeInitials(name),
+        color: USER_AVATAR_COLORS[count % USER_AVATAR_COLORS.length],
+        initials: initialsFromName(name),
       },
     });
 
     const token = await createSessionToken(user.id);
-    const res = NextResponse.json({ ...toPublicUser(user), token }, { status: 201 });
+    const res = NextResponse.json({ ...toPublicUser(user, { includePasswordLoginHint: true }), token }, { status: 201 });
     res.cookies.set(getCookieName(), token, sessionCookieOptions());
     return res;
   } catch (err: unknown) {

@@ -1,3 +1,5 @@
+import type { UserPreferences } from './lib/user-preferences';
+
 export interface User {
   id: string;
   email: string;
@@ -8,6 +10,10 @@ export interface User {
   plan?: 'free' | 'pro';
   /** Présent après login/register — utile clients mobiles (Bearer), ignoré par le web */
   token?: string;
+  /** Préférences persistantes (API `/api/user/preferences`) — défaut côté client si absent */
+  preferences?: UserPreferences;
+  /** Présent après `/api/auth/me` ou login : compte avec mot de passe (pas Google-only). */
+  hasPasswordLogin?: boolean;
 }
 
 export type TaskStatus = 'todo' | 'doing' | 'done' | 'review';

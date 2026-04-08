@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { User } from '../types';
 import styles from './Sidebar.module.css';
-import { IconChevronDown, IconClipboardList, IconLightBulb, IconSparkles } from './icons';
+import { IconChevronDown, IconClipboardList, IconLightBulb, IconSettings, IconSparkles } from './icons';
 
 const BRAND_LOGO = '/logo (1).png';
 const BRAND_NAME = 'Neurix';
@@ -29,6 +29,8 @@ interface SidebarProps {
   onNavAction?: () => void;
   /** Ouvre la modale catalogue Pro (feuille de route + avantages). */
   onOpenProFeatures?: () => void;
+  /** Préférences (densité, langue, WhatsApp, etc.). */
+  onOpenSettings?: () => void;
   className?: string;
 }
 
@@ -57,6 +59,7 @@ export default function Sidebar({
   proPriceLabel = null,
   onNavAction,
   onOpenProFeatures,
+  onOpenSettings,
   className = '',
 }: SidebarProps) {
   const [accountOpen, setAccountOpen] = useState(false);
@@ -194,6 +197,19 @@ export default function Sidebar({
                   <p className="text-xs text-slate-500 truncate">Données locales uniquement</p>
                 </div>
               </div>
+              {onOpenSettings ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    onOpenSettings();
+                    afterNav();
+                  }}
+                  className="flex w-full items-center gap-2 rounded-xl border border-slate-600/80 bg-slate-800/50 px-3 py-2.5 text-left text-sm text-slate-300 hover:bg-slate-700/60 touch-manipulation"
+                >
+                  <IconSettings className="h-4 w-4 text-slate-400" />
+                  Paramètres
+                </button>
+              ) : null}
             </div>
           ) : (
             <div className="overflow-hidden rounded-xl border border-slate-700/70 bg-slate-800/40">
@@ -264,6 +280,19 @@ export default function Sidebar({
                     >
                       <IconSparkles className="h-3.5 w-3.5 shrink-0 text-amber-500/80" />
                       Fonctionnalités Pro & feuille de route
+                    </button>
+                  ) : null}
+                  {onOpenSettings ? (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        onOpenSettings();
+                        afterNav();
+                      }}
+                      className="flex w-full items-center gap-2 rounded-lg px-2 py-2 text-left text-xs text-slate-300 hover:bg-slate-700/50 touch-manipulation"
+                    >
+                      <IconSettings className="h-3.5 w-3.5 shrink-0 text-slate-500" />
+                      Paramètres
                     </button>
                   ) : null}
                   <button
