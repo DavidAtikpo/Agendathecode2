@@ -27,6 +27,7 @@ import {
   type UserPreferences,
 } from './lib/user-preferences';
 import SettingsModal from './components/SettingsModal';
+import { PRO_SUBSCRIPTION_SALES_ENABLED } from './lib/feature-flags';
 
 const fetchOpts: RequestInit = { credentials: 'include' };
 
@@ -57,6 +58,14 @@ function genId() {
   return Math.random().toString(36).slice(2, 9) + Date.now().toString(36);
 }
 
+/** Ancien statut Kanban `issues` → `urgent` (localStorage invité / réponses API héritées). */
+function migrateLegacyTaskStatus(task: Task): Task {
+  if ((task.status as string) === 'issues') {
+    return { ...task, status: 'urgent' };
+  }
+  return task;
+}
+
 function loadGuestFromLocalStorage(): {
   notes: Note[];
   tasks: Task[];
@@ -68,7 +77,7 @@ function loadGuestFromLocalStorage(): {
     const c = localStorage.getItem(LS_CHAT_GUEST);
     return {
       notes: n ? JSON.parse(n) : [],
-      tasks: t ? JSON.parse(t) : [],
+      tasks: t ? (JSON.parse(t) as Task[]).map(migrateLegacyTaskStatus) : [],
       chat: c ? JSON.parse(c) : [],
     };
   } catch {
@@ -100,7 +109,7 @@ async function migrateGuestDataToServer(): Promise<void> {
       body: JSON.stringify({
         title: t.title,
         description: t.description,
-        status: t.status,
+        status: (t.status as string) === 'issues' ? 'urgent' : t.status,
         priority: t.priority,
         dueDate: t.dueDate,
       }),
@@ -422,7 +431,7 @@ async function loadAppData(): Promise<{ contacts: User[]; notes: Note[]; tasks: 
       return r.json();
     }),
   ]);
-  return { contacts: c, notes: n, tasks: t };
+  return { contacts: c, notes: n, tasks: (t as Task[]).map(migrateLegacyTaskStatus) };
 }
 
 export default function HomePage() {
@@ -986,7 +995,7 @@ export default function HomePage() {
     taskCount: tasks.filter(t => t.status !== 'done').length,
     chatOpen,
     onToggleChat: () => setChatOpen(o => !o),
-    onUpgrade: startCheckout,
+    ...(PRO_SUBSCRIPTION_SALES_ENABLED ? { onUpgrade: startCheckout } : {}),
     onManageBilling: openBillingPortal,
     proPriceLabel,
     onOpenProFeatures: () => setProFeaturesModalOpen(true),
@@ -1138,7 +1147,8 @@ export default function HomePage() {
               isGuest={isGuest}
               plan={currentUser?.plan}
               proPriceLabel={proPriceLabel}
-              onUpgrade={startCheckout}
+              subscriptionSalesEnabled={PRO_SUBSCRIPTION_SALES_ENABLED}
+              {...(PRO_SUBSCRIPTION_SALES_ENABLED ? { onUpgrade: startCheckout } : {})}
               onOpenDetails={() => setProFeaturesModalOpen(true)}
             />
             <div className="min-h-0 flex-1 overflow-hidden">
@@ -1244,7 +1254,8 @@ export default function HomePage() {
         plan={currentUser?.plan}
         isGuest={isGuest}
         proPriceLabel={proPriceLabel}
-        onUpgrade={startCheckout}
+        upgradeOfferAvailable={PRO_SUBSCRIPTION_SALES_ENABLED}
+        {...(PRO_SUBSCRIPTION_SALES_ENABLED ? { onUpgrade: startCheckout } : {})}
       />
 
       <SettingsModal

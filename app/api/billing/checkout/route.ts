@@ -4,10 +4,18 @@ import { getSessionUserId } from '@/app/lib/auth';
 import { getStripe } from '@/app/lib/stripe';
 import { getBillingBaseUrl } from '@/app/lib/billing-url';
 import { getProCheckoutLineItem } from '@/app/lib/billing-pro-config';
+import { PRO_SUBSCRIPTION_SALES_ENABLED } from '@/app/lib/feature-flags';
 
 export const runtime = 'nodejs';
 
 export async function POST() {
+  if (!PRO_SUBSCRIPTION_SALES_ENABLED) {
+    return NextResponse.json(
+      { error: 'L’abonnement Pro n’est pas encore disponible à la souscription.' },
+      { status: 403 },
+    );
+  }
+
   const stripe = getStripe();
   if (!stripe) {
     return NextResponse.json(

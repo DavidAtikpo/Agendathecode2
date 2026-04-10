@@ -20,8 +20,8 @@ interface SidebarProps {
   taskCount: number;
   chatOpen: boolean;
   onToggleChat: () => void;
-  /** Abonnement Stripe */
-  onUpgrade: () => void | Promise<void>;
+  /** Souscription Pro (absent = offre non proposée). */
+  onUpgrade?: () => void | Promise<void>;
   onManageBilling: () => void | Promise<void>;
   /** Libellé prix (ex. « 9,99 €/mois »), depuis la config serveur */
   proPriceLabel?: string | null;
@@ -251,7 +251,7 @@ export default function Sidebar({
                     >
                       Facturation
                     </button>
-                  ) : (
+                  ) : onUpgrade ? (
                     <button
                       type="button"
                       onClick={() => {
@@ -268,7 +268,7 @@ export default function Sidebar({
                         <IconSparkles className="h-3.5 w-3.5 text-amber-400/90" aria-hidden />
                       </span>
                     </button>
-                  )}
+                  ) : null}
                   {onOpenProFeatures ? (
                     <button
                       type="button"

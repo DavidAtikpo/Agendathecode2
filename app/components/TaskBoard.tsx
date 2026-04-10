@@ -29,6 +29,8 @@ interface TaskBoardProps {
 const COLUMNS: {
   id: TaskStatus;
   label: string;
+  /** Court texte sous le titre (colonne « urgence »). */
+  subtitle?: string;
   Icon: ComponentType<{ className?: string }>;
   color: string;
   dimColor: string;
@@ -45,6 +47,16 @@ const COLUMNS: {
     border: 'border-blue-500/30',
   },
   {
+    id: 'urgent',
+    label: 'Urgence / bug',
+    subtitle: 'À traiter tout de suite',
+    Icon: IconAlertTriangle,
+    color: 'text-rose-300',
+    dimColor: 'text-rose-400/60',
+    bg: 'bg-rose-500/10',
+    border: 'border-rose-500/35',
+  },
+  {
     id: 'doing',
     label: 'En cours',
     Icon: IconBolt,
@@ -52,15 +64,6 @@ const COLUMNS: {
     dimColor: 'text-amber-400/60',
     bg: 'bg-amber-500/10',
     border: 'border-amber-500/30',
-  },
-  {
-    id: 'done',
-    label: 'Terminé',
-    Icon: IconCheckCircle,
-    color: 'text-emerald-300',
-    dimColor: 'text-emerald-400/60',
-    bg: 'bg-emerald-500/10',
-    border: 'border-emerald-500/30',
   },
   {
     id: 'review',
@@ -71,12 +74,26 @@ const COLUMNS: {
     bg: 'bg-purple-500/10',
     border: 'border-purple-500/30',
   },
+  {
+    id: 'done',
+    label: 'Terminé',
+    Icon: IconCheckCircle,
+    color: 'text-emerald-300',
+    dimColor: 'text-emerald-400/60',
+    bg: 'bg-emerald-500/10',
+    border: 'border-emerald-500/30',
+  },
 ];
 
 const PRIORITY_CONFIG: Record<TaskPriority, { label: string; cls: string; dot: string }> = {
   low: { label: 'Basse', cls: 'text-slate-400 bg-slate-700/80', dot: 'bg-slate-400' },
   medium: { label: 'Moyenne', cls: 'text-amber-400 bg-amber-500/20', dot: 'bg-amber-400' },
   high: { label: 'Haute', cls: 'text-red-400 bg-red-500/20', dot: 'bg-red-400' },
+  urgent: {
+    label: 'Urgent',
+    cls: 'text-fuchsia-200 bg-fuchsia-600/30 ring-1 ring-fuchsia-400/40',
+    dot: 'bg-fuchsia-400 shadow-[0_0_8px_rgba(232,121,249,0.7)]',
+  },
 };
 
 interface FormData {
@@ -125,10 +142,16 @@ export default function TaskBoard({
   });
 
   const tasksByStatus = useMemo(() => {
-    const map: Record<TaskStatus, Task[]> = { todo: [], doing: [], done: [], review: [] };
+    const map: Record<TaskStatus, Task[]> = {
+      todo: [],
+      urgent: [],
+      doing: [],
+      done: [],
+      review: [],
+    };
     tasks.forEach(t => {
       const s = t.status;
-      if (s === 'todo' || s === 'doing' || s === 'done' || s === 'review') map[s].push(t);
+      if (s in map) map[s].push(t);
       else map.todo.push(t);
     });
     return map;
@@ -245,13 +268,18 @@ export default function TaskBoard({
             return (
               <div key={col.id} className="flex w-[min(17.5rem,calc(100vw-3rem))] shrink-0 flex-col gap-3 sm:w-72">
                 {/* Column Header */}
-                <div className={`flex items-center justify-between px-3 py-2.5 rounded-xl ${col.bg} border ${col.border}`}>
-                  <div className="flex items-center gap-2">
-                    <col.Icon className={`h-5 w-5 shrink-0 ${col.color}`} />
-                    <span className={`font-semibold text-sm ${col.color}`}>{col.label}</span>
-                    <span className={`text-xs font-bold px-1.5 py-0.5 rounded-full bg-slate-900/40 ${col.color}`}>
-                      {colTasks.length}
-                    </span>
+                <div className={`flex items-center justify-between gap-2 px-3 py-2.5 rounded-xl ${col.bg} border ${col.border}`}>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2">
+                      <col.Icon className={`h-5 w-5 shrink-0 ${col.color}`} />
+                      <span className={`font-semibold text-sm ${col.color}`}>{col.label}</span>
+                      <span className={`text-xs font-bold px-1.5 py-0.5 rounded-full bg-slate-900/40 ${col.color}`}>
+                        {colTasks.length}
+                      </span>
+                    </div>
+                    {col.subtitle ? (
+                      <p className="mt-0.5 pl-7 text-[10px] leading-snug text-slate-500">{col.subtitle}</p>
+                    ) : null}
                   </div>
                   <button
                     onClick={() => openAdd(col.id)}
@@ -271,7 +299,7 @@ export default function TaskBoard({
                   )}
                   {colTasks.map(task => {
                     const assignedUser = getUserById(task.assignedTo);
-                    const prio = PRIORITY_CONFIG[task.priority];
+                    const prio = PRIORITY_CONFIG[task.priority] ?? PRIORITY_CONFIG.medium;
                     const overdue = isOverdue(task.dueDate, task.status);
                     const isSelected = selectedTask?.id === task.id;
 
@@ -344,7 +372,7 @@ export default function TaskBoard({
             <div className="p-5 border-b border-slate-700 flex items-start justify-between gap-3">
               <div className="flex items-start gap-2">
                 <span
-                  className={`mt-1.5 w-2.5 h-2.5 rounded-full flex-shrink-0 ${PRIORITY_CONFIG[selectedTask.priority].dot}`}
+                  className={`mt-1.5 w-2.5 h-2.5 rounded-full flex-shrink-0 ${(PRIORITY_CONFIG[selectedTask.priority] ?? PRIORITY_CONFIG.medium).dot}`}
                 />
                 <h3 className="font-semibold text-white leading-snug">{selectedTask.title}</h3>
               </div>
@@ -554,6 +582,7 @@ export default function TaskBoard({
                     <option value="low">Basse</option>
                     <option value="medium">Moyenne</option>
                     <option value="high">Haute</option>
+                    <option value="urgent">Urgent</option>
                   </select>
                 </div>
               </div>

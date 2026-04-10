@@ -88,6 +88,8 @@ model Task {
 
 enum TaskStatus {
   todo
+  /// Bugs et tâches à traiter immédiatement (hors file normale).
+  urgent
   doing
   done
   review
@@ -99,6 +101,7 @@ enum TaskPriority {
   low
   medium
   high
+  urgent
 
   @@schema("agenda")
 }

@@ -10,7 +10,9 @@ type ProFeaturesModalProps = {
   plan: 'free' | 'pro' | undefined;
   isGuest: boolean;
   proPriceLabel?: string | null;
-  onUpgrade: () => void | Promise<void>;
+  /** Quand false, pas de bouton / texte pour souscrire. */
+  upgradeOfferAvailable: boolean;
+  onUpgrade?: () => void | Promise<void>;
 };
 
 export default function ProFeaturesModal({
@@ -19,6 +21,7 @@ export default function ProFeaturesModal({
   plan,
   isGuest,
   proPriceLabel,
+  upgradeOfferAvailable,
   onUpgrade,
 }: ProFeaturesModalProps) {
   if (!open) return null;
@@ -100,9 +103,11 @@ export default function ProFeaturesModal({
 
           {isGuest ? (
             <p className="mt-4 rounded-lg border border-slate-700 bg-slate-800/80 px-3 py-2 text-center text-sm text-slate-400">
-              Connectez-vous pour souscrire à Pro une fois votre compte créé.
+              {upgradeOfferAvailable
+                ? 'Connectez-vous pour souscrire à Pro une fois votre compte créé.'
+                : 'Créez un compte pour synchroniser vos notes et tâches dans le cloud.'}
             </p>
-          ) : !isPro ? (
+          ) : !isPro && upgradeOfferAvailable ? (
             <div className="mt-5 flex flex-col items-stretch gap-2 border-t border-slate-700 pt-4 sm:flex-row sm:items-center sm:justify-between">
               <p className="text-sm text-slate-400">
                 {proPriceLabel ? (
@@ -113,17 +118,24 @@ export default function ProFeaturesModal({
                   'Tarif selon configuration Stripe.'
                 )}
               </p>
-              <button
-                type="button"
-                onClick={() => {
-                  void onUpgrade();
-                  onClose();
-                }}
-                className="rounded-xl bg-indigo-500 px-5 py-2.5 text-sm font-medium text-white shadow-lg shadow-indigo-500/25 hover:bg-indigo-400"
-              >
-                Passer à Pro
-              </button>
+              {onUpgrade ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    void onUpgrade();
+                    onClose();
+                  }}
+                  className="rounded-xl bg-indigo-500 px-5 py-2.5 text-sm font-medium text-white shadow-lg shadow-indigo-500/25 hover:bg-indigo-400"
+                >
+                  Passer à Pro
+                </button>
+              ) : null}
             </div>
+          ) : !isPro && !upgradeOfferAvailable ? (
+            <p className="mt-4 rounded-lg border border-slate-700 bg-slate-800/80 px-3 py-2 text-center text-sm text-slate-400">
+              L’abonnement Pro n’est pas encore proposé à la souscription. Les fonctionnalités payantes seront annoncées ici
+              lorsqu’elles seront prêtes.
+            </p>
           ) : (
             <p className="mt-4 text-center text-sm text-amber-200/80">
               Merci de soutenir Neurix Pro — les blocs « À venir » seront déployés progressivement.

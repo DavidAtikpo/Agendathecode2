@@ -1,15 +1,14 @@
 import { randomBytes } from 'crypto';
 import { createRemoteJWKSet, jwtVerify } from 'jose';
 
+import { getPublicSiteBaseUrl } from '@/app/lib/site-base-url';
+
 const GOOGLE_AUTH = 'https://accounts.google.com/o/oauth2/v2/auth';
 const GOOGLE_TOKEN = 'https://oauth2.googleapis.com/token';
 const GOOGLE_USERINFO = 'https://www.googleapis.com/oauth2/v3/userinfo';
 
 export function getAuthBaseUrl(): string {
-  const u = process.env.AUTH_URL?.trim();
-  if (u) return u.replace(/\/$/, '');
-  if (process.env.VERCEL_URL) return `https://${process.env.VERCEL_URL.replace(/\/$/, '')}`;
-  return 'http://localhost:3000';
+  return getPublicSiteBaseUrl();
 }
 
 export function getGoogleRedirectUri(): string {

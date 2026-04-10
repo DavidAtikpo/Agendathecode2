@@ -13,7 +13,9 @@ type ProPlanBannerProps = {
   isGuest: boolean;
   plan: 'free' | 'pro' | undefined;
   proPriceLabel?: string | null;
-  onUpgrade: () => void | Promise<void>;
+  /** Quand false, pas de bandeau incitant à souscrire (offre Pro pas encore ouverte). */
+  subscriptionSalesEnabled: boolean;
+  onUpgrade?: () => void | Promise<void>;
   /** Ouvre la modale détaillée (catalogue + feuille de route). */
   onOpenDetails: () => void;
 };
@@ -22,6 +24,7 @@ export default function ProPlanBanner({
   isGuest,
   plan,
   proPriceLabel,
+  subscriptionSalesEnabled,
   onUpgrade,
   onOpenDetails,
 }: ProPlanBannerProps) {
@@ -98,7 +101,7 @@ export default function ProPlanBanner({
     );
   }
 
-  if (plan === 'free' && !freeDismissed) {
+  if (plan === 'free' && !freeDismissed && subscriptionSalesEnabled) {
     return (
       <div className="shrink-0 border-b border-slate-700/80 bg-slate-800/40 px-4 py-3 sm:px-6">
         <div className="mx-auto flex max-w-6xl flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
@@ -130,13 +133,15 @@ export default function ProPlanBanner({
             >
               Catalogue ({PILIER_COUNT} blocs)
             </button>
-            <button
-              type="button"
-              onClick={() => void onUpgrade()}
-              className="rounded-xl bg-indigo-500 px-4 py-2 text-sm font-medium text-white shadow-lg shadow-indigo-500/20 hover:bg-indigo-400"
-            >
-              Passer à Pro
-            </button>
+            {onUpgrade ? (
+              <button
+                type="button"
+                onClick={() => void onUpgrade()}
+                className="rounded-xl bg-indigo-500 px-4 py-2 text-sm font-medium text-white shadow-lg shadow-indigo-500/20 hover:bg-indigo-400"
+              >
+                Passer à Pro
+              </button>
+            ) : null}
             <button type="button" onClick={dismissFree} className="px-2 py-1.5 text-xs text-slate-500 hover:text-slate-300">
               Masquer
             </button>

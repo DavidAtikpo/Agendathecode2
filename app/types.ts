@@ -16,8 +16,8 @@ export interface User {
   hasPasswordLogin?: boolean;
 }
 
-export type TaskStatus = 'todo' | 'doing' | 'done' | 'review';
-export type TaskPriority = 'low' | 'medium' | 'high';
+export type TaskStatus = 'todo' | 'urgent' | 'doing' | 'done' | 'review';
+export type TaskPriority = 'low' | 'medium' | 'high' | 'urgent';
 
 export interface Note {
   id: string;
