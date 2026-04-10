@@ -16,24 +16,32 @@ export async function PATCH(request: Request) {
       return NextResponse.json({ error: 'Non connecté' }, { status: 401 });
     }
 
-    const body = (await request.json()) as Partial<UserPreferences>;
+    const body = (await request.json()) as Partial<UserPreferences> & Record<string, unknown>;
     const user = await prisma.user.findUnique({ where: { id: userId } });
     if (!user) {
       return NextResponse.json({ error: 'Utilisateur introuvable' }, { status: 404 });
     }
 
-    const current = normalizePreferences(user.preferences);
+    const existingRaw =
+      user.preferences !== null && typeof user.preferences === 'object' && !Array.isArray(user.preferences)
+        ? { ...(user.preferences as Record<string, unknown>) }
+        : {};
+    const current = normalizePreferences(existingRaw);
     const patch: Partial<UserPreferences> = {};
 
     if (body.density === 'compact' || body.density === 'comfortable') patch.density = body.density;
     if (body.locale === 'fr' || body.locale === 'en') patch.locale = body.locale;
     if (typeof body.notesShowWhatsApp === 'boolean') patch.notesShowWhatsApp = body.notesShowWhatsApp;
+    if (typeof body.assignedInboxLastSeenAt === 'string' && body.assignedInboxLastSeenAt.trim() !== '') {
+      patch.assignedInboxLastSeenAt = body.assignedInboxLastSeenAt.trim();
+    }
 
     const next = mergePreferences(current, patch);
+    const merged = { ...existingRaw, ...next };
 
     const updated = await prisma.user.update({
       where: { id: userId },
-      data: { preferences: next as object },
+      data: { preferences: merged as object },
     });
 
     return NextResponse.json(toPublicUser(updated, { includePasswordLoginHint: true }));

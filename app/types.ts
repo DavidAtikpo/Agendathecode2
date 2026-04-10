@@ -45,6 +45,8 @@ export interface Task {
   createdAt: string;
   updatedAt: string;
   dueDate?: string;
+  /** ISO — présent quand la tâche a été assignée (badge pour l’assigné). */
+  assigneeNotifiedAt?: string | null;
 }
 
 export interface ChatMessage {

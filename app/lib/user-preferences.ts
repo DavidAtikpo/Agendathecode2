@@ -9,6 +9,8 @@ export type UserPreferences = {
   locale: 'fr' | 'en';
   /** Afficher le bloc « Rappels via WhatsApp » sous l’en-tête des notes. */
   notesShowWhatsApp: boolean;
+  /** Dernière ouverture de la vue Tâches (ISO) — remet à zéro le badge « assignées ». */
+  assignedInboxLastSeenAt?: string | null;
 };
 
 export const DEFAULT_USER_PREFERENCES: UserPreferences = {
@@ -32,6 +34,9 @@ export function normalizePreferences(raw: unknown): UserPreferences {
   }
   if (typeof o.notesShowWhatsApp === 'boolean') {
     base.notesShowWhatsApp = o.notesShowWhatsApp;
+  }
+  if (typeof o.assignedInboxLastSeenAt === 'string' && o.assignedInboxLastSeenAt.trim() !== '') {
+    base.assignedInboxLastSeenAt = o.assignedInboxLastSeenAt.trim();
   }
 
   return base;

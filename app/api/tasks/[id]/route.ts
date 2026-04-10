@@ -15,6 +15,7 @@ function serialize(task: Task) {
     priority: task.priority as string,
     assignedTo: task.assignedToId,
     createdBy: task.createdById,
+    assigneeNotifiedAt: task.assigneeNotifiedAt?.toISOString() ?? null,
     dueDate: task.dueDate?.toISOString() ?? undefined,
     createdAt: task.createdAt.toISOString(),
     updatedAt: task.updatedAt.toISOString(),
@@ -40,6 +41,7 @@ export async function PATCH(request: Request, ctx: Ctx) {
   }
 
   let assignedToId: string | null | undefined;
+  let assigneeNotifiedAt: Date | null | undefined;
   if (data.assignedTo !== undefined) {
     if (existing.createdById !== sessionId) {
       return NextResponse.json(
@@ -58,6 +60,9 @@ export async function PATCH(request: Request, ctx: Ctx) {
       }
       throw e;
     }
+    if (assignedToId !== existing.assignedToId) {
+      assigneeNotifiedAt = assignedToId ? new Date() : null;
+    }
   }
 
   const task = await prisma.task.update({
@@ -68,6 +73,7 @@ export async function PATCH(request: Request, ctx: Ctx) {
       ...(data.status !== undefined && { status: data.status as TaskStatus }),
       ...(data.priority !== undefined && { priority: data.priority as TaskPriority }),
       ...(data.assignedTo !== undefined && { assignedToId }),
+      ...(assigneeNotifiedAt !== undefined && { assigneeNotifiedAt }),
       ...(data.dueDate !== undefined && { dueDate: data.dueDate ? new Date(data.dueDate) : null }),
     },
   });

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import Sidebar from './components/Sidebar';
 import CollaboratorsModal from './components/CollaboratorsModal';
@@ -28,6 +28,7 @@ import {
 } from './lib/user-preferences';
 import SettingsModal from './components/SettingsModal';
 import { PRO_SUBSCRIPTION_SALES_ENABLED } from './lib/feature-flags';
+import { countUnreadAssignedTasks } from './lib/assigned-task-badge';
 
 const fetchOpts: RequestInit = { credentials: 'include' };
 
@@ -453,6 +454,8 @@ export default function HomePage() {
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const [loading, setLoading] = useState(true);
   const [dbError, setDbError] = useState<string | null>(null);
+  const [assignedInAppNotice, setAssignedInAppNotice] = useState<string | null>(null);
+  const prevAssignedBadgeRef = useRef(0);
   const [whatsappPhone, setWhatsappPhone] = useState(() => {
     if (typeof window === 'undefined') return '';
     try {
@@ -490,6 +493,52 @@ export default function HomePage() {
     () => displayUser.preferences ?? DEFAULT_USER_PREFERENCES,
     [displayUser],
   );
+
+  const assignedTaskBadgeCount = useMemo(
+    () =>
+      isGuest
+        ? 0
+        : countUnreadAssignedTasks(tasks, displayUser.id, layoutPreferences),
+    [isGuest, tasks, displayUser.id, layoutPreferences],
+  );
+
+  const markAssignedInboxSeen = useCallback(async () => {
+    if (isGuest) return;
+    try {
+      const res = await fetch('/api/user/preferences', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        ...fetchOpts,
+        body: JSON.stringify({ assignedInboxLastSeenAt: new Date().toISOString() }),
+      });
+      if (!res.ok) return;
+      const u: User = await res.json();
+      setCurrentUser(u);
+    } catch {
+      /* ignore */
+    }
+  }, [isGuest]);
+
+  useEffect(() => {
+    if (activeView !== 'tasks' || isGuest) return;
+    void markAssignedInboxSeen();
+  }, [activeView, isGuest, markAssignedInboxSeen]);
+
+  useEffect(() => {
+    if (isGuest || loading) return;
+    const prev = prevAssignedBadgeRef.current;
+    if (prev === 0 && assignedTaskBadgeCount > 0) {
+      const msg =
+        assignedTaskBadgeCount === 1
+          ? 'Une nouvelle tâche vous est assignée.'
+          : `${assignedTaskBadgeCount} nouvelles tâches vous sont assignées.`;
+      setAssignedInAppNotice(msg);
+      const t = window.setTimeout(() => setAssignedInAppNotice(null), 9000);
+      prevAssignedBadgeRef.current = assignedTaskBadgeCount;
+      return () => window.clearTimeout(t);
+    }
+    prevAssignedBadgeRef.current = assignedTaskBadgeCount;
+  }, [loading, isGuest, assignedTaskBadgeCount]);
 
   const chatTier = useMemo(() => {
     if (isGuest) return 'guest' as const;
@@ -992,7 +1041,7 @@ export default function HomePage() {
     },
     onLogout: logout,
     noteCount: notes.length,
-    taskCount: tasks.filter(t => t.status !== 'done').length,
+    assignedTaskBadgeCount,
     chatOpen,
     onToggleChat: () => setChatOpen(o => !o),
     ...(PRO_SUBSCRIPTION_SALES_ENABLED ? { onUpgrade: startCheckout } : {}),
@@ -1004,6 +1053,18 @@ export default function HomePage() {
 
   return (
     <>
+      {assignedInAppNotice && (
+        <div className="fixed bottom-24 left-3 right-3 z-[94] flex items-center justify-between gap-3 rounded-xl border border-rose-500/35 bg-rose-950/95 px-4 py-3 text-sm text-rose-100 shadow-xl md:bottom-6 md:left-auto md:right-6 md:max-w-md">
+          <span>{assignedInAppNotice}</span>
+          <button
+            type="button"
+            onClick={() => setAssignedInAppNotice(null)}
+            className="shrink-0 rounded-lg px-2 py-1 text-rose-200 hover:bg-rose-900/80"
+          >
+            OK
+          </button>
+        </div>
+      )}
       {billingFlash && (
         <div className="fixed bottom-24 left-3 right-3 z-[95] flex items-center justify-between gap-3 rounded-xl border border-emerald-500/40 bg-emerald-950/95 px-4 py-3 text-sm text-emerald-100 shadow-xl md:bottom-6 md:left-auto md:right-6 md:max-w-md">
           <span>{billingFlash}</span>
@@ -1199,11 +1260,18 @@ export default function HomePage() {
             <button
               type="button"
               onClick={() => setActiveView('tasks')}
-              className={`flex min-h-[48px] min-w-0 flex-1 touch-manipulation flex-col items-center justify-center gap-0.5 px-1 text-[11px] font-medium ${
+              className={`relative flex min-h-[48px] min-w-0 flex-1 touch-manipulation flex-col items-center justify-center gap-0.5 px-1 text-[11px] font-medium ${
                 activeView === 'tasks' ? 'text-indigo-300' : 'text-slate-500'
               }`}
             >
-              <IconClipboardList className="h-6 w-6" />
+              <span className="relative inline-flex">
+                <IconClipboardList className="h-6 w-6" />
+                {!isGuest && assignedTaskBadgeCount > 0 ? (
+                  <span className="absolute -right-2 -top-1 flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-rose-500 px-0.5 text-[10px] font-bold leading-none text-white">
+                    {assignedTaskBadgeCount > 99 ? '99+' : assignedTaskBadgeCount}
+                  </span>
+                ) : null}
+              </span>
               Tâches
             </button>
             <button

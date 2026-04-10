@@ -80,9 +80,12 @@ model Task {
   updatedAt    DateTime     @updatedAt
   assignedToId String?
   createdById  String
-  assignedTo   User?        @relation("AssignedTo", fields: [assignedToId], references: [id])
-  createdBy    User         @relation("CreatedBy", fields: [createdById], references: [id])
+  /// Horodatage « ping » assignation : l’assigné voit un badge jusqu’à ouverture de la vue Tâches.
+  assigneeNotifiedAt DateTime?
+  assignedTo         User?        @relation("AssignedTo", fields: [assignedToId], references: [id])
+  createdBy          User         @relation("CreatedBy", fields: [createdById], references: [id])
 
+  @@index([assignedToId])
   @@schema("agenda")
 }
 

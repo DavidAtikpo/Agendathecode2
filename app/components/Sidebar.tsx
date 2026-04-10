@@ -17,7 +17,8 @@ interface SidebarProps {
   onOpenRegister: () => void;
   onLogout: () => void;
   noteCount: number;
-  taskCount: number;
+  /** Badge sur « Tâches » : nouvelles assignations (non lues). */
+  assignedTaskBadgeCount: number;
   chatOpen: boolean;
   onToggleChat: () => void;
   /** Souscription Pro (absent = offre non proposée). */
@@ -51,7 +52,7 @@ export default function Sidebar({
   onOpenRegister,
   onLogout,
   noteCount,
-  taskCount,
+  assignedTaskBadgeCount,
   chatOpen,
   onToggleChat,
   onUpgrade,
@@ -162,9 +163,12 @@ export default function Sidebar({
                 className={`h-5 w-5 shrink-0 ${activeView === 'tasks' ? 'text-indigo-300' : 'text-slate-400'}`}
               />
               <span>Tableau des tâches</span>
-              {taskCount > 0 && (
-                <span className="ml-auto bg-amber-500/20 text-amber-400 text-xs px-2 py-0.5 rounded-full min-w-[1.25rem] text-center tabular-nums">
-                  {taskCount}
+              {assignedTaskBadgeCount > 0 && (
+                <span
+                  className="ml-auto bg-rose-500/25 text-rose-300 text-xs px-2 py-0.5 rounded-full min-w-[1.25rem] text-center tabular-nums font-semibold"
+                  title="Tâches qui vous sont assignées"
+                >
+                  {assignedTaskBadgeCount > 99 ? '99+' : assignedTaskBadgeCount}
                 </span>
               )}
             </button>
