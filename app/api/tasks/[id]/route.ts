@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { prisma } from '@/app/lib/prisma';
 import { getSessionUserId } from '@/app/lib/auth';
 import { resolveAssignee } from '@/app/lib/task-assign';
+import { tasksVisibleToUser } from '@/app/lib/task-access';
 import { TaskStatus, TaskPriority } from '@prisma/client';
 import type { Task } from '@prisma/client';
 
@@ -31,8 +32,21 @@ export async function PATCH(request: Request, ctx: Ctx) {
   const { id } = await ctx.params;
   const data = await request.json();
 
+  const existing = await prisma.task.findFirst({
+    where: { id, ...tasksVisibleToUser(sessionId) },
+  });
+  if (!existing) {
+    return NextResponse.json({ error: 'Tâche introuvable' }, { status: 404 });
+  }
+
   let assignedToId: string | null | undefined;
   if (data.assignedTo !== undefined) {
+    if (existing.createdById !== sessionId) {
+      return NextResponse.json(
+        { error: 'Seul le créateur peut modifier l’assignation.' },
+        { status: 403 }
+      );
+    }
     try {
       assignedToId = await resolveAssignee(sessionId, data.assignedTo);
     } catch (e: unknown) {
@@ -68,6 +82,11 @@ export async function DELETE(_: Request, ctx: Ctx) {
   }
 
   const { id } = await ctx.params;
-  await prisma.task.delete({ where: { id } });
+  const del = await prisma.task.deleteMany({
+    where: { id, ...tasksVisibleToUser(sessionId) },
+  });
+  if (del.count === 0) {
+    return NextResponse.json({ error: 'Tâche introuvable' }, { status: 404 });
+  }
   return NextResponse.json({ ok: true });
 }

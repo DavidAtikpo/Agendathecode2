@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { prisma } from '@/app/lib/prisma';
 import { getSessionUserId } from '@/app/lib/auth';
 import { resolveAssignee } from '@/app/lib/task-assign';
+import { tasksVisibleToUser } from '@/app/lib/task-access';
 import { TaskStatus, TaskPriority } from '@prisma/client';
 import type { Task } from '@prisma/client';
 
@@ -26,7 +27,10 @@ export async function GET() {
     return NextResponse.json({ error: 'Non autorisé' }, { status: 401 });
   }
 
-  const tasks = await prisma.task.findMany({ orderBy: { createdAt: 'desc' } });
+  const tasks = await prisma.task.findMany({
+    where: tasksVisibleToUser(sessionId),
+    orderBy: { createdAt: 'desc' },
+  });
   return NextResponse.json(tasks.map(serialize));
 }
 
