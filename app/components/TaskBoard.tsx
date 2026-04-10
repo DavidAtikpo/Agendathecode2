@@ -469,13 +469,20 @@ export default function TaskBoard({
             </div>
 
             <div className="flex items-center justify-between border-t border-slate-700 p-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] sm:pb-5">
-              <button
-                onClick={() => { onDelete(selectedTask.id); setSelectedTask(null); }}
-                className="inline-flex items-center gap-2 text-sm text-red-400 hover:text-red-300 transition-colors px-3 py-1.5 rounded-lg hover:bg-red-500/10"
-              >
-                <IconTrash className="h-4 w-4" />
-                Supprimer
-              </button>
+              {currentUser.id === selectedTask.createdBy ? (
+                <button
+                  onClick={() => {
+                    onDelete(selectedTask.id);
+                    setSelectedTask(null);
+                  }}
+                  className="inline-flex items-center gap-2 text-sm text-red-400 hover:text-red-300 transition-colors px-3 py-1.5 rounded-lg hover:bg-red-500/10"
+                >
+                  <IconTrash className="h-4 w-4" />
+                  Supprimer
+                </button>
+              ) : (
+                <div className="flex-1 min-w-0" aria-hidden />
+              )}
               <button
                 onClick={() => openEdit(selectedTask)}
                 className="inline-flex items-center gap-2 bg-indigo-500 hover:bg-indigo-400 text-white px-4 py-2 rounded-xl text-sm font-medium transition-all"

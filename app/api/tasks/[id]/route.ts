@@ -88,11 +88,18 @@ export async function DELETE(_: Request, ctx: Ctx) {
   }
 
   const { id } = await ctx.params;
-  const del = await prisma.task.deleteMany({
+  const task = await prisma.task.findFirst({
     where: { id, ...tasksVisibleToUser(sessionId) },
   });
-  if (del.count === 0) {
+  if (!task) {
     return NextResponse.json({ error: 'Tâche introuvable' }, { status: 404 });
   }
+  if (task.createdById !== sessionId) {
+    return NextResponse.json(
+      { error: 'Seul le créateur de la tâche peut la supprimer.' },
+      { status: 403 },
+    );
+  }
+  await prisma.task.delete({ where: { id } });
   return NextResponse.json({ ok: true });
 }
