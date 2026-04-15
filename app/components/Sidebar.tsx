@@ -3,7 +3,15 @@
 import { useState } from 'react';
 import { User } from '../types';
 import styles from './Sidebar.module.css';
-import { IconChevronDown, IconClipboardList, IconLightBulb, IconSettings, IconSparkles } from './icons';
+import {
+  IconChevronDown,
+  IconChevronRight,
+  IconClipboardList,
+  IconClock,
+  IconLightBulb,
+  IconSettings,
+  IconSparkles,
+} from './icons';
 
 const BRAND_LOGO = '/logo (1).png';
 const BRAND_NAME = 'Neurix';
@@ -33,6 +41,10 @@ interface SidebarProps {
   /** Préférences (densité, langue, WhatsApp, etc.). */
   onOpenSettings?: () => void;
   className?: string;
+  /** ISO — dernière `updatedAt` parmi notes et tâches chargées. */
+  lastDataUpdatedAt?: string | null;
+  /** Tiroir mobile : menu toujours large (pas de mode réduit). */
+  preferExpanded?: boolean;
 }
 
 function SectionLabel({ children }: { children: React.ReactNode }) {
@@ -62,39 +74,57 @@ export default function Sidebar({
   onOpenProFeatures,
   onOpenSettings,
   className = '',
+  lastDataUpdatedAt = null,
+  preferExpanded = false,
 }: SidebarProps) {
   const [accountOpen, setAccountOpen] = useState(false);
+  /** Réduit par défaut ; invité ou tiroir mobile : toujours large. */
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(true);
+  const expanded = preferExpanded || isGuest || !sidebarCollapsed;
   const afterNav = () => onNavAction?.();
 
   const avatarColorStyles = `.avatar-current { --avatar-color: ${currentUser.color}; }`;
 
   const navBtn = (active: boolean, activeClass: string) =>
-    `w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all touch-manipulation ${
+    `w-full flex items-center rounded-xl text-sm font-medium transition-all touch-manipulation relative ${
+      expanded ? 'gap-3 px-3 py-2.5' : 'justify-center px-0 py-2.5'
+    } ${
       active
         ? `${activeClass} shadow-sm`
         : 'text-slate-400 hover:bg-slate-700/70 hover:text-slate-200'
     }`;
 
+  const lastUpdateLabel = (() => {
+    if (!lastDataUpdatedAt?.trim()) return null;
+    const d = new Date(lastDataUpdatedAt);
+    if (Number.isNaN(d.getTime())) return null;
+    return d.toLocaleString('fr-FR', { dateStyle: 'short', timeStyle: 'short' });
+  })();
+
   return (
     <>
       <style>{avatarColorStyles}</style>
       <aside
-        className={`w-64 bg-slate-800 border-r border-slate-700 flex flex-col flex-shrink-0 min-h-0 h-full ${className}`.trim()}
+        className={`flex h-full min-h-0 flex-shrink-0 flex-col border-r border-slate-700 bg-slate-800 transition-[width] duration-200 ease-out ${
+          expanded ? 'w-64' : 'w-[4.5rem]'
+        } ${className}`.trim()}
         aria-label="Menu principal"
       >
-        <header className="shrink-0 p-4 border-b border-slate-700">
-          <div className="flex items-center gap-3">
+        <header className={`shrink-0 border-b border-slate-700 ${expanded ? 'p-4' : 'px-2 py-3'}`}>
+          <div className={`flex items-center ${expanded ? 'gap-3' : 'flex-col gap-2'}`}>
             <img
               src={BRAND_LOGO}
               alt=""
               width={40}
               height={40}
-              className="h-10 w-10 shrink-0 object-contain"
+              className={`shrink-0 object-contain ${expanded ? 'h-10 w-10' : 'h-9 w-9'}`}
             />
-            <div className="min-w-0">
-              <h1 className="font-bold text-white tracking-tight text-base leading-tight">{BRAND_NAME}</h1>
-              <p className="text-[11px] text-slate-500 mt-0.5">Idées & collaboration</p>
-            </div>
+            {expanded ? (
+              <div className="min-w-0">
+                <h1 className="text-base font-bold leading-tight tracking-tight text-white">{BRAND_NAME}</h1>
+                <p className="mt-0.5 text-[11px] text-slate-500">Idées & collaboration</p>
+              </div>
+            ) : null}
           </div>
         </header>
 
@@ -129,9 +159,9 @@ export default function Sidebar({
           </div>
         )}
 
-        <div className="flex-1 min-h-0 flex flex-col px-3 pt-3">
-          <SectionLabel>Navigation</SectionLabel>
-          <nav className="flex-1 min-h-0 overflow-y-auto space-y-1 pb-2" aria-label="Vues et assistant">
+        <div className={`flex min-h-0 flex-1 flex-col pt-3 ${expanded ? 'px-3' : 'px-1.5'}`}>
+          {expanded ? <SectionLabel>Navigation</SectionLabel> : null}
+          <nav className="min-h-0 flex-1 space-y-1 overflow-y-auto pb-2" aria-label="Vues et assistant">
             <button
               type="button"
               onClick={() => {
@@ -139,16 +169,20 @@ export default function Sidebar({
                 afterNav();
               }}
               className={navBtn(activeView === 'notes', 'bg-indigo-500/20 text-indigo-300')}
+              title={expanded ? undefined : 'Idées & notes'}
             >
               <IconLightBulb
                 className={`h-5 w-5 shrink-0 ${activeView === 'notes' ? 'text-indigo-300' : 'text-slate-400'}`}
               />
-              <span>Idées & notes</span>
-              {noteCount > 0 && (
-                <span className="ml-auto bg-slate-700 text-slate-300 text-xs px-2 py-0.5 rounded-full min-w-[1.25rem] text-center tabular-nums">
+              {expanded ? <span className="min-w-0 truncate">Idées & notes</span> : null}
+              {expanded && noteCount > 0 ? (
+                <span className="ml-auto min-w-[1.25rem] rounded-full bg-slate-700 px-2 py-0.5 text-center text-xs tabular-nums text-slate-300">
                   {noteCount}
                 </span>
-              )}
+              ) : null}
+              {!expanded && noteCount > 0 ? (
+                <span className="absolute right-1 top-1.5 h-2 w-2 rounded-full bg-slate-400" aria-label={`${noteCount} notes`} />
+              ) : null}
             </button>
 
             <button
@@ -158,19 +192,28 @@ export default function Sidebar({
                 afterNav();
               }}
               className={navBtn(activeView === 'tasks', 'bg-indigo-500/20 text-indigo-300')}
+              title={expanded ? undefined : 'Tableau des tâches'}
             >
               <IconClipboardList
                 className={`h-5 w-5 shrink-0 ${activeView === 'tasks' ? 'text-indigo-300' : 'text-slate-400'}`}
               />
-              <span>Tableau des tâches</span>
-              {assignedTaskBadgeCount > 0 && (
+              {expanded ? <span className="min-w-0 truncate">Tableau des tâches</span> : null}
+              {expanded && assignedTaskBadgeCount > 0 ? (
                 <span
-                  className="ml-auto bg-rose-500/25 text-rose-300 text-xs px-2 py-0.5 rounded-full min-w-[1.25rem] text-center tabular-nums font-semibold"
+                  className="ml-auto min-w-[1.25rem] rounded-full bg-rose-500/25 px-2 py-0.5 text-center text-xs font-semibold tabular-nums text-rose-300"
                   title="Tâches qui vous sont assignées"
                 >
                   {assignedTaskBadgeCount > 99 ? '99+' : assignedTaskBadgeCount}
                 </span>
-              )}
+              ) : null}
+              {!expanded && assignedTaskBadgeCount > 0 ? (
+                <span
+                  className="absolute right-0.5 top-1.5 flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-rose-500 px-0.5 text-[10px] font-bold leading-none text-white"
+                  aria-label={`${assignedTaskBadgeCount} tâches assignées`}
+                >
+                  {assignedTaskBadgeCount > 9 ? '9+' : assignedTaskBadgeCount}
+                </span>
+              ) : null}
             </button>
 
             <button
@@ -180,17 +223,64 @@ export default function Sidebar({
                 afterNav();
               }}
               className={navBtn(chatOpen, 'bg-violet-500/20 text-violet-300')}
+              title={expanded ? undefined : 'Assistant IA'}
             >
               <IconSparkles className={`h-5 w-5 shrink-0 ${chatOpen ? 'text-violet-300' : 'text-slate-400'}`} />
-              <span>Assistant IA</span>
-              {chatOpen && (
-                <span className="ml-auto w-2 h-2 bg-violet-400 rounded-full animate-pulse" title="Ouvert" />
-              )}
+              {expanded ? <span className="min-w-0 truncate">Assistant IA</span> : null}
+              {expanded && chatOpen ? (
+                <span className="ml-auto h-2 w-2 animate-pulse rounded-full bg-violet-400" title="Ouvert" />
+              ) : null}
+              {!expanded && chatOpen ? (
+                <span className="absolute right-1 top-1.5 h-2 w-2 animate-pulse rounded-full bg-violet-400" title="Assistant ouvert" />
+              ) : null}
             </button>
           </nav>
         </div>
 
-        <footer className="shrink-0 border-t border-slate-700 p-3">
+        {!isGuest && !preferExpanded ? (
+          <div className="shrink-0 border-t border-slate-700/80 px-1 py-1">
+            <button
+              type="button"
+              onClick={() => {
+                setSidebarCollapsed(prev => {
+                  const next = !prev;
+                  if (next) setAccountOpen(false);
+                  return next;
+                });
+              }}
+              className="flex w-full touch-manipulation items-center justify-center rounded-lg py-2 text-slate-500 transition-colors hover:bg-slate-700/50 hover:text-slate-300"
+              aria-expanded={expanded}
+              title={expanded ? 'Réduire le menu' : 'Agrandir le menu'}
+            >
+              <IconChevronRight
+                className={`h-5 w-5 transition-transform ${expanded ? 'rotate-180' : ''}`}
+              />
+            </button>
+          </div>
+        ) : null}
+
+        {lastUpdateLabel ? (
+          <div
+            className={`shrink-0 border-t border-slate-700/80 ${expanded ? 'px-3 py-2.5' : 'flex justify-center px-1 py-2'}`}
+            title={expanded ? undefined : `Dernière modification des données : ${lastUpdateLabel}`}
+          >
+            {expanded ? (
+              <p className="text-[10px] leading-snug text-slate-500">
+                <span className="flex items-center gap-1.5 font-semibold uppercase tracking-wide text-slate-400">
+                  <IconClock className="h-3.5 w-3.5 shrink-0 text-slate-500" />
+                  Dernière modification
+                </span>
+                <span className="mt-1 block text-slate-400">{lastUpdateLabel}</span>
+              </p>
+            ) : (
+              <span className="inline-flex text-slate-500" aria-label={`Dernière modification : ${lastUpdateLabel}`}>
+                <IconClock className="h-4 w-4" />
+              </span>
+            )}
+          </div>
+        ) : null}
+
+        <footer className={`shrink-0 border-t border-slate-700 ${expanded ? 'p-3' : 'p-2'}`}>
           {isGuest ? (
             <div className="space-y-2">
               <SectionLabel>Compte</SectionLabel>
@@ -219,24 +309,38 @@ export default function Sidebar({
             <div className="overflow-hidden rounded-xl border border-slate-700/70 bg-slate-800/40">
               <button
                 type="button"
-                onClick={() => setAccountOpen(o => !o)}
+                onClick={() => {
+                  if (!expanded) {
+                    setSidebarCollapsed(false);
+                    setAccountOpen(true);
+                    return;
+                  }
+                  setAccountOpen(o => !o);
+                }}
                 aria-expanded={accountOpen}
-                className="flex w-full items-center gap-2.5 px-2.5 py-2.5 text-left transition-colors hover:bg-slate-700/40 touch-manipulation"
+                title={expanded ? undefined : 'Compte — agrandit le menu'}
+                className={`flex w-full touch-manipulation items-center text-left transition-colors hover:bg-slate-700/40 ${
+                  expanded ? 'gap-2.5 px-2.5 py-2.5' : 'justify-center px-0 py-2'
+                }`}
               >
                 <div className={`${styles.currentUserAvatar} avatar-current shrink-0`}>{currentUser.initials}</div>
-                <div className="min-w-0 flex-1">
-                  <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">Compte</p>
-                  <p className="text-sm font-medium text-slate-200 truncate">{currentUser.name}</p>
-                </div>
-                {currentUser.plan === 'pro' ? (
-                  <span className="shrink-0 rounded-md bg-amber-500/20 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-300">
-                    Pro
-                  </span>
+                {expanded ? (
+                  <>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">Compte</p>
+                      <p className="truncate text-sm font-medium text-slate-200">{currentUser.name}</p>
+                    </div>
+                    {currentUser.plan === 'pro' ? (
+                      <span className="shrink-0 rounded-md bg-amber-500/20 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-300">
+                        Pro
+                      </span>
+                    ) : null}
+                    <IconChevronDown
+                      className={`h-4 w-4 shrink-0 text-slate-500 transition-transform ${accountOpen ? 'rotate-180' : ''}`}
+                      aria-hidden
+                    />
+                  </>
                 ) : null}
-                <IconChevronDown
-                  className={`h-4 w-4 shrink-0 text-slate-500 transition-transform ${accountOpen ? 'rotate-180' : ''}`}
-                  aria-hidden
-                />
               </button>
               {accountOpen && (
                 <div className="space-y-1 border-t border-slate-700/60 px-2 py-2">

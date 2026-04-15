@@ -225,6 +225,25 @@ export function IconChevronUp(props: IconProps) {
   );
 }
 
+export function IconChevronRight(props: IconProps) {
+  return strokeIcon(
+    <>
+      <path d="m9 18 6-6-6-6" />
+    </>,
+    props,
+  );
+}
+
+export function IconClock(props: IconProps) {
+  return strokeIcon(
+    <>
+      <circle cx="12" cy="12" r="10" />
+      <path d="M12 6v6l4 2" />
+    </>,
+    props,
+  );
+}
+
 export function IconPlus(props: IconProps) {
   return strokeIcon(
     <>

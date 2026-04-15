@@ -502,6 +502,20 @@ export default function HomePage() {
     [isGuest, tasks, displayUser.id, layoutPreferences],
   );
 
+  /** Dernière mise à jour parmi les notes et tâches affichées (pour l’indicateur dans la sidebar). */
+  const lastDataUpdatedAt = useMemo(() => {
+    let max = 0;
+    for (const n of notes) {
+      const t = new Date(n.updatedAt).getTime();
+      if (!Number.isNaN(t) && t > max) max = t;
+    }
+    for (const task of tasks) {
+      const t = new Date(task.updatedAt).getTime();
+      if (!Number.isNaN(t) && t > max) max = t;
+    }
+    return max > 0 ? new Date(max).toISOString() : null;
+  }, [notes, tasks]);
+
   const markAssignedInboxSeen = useCallback(async () => {
     if (isGuest) return;
     try {
@@ -1049,6 +1063,7 @@ export default function HomePage() {
     proPriceLabel,
     onOpenProFeatures: () => setProFeaturesModalOpen(true),
     onOpenSettings: () => setSettingsModalOpen(true),
+    lastDataUpdatedAt,
   };
 
   return (
@@ -1131,6 +1146,7 @@ export default function HomePage() {
             <div className="fixed bottom-0 left-0 top-0 z-50 flex w-[min(20rem,88vw)] flex-col shadow-2xl md:hidden">
               <Sidebar
                 {...sidebarProps}
+                preferExpanded
                 onNavAction={() => setMobileMenuOpen(false)}
                 className="h-full w-full min-w-0 overflow-y-auto"
               />
@@ -1139,7 +1155,11 @@ export default function HomePage() {
         )}
 
         <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-          <header className="hidden shrink-0 items-center justify-between gap-3 border-b border-slate-800 bg-slate-900/95 px-4 py-2.5 md:flex">
+          <header
+            className={`shrink-0 items-center justify-between gap-3 border-b border-slate-800 bg-slate-900/95 px-4 py-2.5 ${
+              activeView === 'tasks' ? 'hidden' : 'hidden md:flex'
+            }`}
+          >
             <h2 className="text-sm font-medium text-slate-300">
               {activeView === 'notes' ? 'Idées & notes' : 'Tableau des tâches'}
             </h2>
@@ -1238,6 +1258,8 @@ export default function HomePage() {
                   onDelete={deleteTask}
                   onMove={moveTask}
                   compactLayout={layoutPreferences.density === 'compact'}
+                  onOpenCollaborators={isGuest ? undefined : openCollaboratorsPanel}
+                  collaboratorTeamSize={assignableUsers.length}
                 />
               )}
             </div>

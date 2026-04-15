@@ -24,6 +24,10 @@ interface TaskBoardProps {
   onDelete: (id: string) => void | Promise<void>;
   onMove: (id: string, status: TaskStatus) => void | Promise<void>;
   compactLayout?: boolean;
+  /** Desktop : ouvre la modale collaborateurs (évite la barre dupliquée dans la page). */
+  onOpenCollaborators?: () => void;
+  /** Taille de l’équipe assignable (badge sur le bouton collaborateurs). */
+  collaboratorTeamSize?: number;
 }
 
 const COLUMNS: {
@@ -116,6 +120,19 @@ function isOverdue(dueDate: string | undefined, status: TaskStatus) {
 
 type AssigneeFilter = 'all' | 'unassigned' | string;
 
+function CollaboratorsIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth={2}
+        d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"
+      />
+    </svg>
+  );
+}
+
 export default function TaskBoard({
   tasks,
   users,
@@ -125,8 +142,10 @@ export default function TaskBoard({
   onDelete,
   onMove,
   compactLayout = false,
+  onOpenCollaborators,
+  collaboratorTeamSize = 0,
 }: TaskBoardProps) {
-  const padHeader = compactLayout ? 'px-3 py-3 sm:px-4 sm:py-4' : 'px-4 py-4 sm:px-6 sm:py-5';
+  const padHeader = compactLayout ? 'px-3 py-2 sm:px-4' : 'px-3 py-2.5 sm:px-5';
   const padMain = compactLayout ? 'p-3 sm:p-4' : 'p-4 sm:p-6';
   const [showModal, setShowModal] = useState(false);
   const [editingTask, setEditingTask] = useState<Task | null>(null);
@@ -238,125 +257,126 @@ export default function TaskBoard({
     setSelectedTask(t => (t ? { ...t, status } : null));
   };
 
+  const teamBadge = collaboratorTeamSize > 1;
+
   return (
     <div className="h-full flex flex-col">
-      {/* Header */}
+      {/* Une seule barre : titre + filtres + collaborateurs (desktop) + nouvelle tâche */}
       <div
-        className={`flex flex-shrink-0 flex-col gap-3 border-b border-slate-700 sm:flex-row sm:items-center sm:gap-4 ${padHeader}`}
+        className={`flex min-h-[2.75rem] flex-shrink-0 items-center gap-2 border-b border-slate-700 ${padHeader}`}
       >
-        <div className="min-w-0">
-          <h2 className="text-lg font-bold text-white sm:text-xl">Tableau des tâches</h2>
-          <p className="mt-0.5 text-xs text-slate-500">
-            {filteredTasks.length} tâche{filteredTasks.length !== 1 ? 's' : ''}
+        <div className="flex shrink-0 flex-col leading-tight">
+          <h2 className="text-sm font-bold text-white sm:text-base">Tâches</h2>
+          <p className="w-[4.25rem] truncate text-[10px] text-slate-500 sm:w-auto sm:max-w-[11rem] sm:text-xs">
+            {filteredTasks.length}/{tasks.length}
             {assigneeFilter !== 'all' ? (
-              <>
-                {' '}
-                affichée{filteredTasks.length !== 1 ? 's' : ''} ·{' '}
-                <span className="text-indigo-400/90">{tasks.length} au total</span>
-              </>
-            ) : (
-              ' · Kanban collaboratif'
-            )}
+              <span className="text-indigo-400/90"> · filtré</span>
+            ) : null}
           </p>
         </div>
 
-        {/* Stats (colonnes = tâches filtrées) */}
-        <div className="hidden items-center gap-3 md:flex md:ml-4">
-          {COLUMNS.map(col => (
-            <div key={col.id} className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg ${col.bg} border ${col.border}`}>
-              <col.Icon className={`h-4 w-4 ${col.color}`} />
-              <span className={`text-xs font-semibold ${col.color}`}>{tasksByStatus[col.id].length}</span>
-            </div>
-          ))}
+        <div
+          className="flex min-h-0 min-w-0 flex-1 items-center overflow-hidden"
+        >
+          <div
+            className="flex w-full min-w-0 items-center gap-1.5 overflow-x-auto py-0.5 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+            role="toolbar"
+            aria-label="Filtrer les tâches par personne assignée"
+          >
+            <button
+              type="button"
+              onClick={() => setAssigneeFilter('all')}
+              aria-pressed={assigneeFilter === 'all'}
+              className={`inline-flex shrink-0 items-center rounded-full border px-2.5 py-1 text-[11px] font-medium transition-colors touch-manipulation sm:px-3 sm:text-xs ${
+                assigneeFilter === 'all'
+                  ? 'border-indigo-400 bg-indigo-500/25 text-indigo-200'
+                  : 'border-slate-600 bg-slate-800/90 text-slate-300 hover:border-slate-500'
+              }`}
+            >
+              Tous
+            </button>
+            <button
+              type="button"
+              onClick={() => setAssigneeFilter(currentUser.id)}
+              aria-pressed={assigneeFilter === currentUser.id}
+              title="Tâches qui vous sont assignées"
+              className={`inline-flex shrink-0 items-center gap-1 rounded-full border py-0.5 pl-0.5 pr-2 text-[11px] font-medium transition-colors touch-manipulation sm:gap-1.5 sm:py-1 sm:pl-1 sm:pr-2.5 sm:text-xs ${
+                assigneeFilter === currentUser.id
+                  ? 'border-indigo-400 bg-indigo-500/25 text-indigo-100'
+                  : 'border-slate-600 bg-slate-800/90 text-slate-300 hover:border-slate-500'
+              }`}
+            >
+              <span
+                className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[9px] font-bold text-white shadow-sm sm:h-6 sm:w-6 sm:text-[10px]"
+                style={{ backgroundColor: currentUser.color }}
+              >
+                {currentUser.initials}
+              </span>
+              <span className="max-w-[2.75rem] truncate sm:max-w-[4rem]">À moi</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setAssigneeFilter('unassigned')}
+              aria-pressed={assigneeFilter === 'unassigned'}
+              className={`inline-flex shrink-0 items-center rounded-full border px-2.5 py-1 text-[11px] font-medium transition-colors touch-manipulation sm:px-3 sm:text-xs ${
+                assigneeFilter === 'unassigned'
+                  ? 'border-indigo-400 bg-indigo-500/25 text-indigo-200'
+                  : 'border-slate-600 bg-slate-800/90 text-slate-300 hover:border-slate-500'
+              }`}
+            >
+              <span className="sm:hidden">Sans ass.</span>
+              <span className="hidden sm:inline">Sans assignation</span>
+            </button>
+            {users
+              .filter(u => u.id !== currentUser.id)
+              .map(u => (
+                <button
+                  key={u.id}
+                  type="button"
+                  onClick={() => setAssigneeFilter(u.id)}
+                  aria-pressed={assigneeFilter === u.id}
+                  className={`inline-flex max-w-[9rem] shrink-0 items-center gap-1 rounded-full border py-0.5 pl-0.5 pr-2 text-left text-[11px] font-medium transition-colors touch-manipulation sm:max-w-[11rem] sm:gap-2 sm:py-1 sm:pl-1 sm:pr-2.5 sm:text-xs ${
+                    assigneeFilter === u.id
+                      ? 'border-indigo-400 bg-indigo-500/25 text-indigo-100'
+                      : 'border-slate-600 bg-slate-800/90 text-slate-300 hover:border-slate-500'
+                  }`}
+                >
+                  <span
+                    className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[9px] font-bold text-white shadow-sm sm:h-6 sm:w-6 sm:text-[10px]"
+                    style={{ backgroundColor: u.color }}
+                  >
+                    {u.initials}
+                  </span>
+                  <span className="min-w-0 truncate">{u.name}</span>
+                </button>
+              ))}
+          </div>
         </div>
+
+        {onOpenCollaborators ? (
+          <button
+            type="button"
+            onClick={onOpenCollaborators}
+            className="hidden shrink-0 touch-manipulation items-center gap-1.5 rounded-xl border border-slate-600 bg-slate-800 px-2.5 py-1.5 text-xs font-medium text-slate-200 hover:bg-slate-700 md:inline-flex"
+          >
+            <CollaboratorsIcon className="h-4 w-4 shrink-0 text-slate-400" />
+            <span className="hidden lg:inline">Collaborateurs</span>
+            {teamBadge ? (
+              <span className="rounded-full bg-indigo-500/25 px-1.5 py-0.5 text-[10px] font-semibold tabular-nums text-indigo-200">
+                {collaboratorTeamSize}
+              </span>
+            ) : null}
+          </button>
+        ) : null}
 
         <button
           type="button"
           onClick={() => openAdd('todo')}
-          className="flex w-full shrink-0 touch-manipulation items-center justify-center gap-2 rounded-xl bg-indigo-500 px-4 py-3 text-sm font-medium text-white shadow-lg shadow-indigo-500/20 transition-all hover:bg-indigo-400 sm:ml-auto sm:w-auto sm:py-2"
+          className="flex shrink-0 touch-manipulation items-center justify-center gap-1.5 rounded-xl bg-indigo-500 px-3 py-1.5 text-xs font-medium text-white shadow-md shadow-indigo-500/20 transition-all hover:bg-indigo-400 sm:gap-2 sm:px-4 sm:text-sm"
         >
-          <IconPlus className="h-4 w-4" />
-          <span>Nouvelle tâche</span>
+          <IconPlus className="h-4 w-4 shrink-0" />
+          <span className="hidden sm:inline">Nouvelle tâche</span>
         </button>
-      </div>
-
-      {/* Filtre par assigné */}
-      <div
-        className={`flex flex-shrink-0 flex-col gap-2 border-b border-slate-700/80 ${compactLayout ? 'px-3 py-2.5 sm:px-4' : 'px-4 py-3 sm:px-6'}`}
-      >
-        <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">Assignation</p>
-        <div
-          className="flex gap-2 overflow-x-auto pb-0.5 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
-          role="toolbar"
-          aria-label="Filtrer les tâches par personne assignée"
-        >
-          <button
-            type="button"
-            onClick={() => setAssigneeFilter('all')}
-            aria-pressed={assigneeFilter === 'all'}
-            className={`inline-flex shrink-0 items-center rounded-full border px-3 py-1.5 text-xs font-medium transition-colors touch-manipulation ${
-              assigneeFilter === 'all'
-                ? 'border-indigo-400 bg-indigo-500/25 text-indigo-200'
-                : 'border-slate-600 bg-slate-800/90 text-slate-300 hover:border-slate-500'
-            }`}
-          >
-            Tous
-          </button>
-          <button
-            type="button"
-            onClick={() => setAssigneeFilter(currentUser.id)}
-            aria-pressed={assigneeFilter === currentUser.id}
-            title="Tâches qui vous sont assignées"
-            className={`inline-flex shrink-0 items-center gap-1.5 rounded-full border py-1 pl-1 pr-2.5 text-xs font-medium transition-colors touch-manipulation ${
-              assigneeFilter === currentUser.id
-                ? 'border-indigo-400 bg-indigo-500/25 text-indigo-100'
-                : 'border-slate-600 bg-slate-800/90 text-slate-300 hover:border-slate-500'
-            }`}
-          >
-            <span
-              className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[10px] font-bold text-white shadow-sm"
-              style={{ backgroundColor: currentUser.color }}
-            >
-              {currentUser.initials}
-            </span>
-            À moi
-          </button>
-          <button
-            type="button"
-            onClick={() => setAssigneeFilter('unassigned')}
-            aria-pressed={assigneeFilter === 'unassigned'}
-            className={`inline-flex shrink-0 items-center rounded-full border px-3 py-1.5 text-xs font-medium transition-colors touch-manipulation ${
-              assigneeFilter === 'unassigned'
-                ? 'border-indigo-400 bg-indigo-500/25 text-indigo-200'
-                : 'border-slate-600 bg-slate-800/90 text-slate-300 hover:border-slate-500'
-            }`}
-          >
-            Sans assignation
-          </button>
-          {users
-            .filter(u => u.id !== currentUser.id)
-            .map(u => (
-              <button
-                key={u.id}
-                type="button"
-                onClick={() => setAssigneeFilter(u.id)}
-                aria-pressed={assigneeFilter === u.id}
-                className={`inline-flex max-w-[11rem] shrink-0 items-center gap-2 rounded-full border py-1 pl-1 pr-2.5 text-left text-xs font-medium transition-colors touch-manipulation ${
-                  assigneeFilter === u.id
-                    ? 'border-indigo-400 bg-indigo-500/25 text-indigo-100'
-                    : 'border-slate-600 bg-slate-800/90 text-slate-300 hover:border-slate-500'
-                }`}
-              >
-                <span
-                  className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[10px] font-bold text-white shadow-sm"
-                  style={{ backgroundColor: u.color }}
-                >
-                  {u.initials}
-                </span>
-                <span className="min-w-0 truncate">{u.name}</span>
-              </button>
-            ))}
-        </div>
       </div>
 
       {/* Kanban */}
