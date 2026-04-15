@@ -114,6 +114,8 @@ function isOverdue(dueDate: string | undefined, status: TaskStatus) {
   return new Date(dueDate) < new Date();
 }
 
+type AssigneeFilter = 'all' | 'unassigned' | string;
+
 export default function TaskBoard({
   tasks,
   users,
@@ -140,6 +142,15 @@ export default function TaskBoard({
     status: 'todo',
     dueDate: '',
   });
+  const [assigneeFilter, setAssigneeFilter] = useState<AssigneeFilter>('all');
+
+  const filteredTasks = useMemo(() => {
+    if (assigneeFilter === 'all') return tasks;
+    if (assigneeFilter === 'unassigned') {
+      return tasks.filter(t => t.assignedTo == null || t.assignedTo === '');
+    }
+    return tasks.filter(t => t.assignedTo === assigneeFilter);
+  }, [tasks, assigneeFilter]);
 
   const tasksByStatus = useMemo(() => {
     const map: Record<TaskStatus, Task[]> = {
@@ -149,13 +160,13 @@ export default function TaskBoard({
       done: [],
       review: [],
     };
-    tasks.forEach(t => {
+    filteredTasks.forEach(t => {
       const s = t.status;
       if (s in map) map[s].push(t);
       else map.todo.push(t);
     });
     return map;
-  }, [tasks]);
+  }, [filteredTasks]);
 
   const getUserById = (id: string | null | undefined) => users.find(u => u.id === id);
 
@@ -236,11 +247,20 @@ export default function TaskBoard({
         <div className="min-w-0">
           <h2 className="text-lg font-bold text-white sm:text-xl">Tableau des tâches</h2>
           <p className="mt-0.5 text-xs text-slate-500">
-            {tasks.length} tâche{tasks.length !== 1 ? 's' : ''} · Kanban collaboratif
+            {filteredTasks.length} tâche{filteredTasks.length !== 1 ? 's' : ''}
+            {assigneeFilter !== 'all' ? (
+              <>
+                {' '}
+                affichée{filteredTasks.length !== 1 ? 's' : ''} ·{' '}
+                <span className="text-indigo-400/90">{tasks.length} au total</span>
+              </>
+            ) : (
+              ' · Kanban collaboratif'
+            )}
           </p>
         </div>
 
-        {/* Stats */}
+        {/* Stats (colonnes = tâches filtrées) */}
         <div className="hidden items-center gap-3 md:flex md:ml-4">
           {COLUMNS.map(col => (
             <div key={col.id} className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg ${col.bg} border ${col.border}`}>
@@ -258,6 +278,85 @@ export default function TaskBoard({
           <IconPlus className="h-4 w-4" />
           <span>Nouvelle tâche</span>
         </button>
+      </div>
+
+      {/* Filtre par assigné */}
+      <div
+        className={`flex flex-shrink-0 flex-col gap-2 border-b border-slate-700/80 ${compactLayout ? 'px-3 py-2.5 sm:px-4' : 'px-4 py-3 sm:px-6'}`}
+      >
+        <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">Assignation</p>
+        <div
+          className="flex gap-2 overflow-x-auto pb-0.5 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+          role="toolbar"
+          aria-label="Filtrer les tâches par personne assignée"
+        >
+          <button
+            type="button"
+            onClick={() => setAssigneeFilter('all')}
+            aria-pressed={assigneeFilter === 'all'}
+            className={`inline-flex shrink-0 items-center rounded-full border px-3 py-1.5 text-xs font-medium transition-colors touch-manipulation ${
+              assigneeFilter === 'all'
+                ? 'border-indigo-400 bg-indigo-500/25 text-indigo-200'
+                : 'border-slate-600 bg-slate-800/90 text-slate-300 hover:border-slate-500'
+            }`}
+          >
+            Tous
+          </button>
+          <button
+            type="button"
+            onClick={() => setAssigneeFilter(currentUser.id)}
+            aria-pressed={assigneeFilter === currentUser.id}
+            title="Tâches qui vous sont assignées"
+            className={`inline-flex shrink-0 items-center gap-1.5 rounded-full border py-1 pl-1 pr-2.5 text-xs font-medium transition-colors touch-manipulation ${
+              assigneeFilter === currentUser.id
+                ? 'border-indigo-400 bg-indigo-500/25 text-indigo-100'
+                : 'border-slate-600 bg-slate-800/90 text-slate-300 hover:border-slate-500'
+            }`}
+          >
+            <span
+              className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[10px] font-bold text-white shadow-sm"
+              style={{ backgroundColor: currentUser.color }}
+            >
+              {currentUser.initials}
+            </span>
+            À moi
+          </button>
+          <button
+            type="button"
+            onClick={() => setAssigneeFilter('unassigned')}
+            aria-pressed={assigneeFilter === 'unassigned'}
+            className={`inline-flex shrink-0 items-center rounded-full border px-3 py-1.5 text-xs font-medium transition-colors touch-manipulation ${
+              assigneeFilter === 'unassigned'
+                ? 'border-indigo-400 bg-indigo-500/25 text-indigo-200'
+                : 'border-slate-600 bg-slate-800/90 text-slate-300 hover:border-slate-500'
+            }`}
+          >
+            Sans assignation
+          </button>
+          {users
+            .filter(u => u.id !== currentUser.id)
+            .map(u => (
+              <button
+                key={u.id}
+                type="button"
+                onClick={() => setAssigneeFilter(u.id)}
+                aria-pressed={assigneeFilter === u.id}
+                className={`inline-flex max-w-[11rem] shrink-0 items-center gap-2 rounded-full border py-1 pl-1 pr-2.5 text-left text-xs font-medium transition-colors touch-manipulation ${
+                  assigneeFilter === u.id
+                    ? 'border-indigo-400 bg-indigo-500/25 text-indigo-100'
+                    : 'border-slate-600 bg-slate-800/90 text-slate-300 hover:border-slate-500'
+                }`}
+              >
+                <span
+                  className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[10px] font-bold text-white shadow-sm"
+                  style={{ backgroundColor: u.color }}
+                >
+                  {u.initials}
+                </span>
+                <span className="min-w-0 truncate">{u.name}</span>
+              </button>
+            ))}
+        </div>
       </div>
 
       {/* Kanban */}
