@@ -796,7 +796,17 @@ export default function HomePage() {
     async (data: Omit<Note, 'id' | 'createdAt' | 'updatedAt'>) => {
       if (isGuest) {
         const now = new Date().toISOString();
-        const note: Note = { ...data, id: genId(), createdAt: now, updatedAt: now };
+        const note: Note = {
+          ...data,
+          id: genId(),
+          createdAt: now,
+          updatedAt: now,
+          ownerId: displayUser.id,
+          ownerName: displayUser.name,
+          ownerInitials: displayUser.initials,
+          ownerColor: displayUser.color,
+          sharedWith: data.sharedWith ?? [],
+        };
         setNotes(prev => [note, ...prev]);
         return;
       }
@@ -809,7 +819,7 @@ export default function HomePage() {
       const note: Note = await res.json();
       setNotes(prev => [note, ...prev]);
     },
-    [isGuest]
+    [isGuest, displayUser]
   );
 
   const updateNote = useCallback(
@@ -1240,6 +1250,7 @@ export default function HomePage() {
                   onUpdate={updateNote}
                   onDelete={deleteNote}
                   currentUser={displayUser}
+                  collaborators={assignableUsers}
                   isGuest={isGuest}
                   whatsappPhone={whatsappPhone}
                   onWhatsappPhoneChange={setWhatsappPhone}

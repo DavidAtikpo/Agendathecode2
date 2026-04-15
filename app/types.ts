@@ -32,6 +32,13 @@ export interface Note {
   reminderByEmail?: boolean;
   /** Horodatage d’envoi e-mail réussi */
   reminderEmailSentAt?: string | null;
+  /** Propriétaire (créateur) — pour notes partagées avec vous. */
+  ownerId?: string | null;
+  ownerName?: string | null;
+  ownerInitials?: string | null;
+  ownerColor?: string | null;
+  /** Collaborateurs avec accès lecture (seul le propriétaire modifie). */
+  sharedWith?: string[];
 }
 
 export interface Task {

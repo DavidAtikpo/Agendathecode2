@@ -1,9 +1,26 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/app/lib/prisma';
 import { getSessionUserId } from '@/app/lib/auth';
-import type { Note } from '@prisma/client';
+import { replaceNoteShares } from '@/app/lib/note-share';
 
-function serialize(note: Note) {
+const ownerSelect = { id: true, name: true, initials: true, color: true } as const;
+
+type NoteRow = {
+  id: string;
+  title: string;
+  content: string;
+  pinned: boolean;
+  remindAt: Date | null;
+  reminderByEmail: boolean;
+  reminderEmailSentAt: Date | null;
+  createdAt: Date;
+  updatedAt: Date;
+  userId: string | null;
+  user: { id: string; name: string; initials: string; color: string } | null;
+  shares: { userId: string }[];
+};
+
+function serialize(note: NoteRow) {
   return {
     id: note.id,
     title: note.title,
@@ -14,7 +31,23 @@ function serialize(note: Note) {
     reminderEmailSentAt: note.reminderEmailSentAt?.toISOString() ?? null,
     createdAt: note.createdAt.toISOString(),
     updatedAt: note.updatedAt.toISOString(),
+    ownerId: note.userId,
+    ownerName: note.user?.name ?? null,
+    ownerInitials: note.user?.initials ?? null,
+    ownerColor: note.user?.color ?? null,
+    sharedWith: note.shares.map(s => s.userId),
   };
+}
+
+async function loadSerialized(id: string) {
+  const note = await prisma.note.findUniqueOrThrow({
+    where: { id },
+    include: {
+      user: { select: ownerSelect },
+      shares: { select: { userId: true } },
+    },
+  });
+  return serialize(note);
 }
 
 type Ctx = { params: Promise<{ id: string }> };
@@ -33,6 +66,20 @@ export async function PATCH(request: Request, ctx: Ctx) {
   });
   if (!existing) {
     return NextResponse.json({ error: 'Note introuvable' }, { status: 404 });
+  }
+
+  if (Array.isArray(data.sharedWith)) {
+    try {
+      await replaceNoteShares(id, sessionId, data.sharedWith as string[]);
+    } catch (e: unknown) {
+      if (e instanceof Error && e.message === 'SHARE_FORBIDDEN') {
+        return NextResponse.json(
+          { error: 'Vous ne pouvez partager qu’avec des collaborateurs ajoutés par e-mail.' },
+          { status: 403 }
+        );
+      }
+      throw e;
+    }
   }
 
   const remindPatch =
@@ -64,19 +111,24 @@ export async function PATCH(request: Request, ctx: Ctx) {
 
   const resetEmailFlag = remindChanged || emailToggleChanged;
 
-  const note = await prisma.note.update({
-    where: { id },
-    data: {
-      ...(data.title !== undefined && { title: data.title }),
-      ...(data.content !== undefined && { content: data.content }),
-      ...(data.pinned !== undefined && { pinned: data.pinned }),
-      ...remindPatch,
-      ...(data.reminderByEmail !== undefined && { reminderByEmail: !!data.reminderByEmail }),
-      ...(resetEmailFlag ? { reminderEmailSentAt: null } : {}),
-    },
-  });
+  const hasContentPatch =
+    data.title !== undefined || data.content !== undefined || data.pinned !== undefined;
 
-  return NextResponse.json(serialize(note));
+  if (hasContentPatch || Object.keys(remindPatch).length || data.reminderByEmail !== undefined) {
+    await prisma.note.update({
+      where: { id },
+      data: {
+        ...(data.title !== undefined && { title: data.title }),
+        ...(data.content !== undefined && { content: data.content }),
+        ...(data.pinned !== undefined && { pinned: data.pinned }),
+        ...remindPatch,
+        ...(data.reminderByEmail !== undefined && { reminderByEmail: !!data.reminderByEmail }),
+        ...(resetEmailFlag ? { reminderEmailSentAt: null } : {}),
+      },
+    });
+  }
+
+  return NextResponse.json(await loadSerialized(id));
 }
 
 export async function DELETE(_: Request, ctx: Ctx) {

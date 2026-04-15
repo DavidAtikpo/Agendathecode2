@@ -31,6 +31,8 @@ interface NotesSectionProps {
   onUpdate: (id: string, data: Partial<Note>) => void;
   onDelete: (id: string) => void;
   currentUser: User;
+  /** Vous + collaborateurs (partage lecture). */
+  collaborators: User[];
   /** Mode essai : pas d’e-mail automatique serveur */
   isGuest: boolean;
   /** Préférences : liste plus serrée */
@@ -49,6 +51,8 @@ interface FormData {
   /** Valeur pour input datetime-local */
   remindLocal: string;
   reminderByEmail: boolean;
+  /** IDs collaborateurs avec accès lecture */
+  sharedWith: string[];
 }
 
 /* ── Speech Recognition types ── */
@@ -133,12 +137,17 @@ function useSpeechRecognition(onTranscript: (text: string, isFinal: boolean) => 
   return { recording, supported, toggle };
 }
 
+function isNoteOwner(note: Note, currentUserId: string) {
+  return (note.ownerId ?? currentUserId) === currentUserId;
+}
+
 export default function NotesSection({
   notes,
   onAdd,
   onUpdate,
   onDelete,
   currentUser,
+  collaborators,
   isGuest,
   whatsappPhone,
   onWhatsappPhoneChange,
@@ -147,8 +156,7 @@ export default function NotesSection({
   compactLayout = false,
   showWhatsAppSection = true,
 }: NotesSectionProps) {
-  const padHeader = compactLayout ? 'px-3 py-3 sm:px-4 sm:py-4' : 'px-4 py-4 sm:px-6 sm:py-5';
-  const padSection = compactLayout ? 'px-3 sm:px-4' : 'px-4 sm:px-6';
+  const padHeader = compactLayout ? 'px-3 py-2 sm:px-4' : 'px-3 py-2.5 sm:px-5';
   const padContent = compactLayout ? 'p-3 sm:p-4' : 'p-4 sm:p-6';
 
   const [search, setSearch] = useState('');
@@ -160,6 +168,7 @@ export default function NotesSection({
     content: '',
     remindLocal: '',
     reminderByEmail: true,
+    sharedWith: [],
   });
   const contentRef = useRef<HTMLTextAreaElement>(null);
 
@@ -188,6 +197,7 @@ export default function NotesSection({
       content: '',
       remindLocal: '',
       reminderByEmail: !isGuest,
+      sharedWith: [],
     });
     setShowModal(true);
   };
@@ -199,6 +209,7 @@ export default function NotesSection({
       content: note.content,
       remindLocal: toDatetimeLocalValue(note.remindAt),
       reminderByEmail: isGuest ? false : note.reminderByEmail !== false,
+      sharedWith: [...(note.sharedWith ?? [])],
     });
     setShowModal(true);
   };
@@ -210,12 +221,14 @@ export default function NotesSection({
       void requestReminderPermission();
     }
     const emailOk = !isGuest && !!remindAt && form.reminderByEmail;
+    const sharePayload = !isGuest ? { sharedWith: form.sharedWith } : {};
     if (editingNote) {
       onUpdate(editingNote.id, {
         title: form.title.trim(),
         content: form.content,
         remindAt: remindAt ?? null,
         reminderByEmail: emailOk,
+        ...sharePayload,
       });
     } else {
       onAdd({
@@ -224,6 +237,7 @@ export default function NotesSection({
         pinned: false,
         remindAt: remindAt ?? null,
         reminderByEmail: emailOk,
+        ...sharePayload,
       });
     }
     setShowModal(false);
@@ -245,109 +259,119 @@ export default function NotesSection({
 
   return (
     <div className="h-full flex flex-col">
-      {/* Header */}
+      {/* Une seule barre : titre + recherche + rappels + WhatsApp + nouvelle idée */}
       <div
-        className={`flex flex-shrink-0 flex-col gap-3 border-b border-slate-700 sm:flex-row sm:items-center sm:gap-4 ${padHeader}`}
+        className={`flex min-h-[2.75rem] flex-shrink-0 items-center gap-2 border-b border-slate-700 ${padHeader}`}
       >
-        <div className="min-w-0">
-          <h2 className="text-lg font-bold text-white sm:text-xl">Idées & Notes</h2>
-          <p className="mt-0.5 text-xs text-slate-500">
-            {notes.length} note{notes.length !== 1 ? 's' : ''}
+        <div className="shrink-0 leading-tight">
+          <h2 className="text-sm font-bold text-white sm:text-base">Notes</h2>
+          <p className="text-[10px] text-slate-500 sm:text-xs">
+            {notes.length} idée{notes.length !== 1 ? 's' : ''}
+            {filtered.length !== notes.length ? (
+              <span className="text-indigo-400/90"> · {filtered.length} aff.</span>
+            ) : null}
           </p>
         </div>
-        <div className="w-full min-w-0 sm:max-w-sm sm:flex-1">
-          <div className="relative">
-            <IconSearch className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
+
+        <div className="flex min-w-0 flex-1 items-center gap-2">
+          <div
+            className={`relative shrink-0 ${
+              upcomingReminders.length > 0 ? 'w-[min(100%,11rem)] sm:w-44' : 'min-w-0 flex-1'
+            }`}
+          >
+            <IconSearch className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-500 sm:left-3 sm:h-4 sm:w-4" />
             <input
               type="text"
               value={search}
               onChange={e => setSearch(e.target.value)}
-              placeholder="Rechercher..."
-              className="w-full rounded-xl border border-slate-700 bg-slate-800 py-2.5 pl-9 pr-4 text-sm text-slate-200 placeholder-slate-500 transition-colors focus:border-indigo-500 focus:outline-none"
+              placeholder="Rechercher…"
+              className="w-full rounded-xl border border-slate-700 bg-slate-800 py-2 pl-8 pr-2 text-xs text-slate-200 placeholder-slate-500 transition-colors focus:border-indigo-500 focus:outline-none sm:py-2 sm:pl-9 sm:pr-3 sm:text-sm"
             />
           </div>
+          {upcomingReminders.length > 0 ? (
+            <div
+              className="flex min-h-0 min-w-0 flex-1 items-center gap-1 overflow-x-auto py-0.5 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+              aria-label="Prochains rappels"
+            >
+              {upcomingReminders.map(n => (
+                <button
+                  key={n.id}
+                  type="button"
+                  onClick={() => openEdit(n)}
+                  className="flex max-w-[9rem] shrink-0 touch-manipulation flex-col rounded-lg border border-amber-500/25 bg-amber-500/10 px-2 py-1 text-left transition-colors hover:bg-amber-500/15 sm:max-w-[11rem] sm:rounded-xl sm:px-2.5 sm:py-1.5"
+                >
+                  <span className="flex min-w-0 items-center gap-1 truncate text-[10px] font-medium text-amber-100 sm:text-xs">
+                    <IconBell className="h-3 w-3 shrink-0 text-amber-300/90 sm:h-3.5 sm:w-3.5" />
+                    <span className="truncate">{n.title}</span>
+                  </span>
+                  <span className="truncate text-[9px] text-amber-200/80 sm:text-[10px]">
+                    {formatReminderRelative(n.remindAt!)}
+                  </span>
+                </button>
+              ))}
+            </div>
+          ) : null}
         </div>
+
+        {showWhatsAppSection ? (
+          <details className="group relative shrink-0">
+            <summary className="cursor-pointer list-none rounded-xl border border-slate-600 bg-slate-800/90 px-2 py-1.5 text-[10px] font-medium text-slate-300 marker:content-none transition-colors hover:border-slate-500 hover:bg-slate-700/80 sm:px-2.5 sm:text-xs [&::-webkit-details-marker]:hidden">
+              <span className="hidden sm:inline">WhatsApp</span>
+              <span className="sm:hidden" aria-hidden>
+                WA
+              </span>
+            </summary>
+            <div className="absolute right-0 top-[calc(100%+0.35rem)] z-40 w-[min(calc(100vw-1rem),22rem)] rounded-xl border border-slate-600 bg-slate-800 p-3 shadow-2xl sm:left-auto sm:right-0">
+              <p className="mb-2 text-[11px] font-semibold text-slate-400">Rappels via WhatsApp (optionnel)</p>
+              <label className="block text-[11px] font-medium text-slate-500">
+                Votre numéro (indicatif pays, sans +)
+              </label>
+              <input
+                type="tel"
+                inputMode="tel"
+                autoComplete="tel"
+                placeholder="ex. 33612345678"
+                value={whatsappPhone}
+                onChange={e => onWhatsappPhoneChange(e.target.value)}
+                className="mt-1 w-full rounded-xl border border-slate-600 bg-slate-900 px-3 py-2 text-sm text-slate-200 placeholder-slate-600 focus:border-emerald-500/80 focus:outline-none"
+              />
+              {whatsappPhone && !normalizeWhatsAppPhone(whatsappPhone) ? (
+                <p className="mt-1 text-[11px] text-amber-500/90">10 à 15 chiffres attendus (indicatif inclus).</p>
+              ) : null}
+              {whatsappPhone && normalizeWhatsAppPhone(whatsappPhone) ? (
+                <p className="mt-1 text-[11px] text-emerald-500/90">
+                  Numéro reconnu — au rappel, un message sera prêt dans WhatsApp.
+                </p>
+              ) : null}
+              <label className="mt-2 flex cursor-pointer items-start gap-2">
+                <input
+                  type="checkbox"
+                  checked={whatsappAutoOpen}
+                  onChange={e => onWhatsappAutoOpenChange(e.target.checked)}
+                  className="mt-0.5 rounded border-slate-600"
+                />
+                <span className="text-[11px] leading-snug text-slate-500">
+                  Ouvrir WhatsApp automatiquement au rappel si les notifications sont désactivées (peut être bloqué par
+                  le navigateur).
+                </span>
+              </label>
+              <p className="mt-2 text-[10px] leading-relaxed text-slate-600">
+                Une conversation s’ouvre avec le texte du rappel. Les notifications du navigateur, si activées,
+                ouvrent aussi WhatsApp.
+              </p>
+            </div>
+          </details>
+        ) : null}
+
         <button
           type="button"
           onClick={openAdd}
-          className="flex w-full shrink-0 touch-manipulation items-center justify-center gap-2 rounded-xl bg-indigo-500 px-4 py-3 text-sm font-medium text-white shadow-lg shadow-indigo-500/20 transition-all hover:bg-indigo-400 sm:ml-auto sm:w-auto sm:py-2"
+          className="flex shrink-0 touch-manipulation items-center justify-center gap-1.5 rounded-xl bg-indigo-500 px-3 py-1.5 text-xs font-medium text-white shadow-md shadow-indigo-500/20 transition-all hover:bg-indigo-400 sm:gap-2 sm:px-4 sm:text-sm"
         >
-          <IconPlus className="h-4 w-4" />
-          <span>Nouvelle idée</span>
+          <IconPlus className="h-4 w-4 shrink-0" />
+          <span className="hidden sm:inline">Nouvelle idée</span>
         </button>
       </div>
-
-      {showWhatsAppSection ? (
-      <details className={`flex-shrink-0 border-b border-slate-700/60 bg-slate-900/40 py-2 ${padSection}`}>
-        <summary className="cursor-pointer list-none text-xs text-slate-500 marker:content-none [&::-webkit-details-marker]:hidden">
-          <span className="text-slate-400 hover:text-slate-300">Rappels via WhatsApp</span>
-          <span className="ml-2 text-[10px] text-slate-600">(optionnel)</span>
-        </summary>
-        <div className="mt-3 space-y-2 pb-1">
-          <label className="block text-[11px] font-medium text-slate-500">
-            Votre numéro (indicatif pays, sans +)
-          </label>
-          <input
-            type="tel"
-            inputMode="tel"
-            autoComplete="tel"
-            placeholder="ex. 33612345678"
-            value={whatsappPhone}
-            onChange={e => onWhatsappPhoneChange(e.target.value)}
-            className="w-full max-w-xs rounded-xl border border-slate-600 bg-slate-800 px-3 py-2 text-sm text-slate-200 placeholder-slate-600 focus:border-emerald-500/80 focus:outline-none"
-          />
-          {whatsappPhone && !normalizeWhatsAppPhone(whatsappPhone) ? (
-            <p className="text-[11px] text-amber-500/90">10 à 15 chiffres attendus (indicatif inclus).</p>
-          ) : null}
-          {whatsappPhone && normalizeWhatsAppPhone(whatsappPhone) ? (
-            <p className="text-[11px] text-emerald-500/90">Numéro reconnu — au rappel, un message sera prêt dans WhatsApp.</p>
-          ) : null}
-          <label className="flex cursor-pointer items-start gap-2 pt-1">
-            <input
-              type="checkbox"
-              checked={whatsappAutoOpen}
-              onChange={e => onWhatsappAutoOpenChange(e.target.checked)}
-              className="mt-0.5 rounded border-slate-600"
-            />
-            <span className="text-[11px] leading-snug text-slate-500">
-              Si les notifications du navigateur sont désactivées, ouvrir WhatsApp automatiquement au moment du rappel
-              (peut être bloqué par le navigateur).
-            </span>
-          </label>
-          <p className="text-[10px] leading-relaxed text-slate-600">
-            WhatsApp ne permet pas d’envoyer une vraie notification push depuis Neurix sans API Business. Ici, une
-            conversation s’ouvre avec le texte du rappel — en général vers votre propre numéro pour vous l’envoyer.
-            Avec les notifications activées, un clic sur la notification ouvre aussi WhatsApp.
-          </p>
-        </div>
-      </details>
-      ) : null}
-
-      {upcomingReminders.length > 0 && (
-        <div className={`flex-shrink-0 border-b border-slate-700/80 bg-slate-800/30 py-3 ${padSection}`}>
-          <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-slate-500">
-            Prochains rappels
-          </p>
-          <div className="flex gap-2 overflow-x-auto pb-0.5 [-webkit-overflow-scrolling:touch]">
-            {upcomingReminders.map(n => (
-              <button
-                key={n.id}
-                type="button"
-                onClick={() => openEdit(n)}
-                className="flex-shrink-0 touch-manipulation rounded-xl border border-amber-500/25 bg-amber-500/10 px-3 py-2 text-left transition-colors hover:bg-amber-500/15"
-              >
-                <span className="flex max-w-[14rem] items-center gap-1.5 truncate text-xs font-medium text-amber-100">
-                  <IconBell className="h-3.5 w-3.5 shrink-0 text-amber-300/90" />
-                  {n.title}
-                </span>
-                <span className="mt-0.5 block text-[10px] text-amber-200/80">
-                  {formatReminderRelative(n.remindAt!)}
-                </span>
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
 
       {/* Content */}
       <div className={`flex-1 overflow-y-auto ${padContent}`}>
@@ -387,6 +411,8 @@ export default function NotesSection({
                     <NoteCard
                       key={note.id}
                       note={note}
+                      currentUserId={currentUser.id}
+                      collaborators={collaborators}
                       expanded={expandedId === note.id}
                       onToggleExpand={() => setExpandedId(expandedId === note.id ? null : note.id)}
                       onEdit={() => openEdit(note)}
@@ -409,6 +435,8 @@ export default function NotesSection({
                     <NoteCard
                       key={note.id}
                       note={note}
+                      currentUserId={currentUser.id}
+                      collaborators={collaborators}
                       expanded={expandedId === note.id}
                       onToggleExpand={() => setExpandedId(expandedId === note.id ? null : note.id)}
                       onEdit={() => openEdit(note)}
@@ -550,6 +578,57 @@ export default function NotesSection({
                 )}
               </div>
 
+              {!isGuest && (editingNote ? isNoteOwner(editingNote, currentUser.id) : true) ? (
+                <div className="rounded-xl border border-slate-600/80 bg-slate-800/50 p-3">
+                  <label className="mb-2 block text-xs font-semibold uppercase tracking-wider text-slate-400">
+                    Partager en lecture
+                  </label>
+                  <p className="mb-2 text-[11px] leading-snug text-slate-500">
+                    Les collaborateurs cochés voient cette idée dans leurs notes (sans pouvoir la modifier).
+                  </p>
+                  {collaborators.filter(c => c.id !== currentUser.id).length === 0 ? (
+                    <p className="text-[11px] text-slate-600">
+                      Ajoutez des collaborateurs (menu Collaborateurs) pour pouvoir partager.
+                    </p>
+                  ) : (
+                    <div className="max-h-36 space-y-2 overflow-y-auto pr-1">
+                      {collaborators
+                        .filter(c => c.id !== currentUser.id)
+                        .map(c => (
+                          <label
+                            key={c.id}
+                            className="flex cursor-pointer items-center gap-2.5 rounded-lg border border-transparent px-1 py-1 hover:border-slate-600/60 hover:bg-slate-700/30"
+                          >
+                            <input
+                              type="checkbox"
+                              checked={form.sharedWith.includes(c.id)}
+                              onChange={e => {
+                                setForm(f => ({
+                                  ...f,
+                                  sharedWith: e.target.checked
+                                    ? [...f.sharedWith, c.id]
+                                    : f.sharedWith.filter(id => id !== c.id),
+                                }));
+                              }}
+                              className="rounded border-slate-600"
+                            />
+                            <span
+                              className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-[10px] font-bold text-white"
+                              style={{ backgroundColor: c.color }}
+                            >
+                              {c.initials}
+                            </span>
+                            <span className="min-w-0 flex-1 text-xs text-slate-200">
+                              <span className="block truncate font-medium">{c.name}</span>
+                              <span className="block truncate text-[10px] text-slate-500">{c.email}</span>
+                            </span>
+                          </label>
+                        ))}
+                    </div>
+                  )}
+                </div>
+              ) : null}
+
               {/* Rappel */}
               <div className="rounded-xl border border-slate-600/80 bg-slate-800/50 p-3">
                 <label className="mb-2 block text-xs font-semibold uppercase tracking-wider text-slate-400">
@@ -630,6 +709,8 @@ export default function NotesSection({
 /* ── Note Card ── */
 interface NoteCardProps {
   note: Note;
+  currentUserId: string;
+  collaborators: User[];
   expanded: boolean;
   onToggleExpand: () => void;
   onEdit: () => void;
@@ -637,11 +718,24 @@ interface NoteCardProps {
   onTogglePin: () => void;
 }
 
-function NoteCard({ note, expanded, onToggleExpand, onEdit, onDelete, onTogglePin }: NoteCardProps) {
+function NoteCard({
+  note,
+  currentUserId,
+  collaborators,
+  expanded,
+  onToggleExpand,
+  onEdit,
+  onDelete,
+  onTogglePin,
+}: NoteCardProps) {
   const [hover, setHover] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const preview = note.content.length > 160 ? note.content.slice(0, 160) + '…' : note.content;
   const needsExpand = note.content.length > 160;
+  const isOwner = isNoteOwner(note, currentUserId);
+  const sharedNames = (note.sharedWith ?? [])
+    .map(id => collaborators.find(u => u.id === id)?.name ?? id)
+    .filter(Boolean);
 
   return (
     <div
@@ -653,10 +747,30 @@ function NoteCard({ note, expanded, onToggleExpand, onEdit, onDelete, onTogglePi
       onMouseEnter={() => setHover(true)}
       onMouseLeave={() => { setHover(false); setConfirmDelete(false); }}
     >
+      {!isOwner && note.ownerName ? (
+        <p className="mb-2 flex items-center gap-1.5 text-[10px] font-medium text-indigo-300/95">
+          <span
+            className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[9px] font-bold text-white"
+            style={{ backgroundColor: note.ownerColor ?? '#6366f1' }}
+          >
+            {note.ownerInitials ?? '?'}
+          </span>
+          Idée partagée par {note.ownerName}
+        </p>
+      ) : null}
+      {isOwner && sharedNames.length > 0 ? (
+        <p className="mb-2 text-[10px] leading-snug text-slate-500">
+          <span className="font-semibold text-slate-400">Partagée avec</span> {sharedNames.join(', ')}
+        </p>
+      ) : null}
       {/* Card Header */}
       <div className="flex items-start justify-between gap-2 mb-3">
         <h4 className="font-semibold text-slate-100 text-sm leading-snug flex-1">{note.title}</h4>
-        <div className={`flex items-center gap-1 transition-opacity flex-shrink-0 ${hover ? 'opacity-100' : 'opacity-0'}`}>
+        <div
+          className={`flex flex-shrink-0 items-center gap-1 transition-opacity ${
+            isOwner ? (hover ? 'opacity-100' : 'opacity-0') : 'opacity-0 pointer-events-none'
+          }`}
+        >
           <button
             onClick={onTogglePin}
             className={`text-slate-500 hover:text-amber-400 transition-colors p-0.5 ${note.pinned ? 'text-amber-400' : ''}`}

@@ -30,6 +30,7 @@ model User {
   tasksCreated         Task[]        @relation("CreatedBy")
   teamContactsAsMember TeamContact[] @relation("TeamContactMember")
   teamContactsAdded    TeamContact[] @relation("TeamContactOwner")
+  noteSharesReceived   NoteShare[]   @relation("NoteShareWith")
 
   @@schema("agenda")
 }
@@ -62,10 +63,26 @@ model Note {
   /// Horodatage d’envoi réussi (évite les doublons)
   reminderEmailSentAt DateTime?
   userId              String?
-  user                User?     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user                User?       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  shares              NoteShare[]
 
   @@index([userId])
   @@index([remindAt])
+  @@schema("agenda")
+}
+
+/// Partage lecture d’une note avec un collaborateur (lien TeamContact propriétaire → membre).
+model NoteShare {
+  id        String   @id @default(cuid())
+  noteId    String
+  userId    String
+  createdAt DateTime @default(now())
+  note      Note     @relation(fields: [noteId], references: [id], onDelete: Cascade)
+  user      User     @relation("NoteShareWith", fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([noteId, userId])
+  @@index([noteId])
+  @@index([userId])
   @@schema("agenda")
 }
 
