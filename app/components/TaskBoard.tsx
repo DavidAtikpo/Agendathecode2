@@ -234,6 +234,9 @@ export default function TaskBoard({
   const inputFileRef = useRef<HTMLInputElement | null>(null);
   const inputVideoRef = useRef<HTMLInputElement | null>(null);
   const outputFileRef = useRef<HTMLInputElement | null>(null);
+  const editInputFileRef = useRef<HTMLInputElement | null>(null);
+  const editInputVideoRef = useRef<HTMLInputElement | null>(null);
+  const editOutputFileRef = useRef<HTMLInputElement | null>(null);
 
   const filteredTasks = useMemo(() => {
     if (assigneeFilter === 'all') return tasks;
@@ -333,15 +336,15 @@ export default function TaskBoard({
     onMove(selectedTask.id, status);
     setSelectedTask(t => (t ? { ...t, status } : null));
   };
-  const uploadAsset = async (kind: 'input' | 'output', file: File | null) => {
-    if (!selectedTask || !file || assetBusy) return;
+  const uploadAsset = async (taskId: string, kind: 'input' | 'output', file: File | null) => {
+    if (!taskId || !file || assetBusy) return;
     setAssetError(null);
     setAssetBusy(kind);
     try {
       const fd = new FormData();
       fd.append('kind', kind);
       fd.append('file', file);
-      const res = await fetch(`/api/tasks/${selectedTask.id}/assets`, {
+      const res = await fetch(`/api/tasks/${taskId}/assets`, {
         method: 'POST',
         body: fd,
         credentials: 'include',
@@ -351,7 +354,8 @@ export default function TaskBoard({
         throw new Error(payload?.error ?? 'Upload impossible');
       }
       const updated = payload as Task;
-      setSelectedTask(updated);
+      setSelectedTask(prev => (prev && prev.id === updated.id ? updated : prev));
+      setEditingTask(prev => (prev && prev.id === updated.id ? updated : prev));
       await onUpdate(updated.id, {});
     } catch (e: unknown) {
       setAssetError(e instanceof Error ? e.message : 'Erreur upload');
@@ -684,7 +688,7 @@ export default function TaskBoard({
                   className="hidden"
                   onChange={e => {
                     const file = e.target.files?.[0] ?? null;
-                    void uploadAsset('input', file);
+                    void uploadAsset(selectedTask.id, 'input', file);
                     e.currentTarget.value = '';
                   }}
                 />
@@ -694,7 +698,7 @@ export default function TaskBoard({
                   className="hidden"
                   onChange={e => {
                     const file = e.target.files?.[0] ?? null;
-                    void uploadAsset('input', file);
+                    void uploadAsset(selectedTask.id, 'input', file);
                     e.currentTarget.value = '';
                   }}
                 />
@@ -704,7 +708,7 @@ export default function TaskBoard({
                   className="hidden"
                   onChange={e => {
                     const file = e.target.files?.[0] ?? null;
-                    void uploadAsset('output', file);
+                    void uploadAsset(selectedTask.id, 'output', file);
                     e.currentTarget.value = '';
                   }}
                 />
@@ -972,6 +976,80 @@ export default function TaskBoard({
                     className="w-full bg-slate-700 border border-slate-600 rounded-xl px-3 py-2.5 text-sm text-slate-200 focus:outline-none focus:border-indigo-500 transition-colors"
                   />
                 </div>
+              </div>
+
+              <div className="space-y-2">
+                <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider">
+                  Vidéo et pièces jointes
+                </label>
+                {editingTask ? (
+                  <>
+                    <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+                      <button
+                        type="button"
+                        onClick={() => editInputVideoRef.current?.click()}
+                        disabled={assetBusy !== null || isGuestUser}
+                        className="rounded-lg border border-slate-700 bg-slate-900/60 px-3 py-2 text-xs font-medium text-slate-200 hover:border-slate-600 disabled:opacity-60"
+                      >
+                        Ajouter vidéo
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => editInputFileRef.current?.click()}
+                        disabled={assetBusy !== null || isGuestUser}
+                        className="rounded-lg border border-slate-700 bg-slate-900/60 px-3 py-2 text-xs font-medium text-slate-200 hover:border-slate-600 disabled:opacity-60"
+                      >
+                        Ajouter pièce jointe
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => editOutputFileRef.current?.click()}
+                        disabled={assetBusy !== null || isGuestUser}
+                        className="rounded-lg border border-emerald-700/50 bg-emerald-900/20 px-3 py-2 text-xs font-medium text-emerald-200 hover:border-emerald-500/60 disabled:opacity-60"
+                      >
+                        Livrer travail
+                      </button>
+                    </div>
+                    <input
+                      ref={editInputVideoRef}
+                      type="file"
+                      accept="video/*"
+                      capture="environment"
+                      className="hidden"
+                      onChange={e => {
+                        const file = e.target.files?.[0] ?? null;
+                        void uploadAsset(editingTask.id, 'input', file);
+                        e.currentTarget.value = '';
+                      }}
+                    />
+                    <input
+                      ref={editInputFileRef}
+                      type="file"
+                      className="hidden"
+                      onChange={e => {
+                        const file = e.target.files?.[0] ?? null;
+                        void uploadAsset(editingTask.id, 'input', file);
+                        e.currentTarget.value = '';
+                      }}
+                    />
+                    <input
+                      ref={editOutputFileRef}
+                      type="file"
+                      className="hidden"
+                      onChange={e => {
+                        const file = e.target.files?.[0] ?? null;
+                        void uploadAsset(editingTask.id, 'output', file);
+                        e.currentTarget.value = '';
+                      }}
+                    />
+                  </>
+                ) : (
+                  <p className="text-xs text-slate-500">
+                    Créez d’abord la tâche, puis cliquez dessus pour ajouter vidéo/pièce jointe/livrable.
+                  </p>
+                )}
+                {assetBusy && <p className="text-[11px] text-indigo-300">Upload en cours…</p>}
+                {assetError && <p className="text-[11px] text-red-300">{assetError}</p>}
               </div>
             </div>
 
