@@ -19,7 +19,7 @@ interface TaskBoardProps {
   tasks: Task[];
   users: User[];
   currentUser: User;
-  onAdd: (data: Omit<Task, 'id' | 'createdAt' | 'updatedAt' | 'createdBy'>) => void | Promise<void>;
+  onAdd: (data: Omit<Task, 'id' | 'createdAt' | 'updatedAt' | 'createdBy'>) => Task | void | Promise<Task | void>;
   onUpdate: (id: string, data: Partial<Task>) => void | Promise<void>;
   onDelete: (id: string) => void | Promise<void>;
   onMove: (id: string, status: TaskStatus) => void | Promise<void>;
@@ -142,6 +142,16 @@ function formatBytes(bytes: number | null | undefined) {
 
 type AssigneeFilter = 'all' | 'unassigned' | string;
 
+function normalizeAssigneeIds(value: unknown): string[] {
+  if (Array.isArray(value)) {
+    return value.map(v => String(v)).filter(Boolean);
+  }
+  if (typeof value === 'string' && value.trim() !== '') {
+    return [value];
+  }
+  return [];
+}
+
 function CollaboratorsIcon({ className }: { className?: string }) {
   return (
     <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
@@ -231,6 +241,9 @@ export default function TaskBoard({
   const [assigneeFilter, setAssigneeFilter] = useState<AssigneeFilter>('all');
   const [assetBusy, setAssetBusy] = useState<'input' | 'output' | null>(null);
   const [assetError, setAssetError] = useState<string | null>(null);
+  const [draftInputVideo, setDraftInputVideo] = useState<File | null>(null);
+  const [draftInputFile, setDraftInputFile] = useState<File | null>(null);
+  const [draftOutputFile, setDraftOutputFile] = useState<File | null>(null);
   const inputFileRef = useRef<HTMLInputElement | null>(null);
   const inputVideoRef = useRef<HTMLInputElement | null>(null);
   const outputFileRef = useRef<HTMLInputElement | null>(null);
@@ -241,9 +254,9 @@ export default function TaskBoard({
   const filteredTasks = useMemo(() => {
     if (assigneeFilter === 'all') return tasks;
     if (assigneeFilter === 'unassigned') {
-      return tasks.filter(t => !Array.isArray(t.assignedTo) || t.assignedTo.length === 0);
+      return tasks.filter(t => normalizeAssigneeIds(t.assignedTo).length === 0);
     }
-    return tasks.filter(t => t.assignedTo.includes(assigneeFilter));
+    return tasks.filter(t => normalizeAssigneeIds(t.assignedTo).includes(assigneeFilter));
   }, [tasks, assigneeFilter]);
 
   const tasksByStatus = useMemo(() => {
@@ -265,8 +278,7 @@ export default function TaskBoard({
 
   const getUserById = (id: string | null | undefined) => users.find(u => u.id === id);
   const getUsersByIds = (ids: string[] | null | undefined) => {
-    if (!Array.isArray(ids)) return [];
-    return ids.map(id => getUserById(id)).filter((u): u is User => Boolean(u));
+    return normalizeAssigneeIds(ids).map(id => getUserById(id)).filter((u): u is User => Boolean(u));
   };
 
   const openAdd = (status: TaskStatus = defaultStatus) => {
@@ -281,6 +293,9 @@ export default function TaskBoard({
       status,
       dueDate: '',
     });
+    setDraftInputVideo(null);
+    setDraftInputFile(null);
+    setDraftOutputFile(null);
     setShowModal(true);
   };
 
@@ -314,7 +329,7 @@ export default function TaskBoard({
           dueDate: form.dueDate || undefined,
         });
       } else {
-        await onAdd({
+        const created = await onAdd({
           title: form.title,
           description: form.description,
           assignedTo: form.assignedTo,
@@ -322,6 +337,20 @@ export default function TaskBoard({
           status: form.status,
           dueDate: form.dueDate || undefined,
         });
+        if (created?.id) {
+          if (draftInputVideo) {
+            await uploadAsset(created.id, 'input', draftInputVideo);
+          }
+          if (draftInputFile) {
+            await uploadAsset(created.id, 'input', draftInputFile);
+          }
+          if (draftOutputFile) {
+            await uploadAsset(created.id, 'output', draftOutputFile);
+          }
+          if (draftInputVideo || draftInputFile || draftOutputFile) {
+            await onUpdate(created.id, {});
+          }
+        }
       }
       setShowModal(false);
     } catch (e: unknown) {
@@ -884,6 +913,115 @@ export default function TaskBoard({
                 />
               </div>
 
+              <div className="space-y-2">
+                <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider">
+                  Vidéo et pièces jointes
+                </label>
+                {editingTask ? (
+                  <>
+                    <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+                      <button
+                        type="button"
+                        onClick={() => editInputVideoRef.current?.click()}
+                        disabled={assetBusy !== null || isGuestUser}
+                        className="rounded-lg border border-slate-700 bg-slate-900/60 px-3 py-2 text-xs font-medium text-slate-200 hover:border-slate-600 disabled:opacity-60"
+                      >
+                        Ajouter vidéo
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => editInputFileRef.current?.click()}
+                        disabled={assetBusy !== null || isGuestUser}
+                        className="rounded-lg border border-slate-700 bg-slate-900/60 px-3 py-2 text-xs font-medium text-slate-200 hover:border-slate-600 disabled:opacity-60"
+                      >
+                        Ajouter pièce jointe
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => editOutputFileRef.current?.click()}
+                        disabled={assetBusy !== null || isGuestUser}
+                        className="rounded-lg border border-emerald-700/50 bg-emerald-900/20 px-3 py-2 text-xs font-medium text-emerald-200 hover:border-emerald-500/60 disabled:opacity-60"
+                      >
+                        Livrer travail
+                      </button>
+                    </div>
+                    <input
+                      ref={editInputVideoRef}
+                      type="file"
+                      accept="video/*"
+                      capture="environment"
+                      className="hidden"
+                      onChange={e => {
+                        const file = e.target.files?.[0] ?? null;
+                        void uploadAsset(editingTask.id, 'input', file);
+                        e.currentTarget.value = '';
+                      }}
+                    />
+                    <input
+                      ref={editInputFileRef}
+                      type="file"
+                      className="hidden"
+                      onChange={e => {
+                        const file = e.target.files?.[0] ?? null;
+                        void uploadAsset(editingTask.id, 'input', file);
+                        e.currentTarget.value = '';
+                      }}
+                    />
+                    <input
+                      ref={editOutputFileRef}
+                      type="file"
+                      className="hidden"
+                      onChange={e => {
+                        const file = e.target.files?.[0] ?? null;
+                        void uploadAsset(editingTask.id, 'output', file);
+                        e.currentTarget.value = '';
+                      }}
+                    />
+                  </>
+                ) : (
+                  <div className="space-y-2">
+                    <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+                      <label className="cursor-pointer rounded-lg border border-slate-700 bg-slate-900/60 px-3 py-2 text-center text-xs font-medium text-slate-200 hover:border-slate-600">
+                        Ajouter vidéo
+                        <input
+                          type="file"
+                          accept="video/*"
+                          capture="environment"
+                          className="hidden"
+                          onChange={e => setDraftInputVideo(e.target.files?.[0] ?? null)}
+                        />
+                      </label>
+                      <label className="cursor-pointer rounded-lg border border-slate-700 bg-slate-900/60 px-3 py-2 text-center text-xs font-medium text-slate-200 hover:border-slate-600">
+                        Ajouter pièce jointe
+                        <input
+                          type="file"
+                          className="hidden"
+                          onChange={e => setDraftInputFile(e.target.files?.[0] ?? null)}
+                        />
+                      </label>
+                      <label className="cursor-pointer rounded-lg border border-emerald-700/50 bg-emerald-900/20 px-3 py-2 text-center text-xs font-medium text-emerald-200 hover:border-emerald-500/60">
+                        Livrer travail
+                        <input
+                          type="file"
+                          className="hidden"
+                          onChange={e => setDraftOutputFile(e.target.files?.[0] ?? null)}
+                        />
+                      </label>
+                    </div>
+                    <div className="space-y-1 text-[11px] text-slate-500">
+                      {draftInputVideo ? <p>Vidéo : {draftInputVideo.name}</p> : null}
+                      {draftInputFile ? <p>Pièce jointe : {draftInputFile.name}</p> : null}
+                      {draftOutputFile ? <p>Livrable : {draftOutputFile.name}</p> : null}
+                      {!draftInputVideo && !draftInputFile && !draftOutputFile ? (
+                        <p>Optionnel : les fichiers seront uploadés automatiquement après création.</p>
+                      ) : null}
+                    </div>
+                  </div>
+                )}
+                {assetBusy && <p className="text-[11px] text-indigo-300">Upload en cours…</p>}
+                {assetError && <p className="text-[11px] text-red-300">{assetError}</p>}
+              </div>
+
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <div>
                   <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">
@@ -978,79 +1116,6 @@ export default function TaskBoard({
                 </div>
               </div>
 
-              <div className="space-y-2">
-                <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider">
-                  Vidéo et pièces jointes
-                </label>
-                {editingTask ? (
-                  <>
-                    <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
-                      <button
-                        type="button"
-                        onClick={() => editInputVideoRef.current?.click()}
-                        disabled={assetBusy !== null || isGuestUser}
-                        className="rounded-lg border border-slate-700 bg-slate-900/60 px-3 py-2 text-xs font-medium text-slate-200 hover:border-slate-600 disabled:opacity-60"
-                      >
-                        Ajouter vidéo
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => editInputFileRef.current?.click()}
-                        disabled={assetBusy !== null || isGuestUser}
-                        className="rounded-lg border border-slate-700 bg-slate-900/60 px-3 py-2 text-xs font-medium text-slate-200 hover:border-slate-600 disabled:opacity-60"
-                      >
-                        Ajouter pièce jointe
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => editOutputFileRef.current?.click()}
-                        disabled={assetBusy !== null || isGuestUser}
-                        className="rounded-lg border border-emerald-700/50 bg-emerald-900/20 px-3 py-2 text-xs font-medium text-emerald-200 hover:border-emerald-500/60 disabled:opacity-60"
-                      >
-                        Livrer travail
-                      </button>
-                    </div>
-                    <input
-                      ref={editInputVideoRef}
-                      type="file"
-                      accept="video/*"
-                      capture="environment"
-                      className="hidden"
-                      onChange={e => {
-                        const file = e.target.files?.[0] ?? null;
-                        void uploadAsset(editingTask.id, 'input', file);
-                        e.currentTarget.value = '';
-                      }}
-                    />
-                    <input
-                      ref={editInputFileRef}
-                      type="file"
-                      className="hidden"
-                      onChange={e => {
-                        const file = e.target.files?.[0] ?? null;
-                        void uploadAsset(editingTask.id, 'input', file);
-                        e.currentTarget.value = '';
-                      }}
-                    />
-                    <input
-                      ref={editOutputFileRef}
-                      type="file"
-                      className="hidden"
-                      onChange={e => {
-                        const file = e.target.files?.[0] ?? null;
-                        void uploadAsset(editingTask.id, 'output', file);
-                        e.currentTarget.value = '';
-                      }}
-                    />
-                  </>
-                ) : (
-                  <p className="text-xs text-slate-500">
-                    Créez d’abord la tâche, puis cliquez dessus pour ajouter vidéo/pièce jointe/livrable.
-                  </p>
-                )}
-                {assetBusy && <p className="text-[11px] text-indigo-300">Upload en cours…</p>}
-                {assetError && <p className="text-[11px] text-red-300">{assetError}</p>}
-              </div>
             </div>
 
             {submitError && (

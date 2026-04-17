@@ -873,7 +873,7 @@ export default function HomePage() {
           updatedAt: now,
         };
         setTasks(prev => [task, ...prev]);
-        return;
+        return task;
       }
       const res = await fetch('/api/tasks', {
         method: 'POST',
@@ -894,7 +894,9 @@ export default function HomePage() {
             : `Impossible de créer la tâche (${res.status})`;
         throw new Error(msg);
       }
-      setTasks(prev => [payload as Task, ...prev]);
+      const created = payload as Task;
+      setTasks(prev => [created, ...prev]);
+      return created;
     },
     [isGuest]
   );
