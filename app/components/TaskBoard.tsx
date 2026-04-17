@@ -70,6 +70,15 @@ const COLUMNS: {
     border: 'border-amber-500/30',
   },
   {
+    id: 'testing',
+    label: 'En cour de test',
+    Icon: IconSearch,
+    color: 'text-cyan-300',
+    dimColor: 'text-cyan-400/60',
+    bg: 'bg-cyan-500/10',
+    border: 'border-cyan-500/30',
+  },
+  {
     id: 'review',
     label: 'Révision',
     Icon: IconSearch,
@@ -176,6 +185,7 @@ export default function TaskBoard({
       todo: [],
       urgent: [],
       doing: [],
+      testing: [],
       done: [],
       review: [],
     };

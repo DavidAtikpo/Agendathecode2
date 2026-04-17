@@ -111,6 +111,7 @@ enum TaskStatus {
   /// Bugs et tâches à traiter immédiatement (hors file normale).
   urgent
   doing
+  testing
   done
   review
 

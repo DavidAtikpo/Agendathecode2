@@ -16,7 +16,7 @@ export interface User {
   hasPasswordLogin?: boolean;
 }
 
-export type TaskStatus = 'todo' | 'urgent' | 'doing' | 'done' | 'review';
+export type TaskStatus = 'todo' | 'urgent' | 'doing' | 'testing' | 'done' | 'review';
 export type TaskPriority = 'low' | 'medium' | 'high' | 'urgent';
 
 export interface Note {
