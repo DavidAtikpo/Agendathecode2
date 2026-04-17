@@ -46,7 +46,7 @@ export interface Task {
   title: string;
   description: string;
   status: TaskStatus;
-  assignedTo: string | null;
+  assignedTo: string[];
   createdBy: string;
   priority: TaskPriority;
   createdAt: string;
@@ -54,6 +54,18 @@ export interface Task {
   dueDate?: string;
   /** ISO — présent quand la tâche a été assignée (badge pour l’assigné). */
   assigneeNotifiedAt?: string | null;
+  assets?: TaskAsset[];
+}
+
+export interface TaskAsset {
+  id: string;
+  kind: 'input' | 'output';
+  mediaType: string;
+  originalName: string;
+  bytes?: number | null;
+  url: string;
+  createdAt: string;
+  uploaderId: string;
 }
 
 export interface ChatMessage {

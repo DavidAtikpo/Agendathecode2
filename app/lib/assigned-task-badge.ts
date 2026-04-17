@@ -10,10 +10,10 @@ export function countUnreadAssignedTasks(
   const raw = prefs.assignedInboxLastSeenAt?.trim();
   const lastMs = raw ? new Date(raw).getTime() : 0;
   if (Number.isNaN(lastMs)) {
-    return tasks.filter(t => t.assignedTo === userId && Boolean(t.assigneeNotifiedAt)).length;
+    return tasks.filter(t => t.assignedTo.includes(userId) && Boolean(t.assigneeNotifiedAt)).length;
   }
   return tasks.filter(t => {
-    if (t.assignedTo !== userId || !t.assigneeNotifiedAt) return false;
+    if (!t.assignedTo.includes(userId) || !t.assigneeNotifiedAt) return false;
     const ping = new Date(t.assigneeNotifiedAt).getTime();
     return !Number.isNaN(ping) && ping > lastMs;
   }).length;

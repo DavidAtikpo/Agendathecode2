@@ -26,7 +26,8 @@ model User {
   /// Préférences UI / produit (JSON — voir `user-preferences.ts` côté app)
   preferences          Json             @default("{}")
   notes                Note[]
-  tasksAssigned        Task[]        @relation("AssignedTo")
+  taskAssignments      TaskAssignment[]
+  taskAssetsUploaded   TaskAsset[]
   tasksCreated         Task[]        @relation("CreatedBy")
   teamContactsAsMember TeamContact[] @relation("TeamContactMember")
   teamContactsAdded    TeamContact[] @relation("TeamContactOwner")
@@ -95,14 +96,50 @@ model Task {
   dueDate      DateTime?
   createdAt    DateTime     @default(now())
   updatedAt    DateTime     @updatedAt
-  assignedToId String?
   createdById  String
   /// Horodatage « ping » assignation : l’assigné voit un badge jusqu’à ouverture de la vue Tâches.
   assigneeNotifiedAt DateTime?
-  assignedTo         User?        @relation("AssignedTo", fields: [assignedToId], references: [id])
-  createdBy          User         @relation("CreatedBy", fields: [createdById], references: [id])
+  assignees          TaskAssignment[]
+  assets             TaskAsset[]
+  createdBy          User             @relation("CreatedBy", fields: [createdById], references: [id])
 
-  @@index([assignedToId])
+  @@schema("agenda")
+}
+
+model TaskAsset {
+  id           String        @id @default(cuid())
+  taskId       String
+  uploaderId   String
+  kind         TaskAssetKind
+  mediaType    String
+  originalName String
+  bytes        Int?
+  url          String
+  publicId     String
+  createdAt    DateTime      @default(now())
+  task         Task          @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  uploader     User          @relation(fields: [uploaderId], references: [id], onDelete: Cascade)
+
+  @@index([taskId, kind, createdAt])
+  @@schema("agenda")
+}
+
+enum TaskAssetKind {
+  input
+  output
+
+  @@schema("agenda")
+}
+
+model TaskAssignment {
+  taskId      String
+  userId      String
+  assignedAt  DateTime @default(now())
+  task        Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([taskId, userId])
+  @@index([userId])
   @@schema("agenda")
 }
 

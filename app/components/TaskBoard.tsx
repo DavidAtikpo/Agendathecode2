@@ -1,7 +1,7 @@
 'use client';
 
-import { useState, useMemo, type ComponentType } from 'react';
-import { Task, User, TaskStatus, TaskPriority } from '../types';
+import { useState, useMemo, useRef, type ComponentType } from 'react';
+import { Task, TaskAsset, User, TaskStatus, TaskPriority } from '../types';
 import {
   IconAlertTriangle,
   IconBolt,
@@ -112,7 +112,7 @@ const PRIORITY_CONFIG: Record<TaskPriority, { label: string; cls: string; dot: s
 interface FormData {
   title: string;
   description: string;
-  assignedTo: string;
+  assignedTo: string[];
   priority: TaskPriority;
   status: TaskStatus;
   dueDate: string;
@@ -127,6 +127,19 @@ function isOverdue(dueDate: string | undefined, status: TaskStatus) {
   return new Date(dueDate) < new Date();
 }
 
+function formatBytes(bytes: number | null | undefined) {
+  if (!bytes || bytes <= 0) return '—';
+  const units = ['B', 'KB', 'MB', 'GB'];
+  let value = bytes;
+  let idx = 0;
+  while (value >= 1024 && idx < units.length - 1) {
+    value /= 1024;
+    idx += 1;
+  }
+  const fixed = value >= 100 || idx === 0 ? 0 : 1;
+  return `${value.toFixed(fixed)} ${units[idx]}`;
+}
+
 type AssigneeFilter = 'all' | 'unassigned' | string;
 
 function CollaboratorsIcon({ className }: { className?: string }) {
@@ -139,6 +152,51 @@ function CollaboratorsIcon({ className }: { className?: string }) {
         d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"
       />
     </svg>
+  );
+}
+
+function AssetList({
+  title,
+  emptyLabel,
+  assets,
+}: {
+  title: string;
+  emptyLabel: string;
+  assets: TaskAsset[];
+}) {
+  return (
+    <div>
+      <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wider text-slate-500">{title}</p>
+      {assets.length === 0 ? (
+        <p className="text-xs text-slate-600">{emptyLabel}</p>
+      ) : (
+        <div className="space-y-1.5">
+          {assets.map(asset => {
+            const isVideo = asset.mediaType.startsWith('video/');
+            return (
+              <div key={asset.id} className="rounded-lg border border-slate-700 bg-slate-900/40 px-2.5 py-2">
+                <div className="flex items-start gap-2">
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-xs font-medium text-slate-200">{asset.originalName}</p>
+                    <p className="text-[11px] text-slate-500">
+                      {isVideo ? 'Vidéo' : 'Fichier'} · {formatBytes(asset.bytes)} · {formatDate(asset.createdAt)}
+                    </p>
+                  </div>
+                  <a
+                    href={asset.url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="rounded-md border border-slate-600 px-2 py-1 text-[11px] text-slate-300 hover:border-slate-500 hover:text-slate-100"
+                  >
+                    {isVideo ? 'Regarder' : 'Télécharger'}
+                  </a>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -165,19 +223,24 @@ export default function TaskBoard({
   const [form, setForm] = useState<FormData>({
     title: '',
     description: '',
-    assignedTo: currentUser.id,
+    assignedTo: [currentUser.id],
     priority: 'medium',
     status: 'todo',
     dueDate: '',
   });
   const [assigneeFilter, setAssigneeFilter] = useState<AssigneeFilter>('all');
+  const [assetBusy, setAssetBusy] = useState<'input' | 'output' | null>(null);
+  const [assetError, setAssetError] = useState<string | null>(null);
+  const inputFileRef = useRef<HTMLInputElement | null>(null);
+  const inputVideoRef = useRef<HTMLInputElement | null>(null);
+  const outputFileRef = useRef<HTMLInputElement | null>(null);
 
   const filteredTasks = useMemo(() => {
     if (assigneeFilter === 'all') return tasks;
     if (assigneeFilter === 'unassigned') {
-      return tasks.filter(t => t.assignedTo == null || t.assignedTo === '');
+      return tasks.filter(t => !Array.isArray(t.assignedTo) || t.assignedTo.length === 0);
     }
-    return tasks.filter(t => t.assignedTo === assigneeFilter);
+    return tasks.filter(t => t.assignedTo.includes(assigneeFilter));
   }, [tasks, assigneeFilter]);
 
   const tasksByStatus = useMemo(() => {
@@ -198,6 +261,10 @@ export default function TaskBoard({
   }, [filteredTasks]);
 
   const getUserById = (id: string | null | undefined) => users.find(u => u.id === id);
+  const getUsersByIds = (ids: string[] | null | undefined) => {
+    if (!Array.isArray(ids)) return [];
+    return ids.map(id => getUserById(id)).filter((u): u is User => Boolean(u));
+  };
 
   const openAdd = (status: TaskStatus = defaultStatus) => {
     setSubmitError(null);
@@ -206,7 +273,7 @@ export default function TaskBoard({
     setForm({
       title: '',
       description: '',
-      assignedTo: currentUser.id,
+      assignedTo: [currentUser.id],
       priority: 'medium',
       status,
       dueDate: '',
@@ -220,7 +287,7 @@ export default function TaskBoard({
     setForm({
       title: task.title,
       description: task.description,
-      assignedTo: task.assignedTo || '',
+      assignedTo: Array.isArray(task.assignedTo) ? task.assignedTo.slice(0, 2) : [],
       priority: task.priority,
       status: task.status,
       dueDate: task.dueDate || '',
@@ -238,7 +305,7 @@ export default function TaskBoard({
         await onUpdate(editingTask.id, {
           title: form.title,
           description: form.description,
-          assignedTo: form.assignedTo || null,
+          assignedTo: form.assignedTo,
           priority: form.priority,
           status: form.status,
           dueDate: form.dueDate || undefined,
@@ -247,7 +314,7 @@ export default function TaskBoard({
         await onAdd({
           title: form.title,
           description: form.description,
-          assignedTo: form.assignedTo || null,
+          assignedTo: form.assignedTo,
           priority: form.priority,
           status: form.status,
           dueDate: form.dueDate || undefined,
@@ -266,14 +333,54 @@ export default function TaskBoard({
     onMove(selectedTask.id, status);
     setSelectedTask(t => (t ? { ...t, status } : null));
   };
+  const uploadAsset = async (kind: 'input' | 'output', file: File | null) => {
+    if (!selectedTask || !file || assetBusy) return;
+    setAssetError(null);
+    setAssetBusy(kind);
+    try {
+      const fd = new FormData();
+      fd.append('kind', kind);
+      fd.append('file', file);
+      const res = await fetch(`/api/tasks/${selectedTask.id}/assets`, {
+        method: 'POST',
+        body: fd,
+        credentials: 'include',
+      });
+      const payload = await res.json();
+      if (!res.ok) {
+        throw new Error(payload?.error ?? 'Upload impossible');
+      }
+      const updated = payload as Task;
+      setSelectedTask(updated);
+      await onUpdate(updated.id, {});
+    } catch (e: unknown) {
+      setAssetError(e instanceof Error ? e.message : 'Erreur upload');
+    } finally {
+      setAssetBusy(null);
+    }
+  };
+  const toggleAssignee = (userId: string) => {
+    setForm(prev => {
+      const exists = prev.assignedTo.includes(userId);
+      if (exists) {
+        return { ...prev, assignedTo: prev.assignedTo.filter(id => id !== userId) };
+      }
+      if (prev.assignedTo.length >= 2) return prev;
+      return { ...prev, assignedTo: [...prev.assignedTo, userId] };
+    });
+  };
 
   const teamBadge = collaboratorTeamSize > 1;
+  const isGuestUser = currentUser.id === '__guest__';
+  const selectedAssets = selectedTask?.assets ?? [];
+  const inputAssets = selectedAssets.filter(a => a.kind === 'input');
+  const outputAssets = selectedAssets.filter(a => a.kind === 'output');
 
   return (
     <div className="h-full flex flex-col">
       {/* Une seule barre : titre + filtres + collaborateurs (desktop) + nouvelle tâche */}
       <div
-        className={`flex min-h-[2.75rem] flex-shrink-0 items-center gap-2 border-b border-slate-700 ${padHeader}`}
+        className={`flex min-h-[2.75rem] flex-shrink-0 flex-wrap items-center gap-2 border-b border-slate-700 ${padHeader}`}
       >
         <div className="flex shrink-0 flex-col leading-tight">
           <h2 className="text-sm font-bold text-white sm:text-base">Tâches</h2>
@@ -286,7 +393,7 @@ export default function TaskBoard({
         </div>
 
         <div
-          className="flex min-h-0 min-w-0 flex-1 items-center overflow-hidden"
+          className="order-3 flex min-h-0 min-w-0 w-full flex-1 items-center overflow-hidden sm:order-none sm:w-auto"
         >
           <div
             className="flex w-full min-w-0 items-center gap-1.5 overflow-x-auto py-0.5 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
@@ -385,17 +492,17 @@ export default function TaskBoard({
           className="flex shrink-0 touch-manipulation items-center justify-center gap-1.5 rounded-xl bg-indigo-500 px-3 py-1.5 text-xs font-medium text-white shadow-md shadow-indigo-500/20 transition-all hover:bg-indigo-400 sm:gap-2 sm:px-4 sm:text-sm"
         >
           <IconPlus className="h-4 w-4 shrink-0" />
-          <span className="hidden sm:inline">Nouvelle tâche</span>
+          <span>Nouvelle tâche</span>
         </button>
       </div>
 
       {/* Kanban */}
       <div className={`flex-1 overflow-x-auto overscroll-x-contain ${padMain}`}>
-        <div className="flex h-full min-w-max gap-4 pb-2 sm:gap-5">
+        <div className="flex h-full min-w-max gap-3 pb-1 sm:gap-5 sm:pb-2">
           {COLUMNS.map(col => {
             const colTasks = tasksByStatus[col.id];
             return (
-              <div key={col.id} className="flex w-[min(17.5rem,calc(100vw-3rem))] shrink-0 flex-col gap-3 sm:w-72">
+              <div key={col.id} className="flex w-[min(17.5rem,calc(100vw-2rem))] shrink-0 flex-col gap-2.5 sm:w-72 sm:gap-3">
                 {/* Column Header */}
                 <div className={`flex items-center justify-between gap-2 px-3 py-2.5 rounded-xl ${col.bg} border ${col.border}`}>
                   <div className="min-w-0 flex-1">
@@ -420,14 +527,14 @@ export default function TaskBoard({
                 </div>
 
                 {/* Task Cards */}
-                <div className="flex-1 space-y-3 overflow-y-auto">
+                <div className="flex-1 space-y-2.5 overflow-y-auto sm:space-y-3">
                   {colTasks.length === 0 && (
                     <div className="border-2 border-dashed border-slate-700/60 rounded-xl p-5 text-center">
                       <p className="text-slate-600 text-xs">Aucune tâche</p>
                     </div>
                   )}
                   {colTasks.map(task => {
-                    const assignedUser = getUserById(task.assignedTo);
+                    const assignedUsers = getUsersByIds(task.assignedTo);
                     const prio = PRIORITY_CONFIG[task.priority] ?? PRIORITY_CONFIG.medium;
                     const overdue = isOverdue(task.dueDate, task.status);
                     const isSelected = selectedTask?.id === task.id;
@@ -436,7 +543,7 @@ export default function TaskBoard({
                       <div
                         key={task.id}
                         onClick={() => setSelectedTask(isSelected ? null : task)}
-                        className={`bg-slate-800 border rounded-xl p-3.5 cursor-pointer transition-all ${
+                        className={`bg-slate-800 border rounded-xl p-3 cursor-pointer transition-all sm:p-3.5 ${
                           isSelected
                             ? 'border-indigo-500 shadow-lg shadow-indigo-500/10'
                             : 'border-slate-700 hover:border-slate-600 hover:shadow-md'
@@ -452,7 +559,7 @@ export default function TaskBoard({
                           <p className="text-xs text-slate-500 mb-3 line-clamp-2 pl-4">{task.description}</p>
                         )}
 
-                        <div className="flex items-center gap-2 pl-4">
+                        <div className="flex flex-wrap items-center gap-2 pl-4">
                           <span className={`text-xs px-1.5 py-0.5 rounded-full font-medium ${prio.cls}`}>
                             {prio.label}
                           </span>
@@ -467,13 +574,18 @@ export default function TaskBoard({
                                 {formatDate(task.dueDate)}
                               </span>
                             )}
-                            {assignedUser && (
-                              <div
-                                className="w-6 h-6 rounded-full flex items-center justify-center text-white text-xs font-semibold shadow-sm"
-                                style={{ backgroundColor: assignedUser.color }}
-                                title={assignedUser.name}
-                              >
-                                {assignedUser.initials}
+                            {assignedUsers.length > 0 && (
+                              <div className="flex items-center -space-x-1.5">
+                                {assignedUsers.slice(0, 2).map(user => (
+                                  <div
+                                    key={user.id}
+                                    className="w-6 h-6 rounded-full ring-2 ring-slate-800 flex items-center justify-center text-white text-[10px] font-semibold shadow-sm"
+                                    style={{ backgroundColor: user.color }}
+                                    title={user.name}
+                                  >
+                                    {user.initials}
+                                  </div>
+                                ))}
                               </div>
                             )}
                           </div>
@@ -514,10 +626,89 @@ export default function TaskBoard({
               </button>
             </div>
 
-            <div className="p-5 space-y-4">
+            <div className="p-4 space-y-4 sm:p-5">
               {selectedTask.description && (
                 <p className="text-slate-400 text-sm leading-relaxed">{selectedTask.description}</p>
               )}
+
+              <div className="space-y-3">
+                <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Fichiers et vidéos</p>
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+                  <button
+                    type="button"
+                    onClick={() => inputVideoRef.current?.click()}
+                    disabled={assetBusy !== null || isGuestUser}
+                    className="rounded-lg border border-slate-700 bg-slate-900/60 px-3 py-2 text-xs font-medium text-slate-200 hover:border-slate-600 disabled:opacity-60"
+                  >
+                    Ajouter vidéo
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => inputFileRef.current?.click()}
+                    disabled={assetBusy !== null || isGuestUser}
+                    className="rounded-lg border border-slate-700 bg-slate-900/60 px-3 py-2 text-xs font-medium text-slate-200 hover:border-slate-600 disabled:opacity-60"
+                  >
+                    Ajouter pièce jointe
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => outputFileRef.current?.click()}
+                    disabled={assetBusy !== null || isGuestUser}
+                    className="rounded-lg border border-emerald-700/50 bg-emerald-900/20 px-3 py-2 text-xs font-medium text-emerald-200 hover:border-emerald-500/60 disabled:opacity-60"
+                  >
+                    Livrer travail (terminé)
+                  </button>
+                </div>
+                {isGuestUser ? (
+                  <p className="text-[11px] text-slate-500">Connectez-vous pour ajouter des vidéos et pièces jointes.</p>
+                ) : null}
+                {assetBusy && <p className="text-[11px] text-indigo-300">Upload en cours…</p>}
+                {assetError && <p className="text-[11px] text-red-300">{assetError}</p>}
+
+                <AssetList
+                  title="Brief / pièces de référence"
+                  emptyLabel="Aucun fichier de référence"
+                  assets={inputAssets}
+                />
+                <AssetList
+                  title="Travail livré (tâche terminée)"
+                  emptyLabel="Aucun livrable pour le moment"
+                  assets={outputAssets}
+                />
+
+                <input
+                  ref={inputVideoRef}
+                  type="file"
+                  accept="video/*"
+                  capture="environment"
+                  className="hidden"
+                  onChange={e => {
+                    const file = e.target.files?.[0] ?? null;
+                    void uploadAsset('input', file);
+                    e.currentTarget.value = '';
+                  }}
+                />
+                <input
+                  ref={inputFileRef}
+                  type="file"
+                  className="hidden"
+                  onChange={e => {
+                    const file = e.target.files?.[0] ?? null;
+                    void uploadAsset('input', file);
+                    e.currentTarget.value = '';
+                  }}
+                />
+                <input
+                  ref={outputFileRef}
+                  type="file"
+                  className="hidden"
+                  onChange={e => {
+                    const file = e.target.files?.[0] ?? null;
+                    void uploadAsset('output', file);
+                    e.currentTarget.value = '';
+                  }}
+                />
+              </div>
 
               {/* Move between columns */}
               <div>
@@ -541,18 +732,22 @@ export default function TaskBoard({
               </div>
 
               {/* Assignment */}
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <div>
                   <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">Assignée à</p>
-                  {getUserById(selectedTask.assignedTo) ? (
-                    <div className="flex items-center gap-2">
-                      <div
-                        className="w-7 h-7 rounded-full flex items-center justify-center text-white text-xs font-semibold"
-                        style={{ backgroundColor: getUserById(selectedTask.assignedTo)!.color }}
-                      >
-                        {getUserById(selectedTask.assignedTo)!.initials}
-                      </div>
-                      <span className="text-sm text-slate-300">{getUserById(selectedTask.assignedTo)!.name}</span>
+                  {getUsersByIds(selectedTask.assignedTo).length > 0 ? (
+                    <div className="space-y-2">
+                      {getUsersByIds(selectedTask.assignedTo).map(u => (
+                        <div key={u.id} className="flex items-center gap-2">
+                          <div
+                            className="w-7 h-7 rounded-full flex items-center justify-center text-white text-xs font-semibold"
+                            style={{ backgroundColor: u.color }}
+                          >
+                            {u.initials}
+                          </div>
+                          <span className="text-sm text-slate-300">{u.name}</span>
+                        </div>
+                      ))}
                     </div>
                   ) : (
                     <span className="text-sm text-slate-500 italic">Non assignée</span>
@@ -597,7 +792,7 @@ export default function TaskBoard({
               </p>
             </div>
 
-            <div className="flex items-center justify-between border-t border-slate-700 p-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] sm:pb-5">
+            <div className="flex flex-wrap items-center justify-between gap-2 border-t border-slate-700 p-4 pb-[max(1.25rem,env(safe-area-inset-bottom))] sm:p-5 sm:pb-5">
               {currentUser.id === selectedTask.createdBy ? (
                 <button
                   onClick={() => {
@@ -614,7 +809,7 @@ export default function TaskBoard({
               )}
               <button
                 onClick={() => openEdit(selectedTask)}
-                className="inline-flex items-center gap-2 bg-indigo-500 hover:bg-indigo-400 text-white px-4 py-2 rounded-xl text-sm font-medium transition-all"
+                className="inline-flex w-full items-center justify-center gap-2 bg-indigo-500 hover:bg-indigo-400 text-white px-4 py-2 rounded-xl text-sm font-medium transition-all sm:w-auto"
               >
                 <IconPencil className="h-4 w-4" />
                 Modifier
@@ -657,7 +852,7 @@ export default function TaskBoard({
               </button>
             </div>
 
-            <div className="p-5 space-y-4">
+            <div className="p-4 space-y-4 sm:p-5">
               <div>
                 <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">
                   Titre *
@@ -690,21 +885,47 @@ export default function TaskBoard({
                   <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">
                     Assignée à
                   </label>
-                  <p className="text-[11px] text-slate-500 mb-1.5 leading-snug">
-                    Vous et les personnes ajoutées par email (barre latérale). Sinon choisissez « Non assignée ».
+                  <p className="text-[11px] text-slate-500 mb-2 leading-snug">
+                    Vous et les personnes ajoutées par email (barre latérale). Maximum 2 assignés.
                   </p>
-                  <select
-                    value={form.assignedTo}
-                    onChange={e => setForm(f => ({ ...f, assignedTo: e.target.value }))}
-                    className="w-full bg-slate-700 border border-slate-600 rounded-xl px-3 py-2.5 text-sm text-slate-200 focus:outline-none focus:border-indigo-500 transition-colors"
-                  >
-                    <option value="">Non assignée</option>
-                    {users.map(u => (
-                      <option key={u.id} value={u.id}>
-                        {u.name}
-                      </option>
-                    ))}
-                  </select>
+                  <div className="space-y-2 rounded-xl border border-slate-700 bg-slate-900/40 p-2.5">
+                    {users.map(u => {
+                      const selected = form.assignedTo.includes(u.id);
+                      const disabled = !selected && form.assignedTo.length >= 2;
+                      return (
+                        <button
+                          key={u.id}
+                          type="button"
+                          onClick={() => toggleAssignee(u.id)}
+                          disabled={disabled}
+                          className={`flex w-full items-center gap-2 rounded-lg border px-2.5 py-2 text-left text-sm transition-colors ${
+                            selected
+                              ? 'border-indigo-400 bg-indigo-500/20 text-indigo-100'
+                              : 'border-slate-700 bg-slate-800/80 text-slate-300 hover:border-slate-600'
+                          } ${disabled ? 'opacity-50 cursor-not-allowed' : ''}`}
+                        >
+                          <span
+                            className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[10px] font-bold text-white"
+                            style={{ backgroundColor: u.color }}
+                          >
+                            {u.initials}
+                          </span>
+                          <span className="truncate">{u.name}</span>
+                          <span className="ml-auto text-xs">{selected ? 'Sélectionné' : 'Choisir'}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <div className="mt-2 flex items-center justify-between text-[11px] text-slate-500">
+                    <span>{form.assignedTo.length}/2 sélectionné(s)</span>
+                    <button
+                      type="button"
+                      onClick={() => setForm(f => ({ ...f, assignedTo: [] }))}
+                      className="rounded-md px-2 py-1 text-slate-400 hover:bg-slate-700 hover:text-slate-200"
+                    >
+                      Vider
+                    </button>
+                  </div>
                 </div>
                 <div>
                   <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">
@@ -757,12 +978,12 @@ export default function TaskBoard({
             {submitError && (
               <div className="border-t border-red-500/30 bg-red-500/10 px-5 py-3 text-sm text-red-300">{submitError}</div>
             )}
-            <div className="p-5 border-t border-slate-700 flex justify-end gap-3">
+            <div className="p-4 border-t border-slate-700 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end sm:gap-3 sm:p-5">
               <button
                 type="button"
                 onClick={() => setShowModal(false)}
                 disabled={submitting}
-                className="px-4 py-2 text-sm text-slate-400 hover:text-slate-200 transition-colors rounded-lg hover:bg-slate-700 disabled:opacity-50"
+                className="w-full px-4 py-2 text-sm text-slate-400 hover:text-slate-200 transition-colors rounded-lg hover:bg-slate-700 disabled:opacity-50 sm:w-auto"
               >
                 Annuler
               </button>
@@ -770,7 +991,7 @@ export default function TaskBoard({
                 type="button"
                 onClick={() => void handleSubmit()}
                 disabled={!form.title.trim() || submitting}
-                className="bg-indigo-500 hover:bg-indigo-400 disabled:opacity-50 disabled:cursor-not-allowed text-white px-5 py-2 rounded-xl text-sm font-medium transition-all shadow-lg shadow-indigo-500/20"
+                className="w-full bg-indigo-500 hover:bg-indigo-400 disabled:opacity-50 disabled:cursor-not-allowed text-white px-5 py-2 rounded-xl text-sm font-medium transition-all shadow-lg shadow-indigo-500/20 sm:w-auto"
               >
                 {submitting ? 'Enregistrement…' : editingTask ? 'Enregistrer' : 'Créer la tâche'}
               </button>

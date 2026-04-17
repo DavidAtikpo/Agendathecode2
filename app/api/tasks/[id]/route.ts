@@ -1,27 +1,11 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/app/lib/prisma';
 import { getSessionUserId } from '@/app/lib/auth';
-import { resolveAssignee } from '@/app/lib/task-assign';
+import { resolveAssignees } from '@/app/lib/task-assign';
 import { tasksVisibleToUser } from '@/app/lib/task-access';
 import { sendTaskNotificationEmail } from '@/app/lib/email';
+import { TASK_WITH_RELATIONS_INCLUDE, serializeTask } from '@/app/lib/task-serialize';
 import { TaskStatus, TaskPriority } from '@prisma/client';
-import type { Task } from '@prisma/client';
-
-function serialize(task: Task) {
-  return {
-    id: task.id,
-    title: task.title,
-    description: task.description,
-    status: task.status as string,
-    priority: task.priority as string,
-    assignedTo: task.assignedToId,
-    createdBy: task.createdById,
-    assigneeNotifiedAt: task.assigneeNotifiedAt?.toISOString() ?? null,
-    dueDate: task.dueDate?.toISOString() ?? undefined,
-    createdAt: task.createdAt.toISOString(),
-    updatedAt: task.updatedAt.toISOString(),
-  };
-}
 
 type Ctx = { params: Promise<{ id: string }> };
 
@@ -36,12 +20,13 @@ export async function PATCH(request: Request, ctx: Ctx) {
 
   const existing = await prisma.task.findFirst({
     where: { id, ...tasksVisibleToUser(sessionId) },
+    include: TASK_WITH_RELATIONS_INCLUDE,
   });
   if (!existing) {
     return NextResponse.json({ error: 'Tâche introuvable' }, { status: 404 });
   }
 
-  let assignedToId: string | null | undefined;
+  let assignedToIds: string[] | undefined;
   let assigneeNotifiedAt: Date | null | undefined;
   if (data.assignedTo !== undefined) {
     if (existing.createdById !== sessionId) {
@@ -51,7 +36,7 @@ export async function PATCH(request: Request, ctx: Ctx) {
       );
     }
     try {
-      assignedToId = await resolveAssignee(sessionId, data.assignedTo);
+      assignedToIds = await resolveAssignees(sessionId, data.assignedTo);
     } catch (e: unknown) {
       if (e instanceof Error && e.message === 'ASSIGN_FORBIDDEN') {
         return NextResponse.json(
@@ -59,14 +44,24 @@ export async function PATCH(request: Request, ctx: Ctx) {
           { status: 403 }
         );
       }
+      if (e instanceof Error && e.message === 'ASSIGN_TOO_MANY') {
+        return NextResponse.json(
+          { error: 'Vous pouvez assigner une tâche à 2 collaborateurs maximum.' },
+          { status: 400 }
+        );
+      }
       throw e;
     }
-    if (assignedToId !== existing.assignedToId) {
-      assigneeNotifiedAt = assignedToId ? new Date() : null;
+    const existingAssigneeIds = existing.assignees.map(a => a.userId).sort();
+    const nextAssigneeIds = [...assignedToIds].sort();
+    if (JSON.stringify(existingAssigneeIds) !== JSON.stringify(nextAssigneeIds)) {
+      assigneeNotifiedAt = assignedToIds.length > 0 ? new Date() : null;
     }
   }
   const moved = data.status !== undefined && data.status !== existing.status;
-  const assigneeChanged = assignedToId !== undefined && assignedToId !== existing.assignedToId;
+  const assigneeChanged =
+    assignedToIds !== undefined &&
+    JSON.stringify(existing.assignees.map(a => a.userId).sort()) !== JSON.stringify([...assignedToIds].sort());
 
   const task = await prisma.task.update({
     where: { id },
@@ -75,26 +70,29 @@ export async function PATCH(request: Request, ctx: Ctx) {
       ...(data.description !== undefined && { description: data.description }),
       ...(data.status !== undefined && { status: data.status as TaskStatus }),
       ...(data.priority !== undefined && { priority: data.priority as TaskPriority }),
-      ...(data.assignedTo !== undefined && { assignedToId }),
+      ...(data.assignedTo !== undefined && {
+        assignees: {
+          deleteMany: {},
+          create: assignedToIds!.map(userId => ({ userId })),
+        },
+      }),
       ...(assigneeNotifiedAt !== undefined && { assigneeNotifiedAt }),
       ...(data.dueDate !== undefined && { dueDate: data.dueDate ? new Date(data.dueDate) : null }),
     },
+    include: TASK_WITH_RELATIONS_INCLUDE,
   });
 
-  if (task.assignedToId && task.assignedToId !== sessionId && (moved || assigneeChanged)) {
-    const [assignee, actor] = await Promise.all([
-      prisma.user.findUnique({
-        where: { id: task.assignedToId },
-        select: { email: true },
-      }),
-      prisma.user.findUnique({
-        where: { id: sessionId },
-        select: { name: true },
-      }),
-    ]);
-
-    if (assignee?.email) {
-      const notify = await sendTaskNotificationEmail(assignee.email, {
+  if (task.assignees.length > 0 && (moved || assigneeChanged)) {
+    const actor = await prisma.user.findUnique({
+      where: { id: sessionId },
+      select: { name: true },
+    });
+    const assigneeEmails = task.assignees
+      .filter(a => a.userId !== sessionId)
+      .map(a => a.user.email)
+      .filter(Boolean);
+    for (const email of assigneeEmails) {
+      const notify = await sendTaskNotificationEmail(email, {
         taskTitle: task.title,
         event: moved ? 'moved' : 'assigned',
         actorName: actor?.name ?? null,
@@ -106,7 +104,7 @@ export async function PATCH(request: Request, ctx: Ctx) {
     }
   }
 
-  return NextResponse.json(serialize(task));
+  return NextResponse.json(serializeTask(task));
 }
 
 export async function DELETE(_: Request, ctx: Ctx) {
@@ -118,6 +116,7 @@ export async function DELETE(_: Request, ctx: Ctx) {
   const { id } = await ctx.params;
   const task = await prisma.task.findFirst({
     where: { id, ...tasksVisibleToUser(sessionId) },
+    include: { assignees: true, assets: { select: { id: true } } },
   });
   if (!task) {
     return NextResponse.json({ error: 'Tâche introuvable' }, { status: 404 });

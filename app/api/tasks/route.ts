@@ -1,27 +1,11 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/app/lib/prisma';
 import { getSessionUserId } from '@/app/lib/auth';
-import { resolveAssignee } from '@/app/lib/task-assign';
+import { resolveAssignees } from '@/app/lib/task-assign';
 import { tasksVisibleToUser } from '@/app/lib/task-access';
 import { sendTaskNotificationEmail } from '@/app/lib/email';
+import { TASK_WITH_RELATIONS_INCLUDE, serializeTask } from '@/app/lib/task-serialize';
 import { TaskStatus, TaskPriority } from '@prisma/client';
-import type { Task } from '@prisma/client';
-
-function serialize(task: Task) {
-  return {
-    id: task.id,
-    title: task.title,
-    description: task.description,
-    status: task.status as string,
-    priority: task.priority as string,
-    assignedTo: task.assignedToId,
-    createdBy: task.createdById,
-    assigneeNotifiedAt: task.assigneeNotifiedAt?.toISOString() ?? null,
-    dueDate: task.dueDate?.toISOString() ?? undefined,
-    createdAt: task.createdAt.toISOString(),
-    updatedAt: task.updatedAt.toISOString(),
-  };
-}
 
 export async function GET() {
   const sessionId = await getSessionUserId();
@@ -31,9 +15,10 @@ export async function GET() {
 
   const tasks = await prisma.task.findMany({
     where: tasksVisibleToUser(sessionId),
+    include: TASK_WITH_RELATIONS_INCLUDE,
     orderBy: { createdAt: 'desc' },
   });
-  return NextResponse.json(tasks.map(serialize));
+  return NextResponse.json(tasks.map(serializeTask));
 }
 
 export async function POST(request: Request) {
@@ -49,14 +34,20 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'Le titre est requis' }, { status: 400 });
   }
 
-  let assignedToId: string | null;
+  let assignedToIds: string[];
   try {
-    assignedToId = await resolveAssignee(sessionId, assignedTo);
+    assignedToIds = await resolveAssignees(sessionId, assignedTo);
   } catch (e: unknown) {
     if (e instanceof Error && e.message === 'ASSIGN_FORBIDDEN') {
       return NextResponse.json(
         { error: 'Vous ne pouvez assigner qu’à vous-même ou à un collaborateur ajouté par email.' },
         { status: 403 }
+      );
+    }
+    if (e instanceof Error && e.message === 'ASSIGN_TOO_MANY') {
+      return NextResponse.json(
+        { error: 'Vous pouvez assigner une tâche à 2 collaborateurs maximum.' },
+        { status: 400 }
       );
     }
     throw e;
@@ -69,39 +60,37 @@ export async function POST(request: Request) {
         description: description ?? '',
         status: (status as TaskStatus) ?? TaskStatus.todo,
         priority: (priority as TaskPriority) ?? TaskPriority.medium,
-        assignedToId,
-        assigneeNotifiedAt: assignedToId ? new Date() : null,
+        assigneeNotifiedAt: assignedToIds.length > 0 ? new Date() : null,
+        assignees: {
+          create: assignedToIds.map(userId => ({ userId })),
+        },
         createdById: sessionId,
         dueDate: dueDate && String(dueDate).trim() !== '' ? new Date(dueDate) : null,
       },
+      include: TASK_WITH_RELATIONS_INCLUDE,
     });
 
-    if (task.assignedToId && task.assignedToId !== sessionId) {
-      const [assignee, actor] = await Promise.all([
-        prisma.user.findUnique({
-          where: { id: task.assignedToId },
-          select: { email: true },
-        }),
-        prisma.user.findUnique({
-          where: { id: sessionId },
-          select: { name: true },
-        }),
-      ]);
-
-      if (assignee?.email) {
-        const notify = await sendTaskNotificationEmail(assignee.email, {
+    const actor = await prisma.user.findUnique({
+      where: { id: sessionId },
+      select: { name: true },
+    });
+    const assigneeEmails = task.assignees
+      .filter(a => a.userId !== sessionId)
+      .map(a => a.user.email)
+      .filter(Boolean);
+    for (const email of assigneeEmails) {
+      const notify = await sendTaskNotificationEmail(email, {
           taskTitle: task.title,
           event: 'created',
           actorName: actor?.name ?? null,
           status: task.status,
-        });
-        if (!notify.ok) {
-          console.warn('[tasks POST] task notification email failed:', notify.error);
-        }
+      });
+      if (!notify.ok) {
+        console.warn('[tasks POST] task notification email failed:', notify.error);
       }
     }
 
-    return NextResponse.json(serialize(task), { status: 201 });
+    return NextResponse.json(serializeTask(task), { status: 201 });
   } catch (e: unknown) {
     console.error('[tasks POST]', e);
     const msg =

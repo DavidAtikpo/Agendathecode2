@@ -61,10 +61,18 @@ function genId() {
 
 /** Ancien statut Kanban `issues` → `urgent` (localStorage invité / réponses API héritées). */
 function migrateLegacyTaskStatus(task: Task): Task {
-  if ((task.status as string) === 'issues') {
-    return { ...task, status: 'urgent' };
-  }
-  return task;
+  const nextStatus = (task.status as string) === 'issues' ? 'urgent' : task.status;
+  const normalizedAssigned = Array.isArray(task.assignedTo)
+    ? task.assignedTo
+    : task.assignedTo
+      ? [String(task.assignedTo)]
+      : [];
+  return {
+    ...task,
+    status: nextStatus,
+    assignedTo: normalizedAssigned,
+    assets: Array.isArray(task.assets) ? task.assets : [],
+  };
 }
 
 function loadGuestFromLocalStorage(): {
@@ -1402,8 +1410,11 @@ function buildContext(notes: Note[], tasks: Task[], users: User[], currentUser: 
       : tasks
           .slice(0, 20)
           .map(t => {
-            const assignee = users.find(u => u.id === t.assignedTo)?.name ?? 'non assignée';
-            return `• [${t.status.toUpperCase()}] "${t.title}" (priorité: ${t.priority}, assignée à: ${assignee})`;
+            const assignees = t.assignedTo
+              .map(id => users.find(u => u.id === id)?.name)
+              .filter((name): name is string => Boolean(name));
+            const assigneeLabel = assignees.length > 0 ? assignees.join(', ') : 'non assignée';
+            return `• [${t.status.toUpperCase()}] "${t.title}" (priorité: ${t.priority}, assignée à: ${assigneeLabel})`;
           })
           .join('\n');
 
