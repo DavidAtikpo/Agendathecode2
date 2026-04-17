@@ -3,6 +3,7 @@ import { prisma } from '@/app/lib/prisma';
 import { getSessionUserId } from '@/app/lib/auth';
 import { resolveAssignee } from '@/app/lib/task-assign';
 import { tasksVisibleToUser } from '@/app/lib/task-access';
+import { sendTaskNotificationEmail } from '@/app/lib/email';
 import { TaskStatus, TaskPriority } from '@prisma/client';
 import type { Task } from '@prisma/client';
 
@@ -74,6 +75,31 @@ export async function POST(request: Request) {
         dueDate: dueDate && String(dueDate).trim() !== '' ? new Date(dueDate) : null,
       },
     });
+
+    if (task.assignedToId && task.assignedToId !== sessionId) {
+      const [assignee, actor] = await Promise.all([
+        prisma.user.findUnique({
+          where: { id: task.assignedToId },
+          select: { email: true },
+        }),
+        prisma.user.findUnique({
+          where: { id: sessionId },
+          select: { name: true },
+        }),
+      ]);
+
+      if (assignee?.email) {
+        const notify = await sendTaskNotificationEmail(assignee.email, {
+          taskTitle: task.title,
+          event: 'created',
+          actorName: actor?.name ?? null,
+          status: task.status,
+        });
+        if (!notify.ok) {
+          console.warn('[tasks POST] task notification email failed:', notify.error);
+        }
+      }
+    }
 
     return NextResponse.json(serialize(task), { status: 201 });
   } catch (e: unknown) {

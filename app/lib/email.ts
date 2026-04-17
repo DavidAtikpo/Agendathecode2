@@ -7,6 +7,7 @@ import nodemailer from 'nodemailer';
  */
 
 export type SendReminderResult = { ok: true } | { ok: false; error: string };
+export type SendTaskNotificationResult = { ok: true } | { ok: false; error: string };
 
 function getSmtpConfig() {
   const host = process.env.SMTP_HOST?.trim();
@@ -64,6 +65,63 @@ export async function sendReminderEmail(
 <p style="font-size:14px;color:#64748b;">Rappel prévu pour votre idée :</p>
 <h1 style="font-size:18px;margin:8px 0;">${safeTitle}</h1>
 <div style="margin-top:16px;padding:12px;background:#f1f5f9;border-radius:8px;font-size:14px;">${safeBody}</div>
+<p style="margin-top:24px;font-size:12px;color:#94a3b8;">— Agenda</p>
+</body></html>`,
+    });
+    return { ok: true };
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : String(e);
+    return { ok: false, error: msg };
+  }
+}
+
+export async function sendTaskNotificationEmail(
+  to: string,
+  params: {
+    taskTitle: string;
+    event: 'created' | 'moved' | 'assigned';
+    actorName?: string | null;
+    status?: string;
+  }
+): Promise<SendTaskNotificationResult> {
+  const transporter = getTransporter();
+  const from = buildFromHeader();
+
+  if (!transporter || !from) {
+    if (process.env.NODE_ENV === 'development') {
+      console.warn('[email] SMTP non configuré (SMTP_HOST, SMTP_USER, SMTP_PASS, …) — e-mail non envoyé');
+    }
+    return { ok: false, error: 'SMTP non configuré' };
+  }
+
+  const safeTitle = escapeHtml(params.taskTitle);
+  const actor = params.actorName?.trim() || 'Un collaborateur';
+  const safeActor = escapeHtml(actor);
+  const statusLine = params.status ? `<p style="margin:8px 0 0;font-size:14px;color:#334155;">Statut : <strong>${escapeHtml(params.status)}</strong></p>` : '';
+
+  const subject =
+    params.event === 'created'
+      ? `🆕 Nouvelle tâche assignée : ${params.taskTitle}`
+      : params.event === 'moved'
+        ? `🔄 Tâche déplacée : ${params.taskTitle}`
+        : `👤 Tâche assignée : ${params.taskTitle}`;
+  const intro =
+    params.event === 'created'
+      ? `${safeActor} vous a assigné une nouvelle tâche.`
+      : params.event === 'moved'
+        ? `${safeActor} a déplacé une tâche qui vous est assignée.`
+        : `${safeActor} vous a assigné cette tâche.`;
+
+  try {
+    await transporter.sendMail({
+      from,
+      to,
+      subject,
+      html: `<!DOCTYPE html><html><body style="font-family:system-ui,sans-serif;line-height:1.5;color:#0f172a;">
+<p style="font-size:14px;color:#64748b;">Notification Agenda</p>
+<h1 style="font-size:18px;margin:8px 0;">${safeTitle}</h1>
+<p style="margin:12px 0 0;font-size:14px;color:#334155;">${intro}</p>
+${statusLine}
 <p style="margin-top:24px;font-size:12px;color:#94a3b8;">— Agenda</p>
 </body></html>`,
     });

@@ -3,6 +3,7 @@ import { prisma } from '@/app/lib/prisma';
 import { getSessionUserId } from '@/app/lib/auth';
 import { resolveAssignee } from '@/app/lib/task-assign';
 import { tasksVisibleToUser } from '@/app/lib/task-access';
+import { sendTaskNotificationEmail } from '@/app/lib/email';
 import { TaskStatus, TaskPriority } from '@prisma/client';
 import type { Task } from '@prisma/client';
 
@@ -64,6 +65,8 @@ export async function PATCH(request: Request, ctx: Ctx) {
       assigneeNotifiedAt = assignedToId ? new Date() : null;
     }
   }
+  const moved = data.status !== undefined && data.status !== existing.status;
+  const assigneeChanged = assignedToId !== undefined && assignedToId !== existing.assignedToId;
 
   const task = await prisma.task.update({
     where: { id },
@@ -77,6 +80,31 @@ export async function PATCH(request: Request, ctx: Ctx) {
       ...(data.dueDate !== undefined && { dueDate: data.dueDate ? new Date(data.dueDate) : null }),
     },
   });
+
+  if (task.assignedToId && task.assignedToId !== sessionId && (moved || assigneeChanged)) {
+    const [assignee, actor] = await Promise.all([
+      prisma.user.findUnique({
+        where: { id: task.assignedToId },
+        select: { email: true },
+      }),
+      prisma.user.findUnique({
+        where: { id: sessionId },
+        select: { name: true },
+      }),
+    ]);
+
+    if (assignee?.email) {
+      const notify = await sendTaskNotificationEmail(assignee.email, {
+        taskTitle: task.title,
+        event: moved ? 'moved' : 'assigned',
+        actorName: actor?.name ?? null,
+        status: task.status,
+      });
+      if (!notify.ok) {
+        console.warn('[tasks PATCH] task notification email failed:', notify.error);
+      }
+    }
+  }
 
   return NextResponse.json(serialize(task));
 }
