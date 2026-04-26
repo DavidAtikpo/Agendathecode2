@@ -9,11 +9,13 @@ import {
   IconArrowLeft,
   IconBars3,
   IconBell,
+  IconCalendar,
   IconClipboardList,
   IconLightBulb,
   IconSparkles,
 } from './components/icons';
 import NotesSection from './components/NotesSection';
+import PlanningView from './components/PlanningView';
 import TaskBoard from './components/TaskBoard';
 import ChatPanel from './components/ChatPanel';
 import ProPlanBanner from './components/ProPlanBanner';
@@ -445,7 +447,7 @@ async function loadAppData(): Promise<{ contacts: User[]; notes: Note[]; tasks: 
 
 export default function HomePage() {
   const router = useRouter();
-  const [activeView, setActiveView] = useState<'notes' | 'tasks'>('notes');
+  const [activeView, setActiveView] = useState<'notes' | 'tasks' | 'planning'>('notes');
   const [notes, setNotes] = useState<Note[]>([]);
   const [tasks, setTasks] = useState<Task[]>([]);
   const [contacts, setContacts] = useState<User[]>([]);
@@ -1181,7 +1183,11 @@ export default function HomePage() {
             }`}
           >
             <h2 className="text-sm font-medium text-slate-300">
-              {activeView === 'notes' ? 'Idées & notes' : 'Tableau des tâches'}
+              {activeView === 'notes'
+                ? 'Idées & notes'
+                : activeView === 'planning'
+                  ? 'Planning'
+                  : 'Tableau des tâches'}
             </h2>
             <button
               type="button"
@@ -1269,6 +1275,12 @@ export default function HomePage() {
                   compactLayout={layoutPreferences.density === 'compact'}
                   showWhatsAppSection={layoutPreferences.notesShowWhatsApp !== false}
                 />
+              ) : activeView === 'planning' ? (
+                <PlanningView
+                  notes={notes}
+                  tasks={tasks}
+                  compactLayout={layoutPreferences.density === 'compact'}
+                />
               ) : (
                 <TaskBoard
                   tasks={tasks}
@@ -1316,6 +1328,16 @@ export default function HomePage() {
                 ) : null}
               </span>
               Tâches
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveView('planning')}
+              className={`flex min-h-[48px] min-w-0 flex-1 touch-manipulation flex-col items-center justify-center gap-0.5 px-0.5 text-[10px] font-medium ${
+                activeView === 'planning' ? 'text-indigo-300' : 'text-slate-500'
+              }`}
+            >
+              <IconCalendar className="h-6 w-6" />
+              Planning
             </button>
             <button
               type="button"

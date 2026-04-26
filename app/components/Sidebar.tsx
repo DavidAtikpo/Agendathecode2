@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { User } from '../types';
 import styles from './Sidebar.module.css';
 import {
+  IconCalendar,
   IconChevronDown,
   IconChevronRight,
   IconClipboardList,
@@ -17,8 +18,8 @@ const BRAND_LOGO = '/logo (1).png';
 const BRAND_NAME = 'Neurix';
 
 interface SidebarProps {
-  activeView: 'notes' | 'tasks';
-  onViewChange: (view: 'notes' | 'tasks') => void;
+  activeView: 'notes' | 'tasks' | 'planning';
+  onViewChange: (view: 'notes' | 'tasks' | 'planning') => void;
   currentUser: User;
   isGuest: boolean;
   onOpenLogin: () => void;
@@ -214,6 +215,21 @@ export default function Sidebar({
                   {assignedTaskBadgeCount > 9 ? '9+' : assignedTaskBadgeCount}
                 </span>
               ) : null}
+            </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                onViewChange('planning');
+                afterNav();
+              }}
+              className={navBtn(activeView === 'planning', 'bg-indigo-500/20 text-indigo-300')}
+              title={expanded ? undefined : 'Planning'}
+            >
+              <IconCalendar
+                className={`h-5 w-5 shrink-0 ${activeView === 'planning' ? 'text-indigo-300' : 'text-slate-400'}`}
+              />
+              {expanded ? <span className="min-w-0 truncate">Planning</span> : null}
             </button>
 
             <button
