@@ -7,7 +7,6 @@ import CollaboratorsModal from './components/CollaboratorsModal';
 import {
   IconAlertTriangle,
   IconArrowLeft,
-  IconBars3,
   IconBell,
   IconCalendar,
   IconClipboardList,
@@ -1279,6 +1278,7 @@ export default function HomePage() {
                 <PlanningView
                   notes={notes}
                   tasks={tasks}
+                  users={assignableUsers}
                   compactLayout={layoutPreferences.density === 'compact'}
                 />
               ) : (
@@ -1348,14 +1348,6 @@ export default function HomePage() {
             >
               <IconSparkles className="h-6 w-6" />
               IA
-            </button>
-            <button
-              type="button"
-              onClick={() => setMobileMenuOpen(true)}
-              className="flex min-h-[48px] min-w-0 flex-1 touch-manipulation flex-col items-center justify-center gap-0.5 px-1 text-[11px] font-medium text-slate-500"
-            >
-              <IconBars3 className="h-6 w-6" />
-              Plus
             </button>
           </nav>
         </div>

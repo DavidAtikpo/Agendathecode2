@@ -186,6 +186,7 @@ interface MonthSegment {
 interface PlanningViewProps {
   notes: Note[];
   tasks: Task[];
+  users?: import('../types').User[];
   compactLayout?: boolean;
 }
 
@@ -194,18 +195,22 @@ function DetailPanel({
   row,
   task,
   note,
+  userMap,
   onClose,
 }: {
   row: PlanningRow;
   task: Task | undefined;
   note: Note | undefined;
+  userMap: Map<string, import('../types').User>;
   onClose: () => void;
 }) {
   const pal = barPalette(row);
   const pct = row.progressPct ?? 0;
 
   return (
-    <div className="flex h-full w-72 shrink-0 flex-col border-l border-slate-700/80 bg-slate-900 shadow-[-8px_0_24px_-4px_rgba(0,0,0,0.5)]">
+    <div
+      className="flex h-full w-[min(100vw-2rem,20rem)] shrink-0 flex-col border-l border-slate-700/80 bg-slate-900 shadow-[-8px_0_24px_-4px_rgba(0,0,0,0.5)] md:relative md:w-72 md:max-w-none"
+    >
       {/* En-tête */}
       <div className="flex shrink-0 items-start gap-2 border-b border-slate-700/80 px-4 py-3">
         <div className="min-w-0 flex-1">
@@ -313,12 +318,23 @@ function DetailPanel({
             <p className="mb-1.5 text-[10px] font-medium uppercase tracking-wide text-slate-500">
               Assigné{task.assignedTo.length > 1 ? 's' : ''} ({task.assignedTo.length})
             </p>
-            <div className="flex flex-wrap gap-1.5">
-              {task.assignedTo.map(uid => (
-                <span key={uid} className="rounded bg-slate-700/60 px-2 py-0.5 text-[11px] text-slate-300">
-                  {uid}
-                </span>
-              ))}
+            <div className="flex flex-col gap-1.5">
+              {task.assignedTo.map(uid => {
+                const u = userMap.get(uid);
+                return (
+                  <div key={uid} className="flex items-center gap-2 rounded-lg bg-slate-800/60 px-2.5 py-1.5">
+                    <span
+                      className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[10px] font-bold uppercase text-white"
+                      style={{ backgroundColor: u?.color ?? '#6366f1' }}
+                    >
+                      {u?.initials ?? uid.slice(0, 2).toUpperCase()}
+                    </span>
+                    <span className="truncate text-xs text-slate-200">
+                      {u?.name ?? uid}
+                    </span>
+                  </div>
+                );
+              })}
             </div>
           </div>
         )}
@@ -378,9 +394,13 @@ function DetailPanel({
 }
 
 /* ─── Composant principal ────────────────────────────────────────────────── */
-export default function PlanningView({ notes, tasks, compactLayout }: PlanningViewProps) {
+export default function PlanningView({ notes, tasks, users = [], compactLayout }: PlanningViewProps) {
   const [filter, setFilter] = useState<'all' | 'tasks' | 'notes'>('all');
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  /** Frise un peu plus compacte sur mobile pour que les barres tiennent mieux en largeur utile */
+  const [narrowViewport, setNarrowViewport] = useState(false);
+  /** Colonnes Tâche / Début / Fin / … — masquables pour n’afficher que la frise Gantt */
+  const [taskGridVisible, setTaskGridVisible] = useState(true);
   const leftBodyRef = useRef<HTMLDivElement>(null);
   const rightBodyRef = useRef<HTMLDivElement>(null);
   const topHeaderScrollRef = useRef<HTMLDivElement>(null);
@@ -400,6 +420,12 @@ export default function PlanningView({ notes, tasks, compactLayout }: PlanningVi
     return m;
   }, [notes]);
 
+  const userMap = useMemo(() => {
+    const m = new Map<string, import('../types').User>();
+    for (const u of users) m.set(u.id, u);
+    return m;
+  }, [users]);
+
   const rows = useMemo(() => {
     const base = buildRows(notes, tasks);
     if (filter === 'tasks') return base.filter(r => r.kind === 'task');
@@ -418,6 +444,14 @@ export default function PlanningView({ notes, tasks, compactLayout }: PlanningVi
       setSelectedId(null);
     }
   }, [rows, selectedId]);
+
+  useEffect(() => {
+    const mq = window.matchMedia('(max-width: 639px)');
+    const apply = () => setNarrowViewport(mq.matches);
+    apply();
+    mq.addEventListener('change', apply);
+    return () => mq.removeEventListener('change', apply);
+  }, []);
 
   const { rangeMin, rangeMax, spanMs } = useMemo(() => {
     if (rows.length === 0) {
@@ -440,14 +474,14 @@ export default function PlanningView({ notes, tasks, compactLayout }: PlanningVi
 
   const spanDays = Math.max(1, Math.ceil(spanMs / DAY_MS));
   const pxPerDay = useMemo(() => {
-    const ideal = 14;
-    const minW = 640;
+    const ideal = narrowViewport ? 12 : 14;
+    const minW = narrowViewport ? 320 : 640;
     const maxW = 4200;
     const w = spanDays * ideal;
     if (w < minW) return minW / spanDays;
     if (w > maxW) return maxW / spanDays;
     return ideal;
-  }, [spanDays]);
+  }, [spanDays, narrowViewport]);
 
   const timelineWidthPx = Math.round(spanDays * pxPerDay);
 
@@ -477,7 +511,8 @@ export default function PlanningView({ notes, tasks, compactLayout }: PlanningVi
     if (syncingVertical.current) return;
     const left = leftBodyRef.current;
     const right = rightBodyRef.current;
-    if (!left || !right) return;
+    if (!right) return;
+    if (!left) return;
     syncingVertical.current = true;
     const y = source === 'left' ? left.scrollTop : right.scrollTop;
     if (source === 'left') right.scrollTop = y;
@@ -531,7 +566,7 @@ export default function PlanningView({ notes, tasks, compactLayout }: PlanningVi
       <div
         className={`shrink-0 border-b border-slate-700/80 bg-slate-900/90 ${compactLayout ? 'px-3 py-2' : 'px-4 py-3'}`}
       >
-        <div className="flex flex-wrap items-center gap-3">
+        <div className="flex flex-wrap items-center gap-2 sm:gap-3">
           <div className="flex min-w-0 items-center gap-2">
             <IconCalendar className="h-5 w-5 shrink-0 text-indigo-400" />
             <div className="min-w-0">
@@ -541,6 +576,32 @@ export default function PlanningView({ notes, tasks, compactLayout }: PlanningVi
               <p className="text-[11px] text-slate-500">Diagramme de Gantt — tableau et frise synchronisés.</p>
             </div>
           </div>
+          <button
+            type="button"
+            onClick={() => setTaskGridVisible(v => !v)}
+            aria-pressed={taskGridVisible}
+            title={taskGridVisible ? 'Masquer le tableau (colonnes Tâche, Début, Fin…)' : 'Afficher le tableau'}
+            className={`flex shrink-0 items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-medium transition-colors touch-manipulation sm:ml-0 ${
+              taskGridVisible
+                ? 'border-slate-600/60 bg-slate-800/90 text-slate-200 hover:bg-slate-800'
+                : 'border-indigo-500/40 bg-indigo-500/15 text-indigo-200 hover:bg-indigo-500/25'
+            }`}
+          >
+            <svg className="h-4 w-4 shrink-0 opacity-90" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden>
+              {taskGridVisible ? (
+                <>
+                  <rect x="2" y="3" width="5" height="10" rx="1" />
+                  <path strokeLinecap="round" d="M10 4h4M10 8h4M10 12h4" />
+                </>
+              ) : (
+                <>
+                  <rect x="2" y="3" width="5" height="10" rx="1" />
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M9 8l3-2.5v5L9 8z" />
+                </>
+              )}
+            </svg>
+            <span className="max-[380px]:sr-only">{taskGridVisible ? 'Masquer tableau' : 'Tableau'}</span>
+          </button>
           <div
             className="ml-auto flex shrink-0 rounded-lg border border-slate-600/60 bg-slate-800/90 p-0.5 shadow-inner"
             role="group"
@@ -574,78 +635,107 @@ export default function PlanningView({ notes, tasks, compactLayout }: PlanningVi
           <p className="text-sm">Aucune entrée à afficher pour ce filtre.</p>
         </div>
       ) : (
-        <div className="flex min-h-0 flex-1 border-t border-slate-800/80">
-          {/* Panneau gauche : grille type MS Project / SaaS Gantt */}
-          <div
-            className={`flex shrink-0 flex-col border-r border-slate-700/80 bg-slate-900/95 shadow-[4px_0_12px_-4px_rgba(0,0,0,0.4)] ${
-              compactLayout ? 'w-[min(100%,280px)]' : 'w-[min(100%,340px)]'
-            } max-w-[min(100%,380px)]`}
-          >
+        <div className="relative flex min-h-0 min-w-0 flex-1 border-t border-slate-800/80">
+          {taskGridVisible ? (
             <div
-              className={`grid shrink-0 grid-cols-[minmax(0,1fr)_46px_46px_26px_28px_minmax(0,72px)] gap-x-0.5 border-b border-slate-700/90 bg-slate-800/95 px-1.5 py-2 text-slate-500 ${th} font-semibold uppercase tracking-wider`}
-              style={{ minHeight: compactLayout ? 52 : 56 }}
+              className={`flex w-[min(9.75rem,36vw)] shrink-0 flex-col border-r border-slate-700/80 bg-slate-900/95 shadow-[4px_0_12px_-4px_rgba(0,0,0,0.4)] sm:max-w-[min(100%,380px)] ${
+                compactLayout ? 'sm:w-[min(100%,280px)]' : 'sm:w-[min(100%,340px)]'
+              }`}
             >
-              <span className="pl-1">Tâche</span>
-              <span className="text-center">Début</span>
-              <span className="text-center">Fin</span>
-              <span className="text-center" title="Durée (jours)">
-                J.
-              </span>
-              <span className="text-center">%</span>
-              <span className="truncate pr-0.5 text-center">État</span>
-            </div>
-            <div
-              ref={leftBodyRef}
-              className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden"
-              onScroll={onLeftScroll}
-            >
-              {rows.map((r, i) => (
-                <button
-                  key={r.id}
-                  type="button"
-                  onClick={() => setSelectedId(prev => (prev === r.id ? null : r.id))}
-                  className={`grid w-full grid-cols-[minmax(0,1fr)_46px_46px_26px_28px_minmax(0,72px)] items-center gap-x-0.5 border-b border-slate-800/90 px-1.5 text-left ${cell} transition-colors ${
-                    selectedId === r.id
-                      ? 'bg-indigo-500/15 ring-inset ring-1 ring-indigo-500/30'
-                      : i % 2 === 1
-                        ? 'bg-slate-800/25 hover:bg-slate-700/30'
-                        : 'bg-transparent hover:bg-slate-700/20'
-                  }`}
-                  style={{ height: rowH }}
+              <div
+                className={`flex shrink-0 items-stretch gap-0 border-b border-slate-700/90 bg-slate-800/95 text-slate-500 ${th} font-semibold uppercase tracking-wider`}
+                style={{ minHeight: compactLayout ? 52 : 56 }}
+              >
+                <div
+                  className="grid min-h-0 min-w-0 flex-1 grid-cols-[minmax(0,1fr)_46px_46px_26px_28px_minmax(0,72px)] items-center gap-x-0.5 px-1.5 py-2"
                 >
-                  <div className="min-w-0 pl-1">
-                    <div className="flex min-h-0 items-center gap-1.5">
-                      <span
-                        className={`shrink-0 rounded px-1 py-0.5 text-[9px] font-bold uppercase leading-none ${
-                          r.kind === 'task' ? 'bg-indigo-500/25 text-indigo-200' : 'bg-sky-500/20 text-sky-200'
-                        }`}
-                      >
-                        {r.kind === 'task' ? 'T' : 'N'}
-                      </span>
-                      <span className="truncate font-medium leading-tight text-slate-100" title={r.title}>
-                        {r.title}
-                        {r.priorityLabel && !compactLayout ? (
-                          <span className="font-normal text-slate-500"> · {r.priorityLabel}</span>
-                        ) : null}
-                      </span>
-                    </div>
-                  </div>
-                  <span className="text-center tabular-nums text-slate-400">{formatShort(new Date(r.startMs).toISOString())}</span>
-                  <span className="text-center tabular-nums text-slate-400">{formatShort(new Date(r.endMs).toISOString())}</span>
-                  <span className="text-center tabular-nums text-slate-500">{durationDays(r.startMs, r.endMs)}</span>
-                  <span className="text-center tabular-nums text-slate-200">
-                    {r.progressPct != null ? `${r.progressPct}` : '—'}
+                  <span className="pl-1">Tâche</span>
+                  <span className="text-center">Début</span>
+                  <span className="text-center">Fin</span>
+                  <span className="text-center" title="Durée (jours)">
+                    J.
                   </span>
-                  <span className="truncate text-center text-[10px] leading-tight text-slate-400" title={r.statusLabel}>
-                    {r.statusLabel}
-                  </span>
+                  <span className="text-center">%</span>
+                  <span className="truncate pr-0.5 text-center">État</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setTaskGridVisible(false)}
+                  className="flex w-8 shrink-0 items-center justify-center border-l border-slate-700/60 text-slate-500 hover:bg-slate-700/40 hover:text-slate-200 touch-manipulation"
+                  title="Masquer le tableau"
+                  aria-label="Masquer le tableau des tâches"
+                >
+                  <svg className="h-4 w-4" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M10 12L6 8l4-4" />
+                  </svg>
                 </button>
-              ))}
+              </div>
+              <div
+                ref={leftBodyRef}
+                className="min-h-0 flex-1 overflow-y-auto overflow-x-auto overscroll-x-contain sm:overflow-x-hidden"
+                onScroll={onLeftScroll}
+              >
+                {rows.map((r, i) => (
+                  <button
+                    key={r.id}
+                    type="button"
+                    onClick={() => setSelectedId(prev => (prev === r.id ? null : r.id))}
+                    className={`grid min-w-[272px] w-full grid-cols-[minmax(0,1fr)_46px_46px_26px_28px_minmax(0,72px)] items-center gap-x-0.5 border-b border-slate-800/90 px-1.5 text-left ${cell} transition-colors ${
+                      selectedId === r.id
+                        ? 'bg-indigo-500/15 ring-inset ring-1 ring-indigo-500/30'
+                        : i % 2 === 1
+                          ? 'bg-slate-800/25 hover:bg-slate-700/30'
+                          : 'bg-transparent hover:bg-slate-700/20'
+                    }`}
+                    style={{ height: rowH }}
+                  >
+                    <div className="min-w-0 pl-1">
+                      <div className="flex min-h-0 items-center gap-1.5">
+                        <span
+                          className={`shrink-0 rounded px-1 py-0.5 text-[9px] font-bold uppercase leading-none ${
+                            r.kind === 'task' ? 'bg-indigo-500/25 text-indigo-200' : 'bg-sky-500/20 text-sky-200'
+                          }`}
+                        >
+                          {r.kind === 'task' ? 'T' : 'N'}
+                        </span>
+                        <span className="truncate font-medium leading-tight text-slate-100" title={r.title}>
+                          {r.title}
+                          {r.priorityLabel && !compactLayout ? (
+                            <span className="font-normal text-slate-500"> · {r.priorityLabel}</span>
+                          ) : null}
+                        </span>
+                      </div>
+                    </div>
+                    <span className="text-center tabular-nums text-slate-400">{formatShort(new Date(r.startMs).toISOString())}</span>
+                    <span className="text-center tabular-nums text-slate-400">{formatShort(new Date(r.endMs).toISOString())}</span>
+                    <span className="text-center tabular-nums text-slate-500">{durationDays(r.startMs, r.endMs)}</span>
+                    <span className="text-center tabular-nums text-slate-200">
+                      {r.progressPct != null ? `${r.progressPct}` : '—'}
+                    </span>
+                    <span className="truncate text-center text-[10px] leading-tight text-slate-400" title={r.statusLabel}>
+                      {r.statusLabel}
+                    </span>
+                  </button>
+                ))}
+              </div>
             </div>
-          </div>
+          ) : (
+            <button
+              type="button"
+              onClick={() => setTaskGridVisible(true)}
+              className="flex w-9 shrink-0 flex-col items-center justify-center gap-0.5 border-r border-slate-700/80 bg-slate-900/95 py-2 text-slate-400 shadow-[4px_0_12px_-4px_rgba(0,0,0,0.4)] hover:bg-slate-800/90 hover:text-slate-200 touch-manipulation"
+              title="Afficher le tableau (Tâche, Début, Fin…)"
+              aria-label="Afficher le tableau des tâches"
+            >
+              <svg className="h-4 w-4 shrink-0" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M6 12l4-4-4-4" />
+              </svg>
+              <span className="px-0.5 text-[8px] font-bold uppercase leading-none tracking-tight">Tab.</span>
+            </button>
+          )}
 
-          {/* Frise temporelle (style Gantt SaaS) */}
-          <div className="flex min-w-0 min-h-0 flex-1 flex-col bg-[#121820]">
+          {/* Frise temporelle (style Gantt SaaS) — min-w-0 + flex-1 pour que la zone reste visible sur mobile */}
+          <div className="flex min-h-0 min-w-0 flex-1 flex-col bg-[#121820]">
             <div
               ref={topHeaderScrollRef}
               className="shrink-0 overflow-x-auto overflow-y-hidden border-b border-slate-700/80 bg-slate-800/90"
@@ -666,7 +756,7 @@ export default function PlanningView({ notes, tasks, compactLayout }: PlanningVi
 
             <div
               ref={rightBodyRef}
-              className="relative min-h-0 flex-1 overflow-auto"
+              className="relative min-h-0 flex-1 overflow-auto overscroll-x-contain touch-pan-x"
               onScroll={onRightScroll}
             >
               <div
@@ -738,14 +828,25 @@ export default function PlanningView({ notes, tasks, compactLayout }: PlanningVi
             </div>
           </div>
 
-          {/* Panneau de détails */}
+          {/* Panneau de détails : overlay sur mobile pour ne pas masquer la frise */}
           {selectedRow && (
-            <DetailPanel
-              row={selectedRow}
-              task={selectedRow.kind === 'task' ? taskMap.get(selectedRow.id.slice(5)) : undefined}
-              note={selectedRow.kind === 'note' ? noteMap.get(selectedRow.id.slice(5)) : undefined}
-              onClose={() => setSelectedId(null)}
-            />
+            <>
+              <button
+                type="button"
+                className="fixed inset-0 z-40 bg-black/55 md:hidden"
+                aria-label="Fermer le détail"
+                onClick={() => setSelectedId(null)}
+              />
+              <div className="fixed inset-y-0 right-0 z-50 flex h-full max-md:box-border max-md:pt-[env(safe-area-inset-top)] max-md:pb-[calc(4.5rem+env(safe-area-inset-bottom))] md:static md:z-auto md:h-full md:max-w-none md:shrink-0 md:pb-0">
+                <DetailPanel
+                  row={selectedRow}
+                  task={selectedRow.kind === 'task' ? taskMap.get(selectedRow.id.slice(5)) : undefined}
+                  note={selectedRow.kind === 'note' ? noteMap.get(selectedRow.id.slice(5)) : undefined}
+                  userMap={userMap}
+                  onClose={() => setSelectedId(null)}
+                />
+              </div>
+            </>
           )}
         </div>
       )}

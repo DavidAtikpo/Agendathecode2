@@ -210,6 +210,78 @@ function AssetList({
   );
 }
 
+function KanbanTaskCard({
+  task,
+  selected,
+  onToggle,
+  getUsersByIds,
+}: {
+  task: Task;
+  selected: boolean;
+  onToggle: () => void;
+  getUsersByIds: (ids: string[] | null | undefined) => User[];
+}) {
+  const assignedUsers = getUsersByIds(task.assignedTo);
+  const prio = PRIORITY_CONFIG[task.priority] ?? PRIORITY_CONFIG.medium;
+  const overdue = isOverdue(task.dueDate, task.status);
+
+  return (
+    <div
+      role="button"
+      tabIndex={0}
+      onClick={onToggle}
+      onKeyDown={e => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          onToggle();
+        }
+      }}
+      className={`cursor-pointer rounded-xl border bg-slate-800 p-3 transition-all sm:p-3.5 ${
+        selected
+          ? 'border-indigo-500 shadow-lg shadow-indigo-500/10'
+          : 'border-slate-700 hover:border-slate-600 hover:shadow-md'
+      }`}
+    >
+      <div className="mb-2 flex items-start gap-2">
+        <span className={`mt-1.5 h-2 w-2 flex-shrink-0 rounded-full ${prio.dot}`} />
+        <p className="flex-1 text-sm font-medium leading-snug text-slate-100">{task.title}</p>
+      </div>
+
+      {task.description ? <p className="mb-3 line-clamp-2 pl-4 text-xs text-slate-500">{task.description}</p> : null}
+
+      <div className="flex flex-wrap items-center gap-2 pl-4">
+        <span className={`rounded-full px-1.5 py-0.5 text-xs font-medium ${prio.cls}`}>{prio.label}</span>
+        <div className="ml-auto flex items-center gap-1.5">
+          {task.dueDate ? (
+            <span className={`inline-flex items-center gap-1 text-xs ${overdue ? 'text-red-400' : 'text-slate-500'}`}>
+              {overdue ? (
+                <IconAlertTriangle className="h-3.5 w-3.5 shrink-0" />
+              ) : (
+                <IconCalendar className="h-3.5 w-3.5 shrink-0" />
+              )}
+              {formatDate(task.dueDate)}
+            </span>
+          ) : null}
+          {assignedUsers.length > 0 ? (
+            <div className="-space-x-1.5 flex items-center">
+              {assignedUsers.slice(0, 2).map(user => (
+                <div
+                  key={user.id}
+                  className="flex h-6 w-6 items-center justify-center rounded-full text-[10px] font-semibold text-white shadow-sm ring-2 ring-slate-800"
+                  style={{ backgroundColor: user.color }}
+                  title={user.name}
+                >
+                  {user.initials}
+                </div>
+              ))}
+            </div>
+          ) : null}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function TaskBoard({
   tasks,
   users,
@@ -239,6 +311,8 @@ export default function TaskBoard({
     dueDate: '',
   });
   const [assigneeFilter, setAssigneeFilter] = useState<AssigneeFilter>('all');
+  /** Mobile (viewport < md) : une seule colonne à la fois, pas de scroll horizontal Kanban */
+  const [mobileStatusTab, setMobileStatusTab] = useState<TaskStatus>('todo');
   const [assetBusy, setAssetBusy] = useState<'input' | 'output' | null>(null);
   const [assetError, setAssetError] = useState<string | null>(null);
   const [draftInputVideo, setDraftInputVideo] = useState<File | null>(null);
@@ -521,21 +595,123 @@ export default function TaskBoard({
 
         <button
           type="button"
+          onClick={() => openAdd(mobileStatusTab)}
+          className="flex shrink-0 touch-manipulation items-center justify-center gap-1.5 rounded-xl bg-indigo-500 px-3 py-1.5 text-xs font-medium text-white shadow-md shadow-indigo-500/20 transition-all hover:bg-indigo-400 sm:gap-2 sm:px-4 sm:text-sm md:hidden"
+        >
+          <IconPlus className="h-4 w-4 shrink-0" />
+          <span>Nouvelle tâche</span>
+        </button>
+        <button
+          type="button"
           onClick={() => openAdd('todo')}
-          className="flex shrink-0 touch-manipulation items-center justify-center gap-1.5 rounded-xl bg-indigo-500 px-3 py-1.5 text-xs font-medium text-white shadow-md shadow-indigo-500/20 transition-all hover:bg-indigo-400 sm:gap-2 sm:px-4 sm:text-sm"
+          className="hidden shrink-0 touch-manipulation items-center justify-center gap-1.5 rounded-xl bg-indigo-500 px-3 py-1.5 text-xs font-medium text-white shadow-md shadow-indigo-500/20 transition-all hover:bg-indigo-400 sm:gap-2 sm:px-4 sm:text-sm md:flex"
         >
           <IconPlus className="h-4 w-4 shrink-0" />
           <span>Nouvelle tâche</span>
         </button>
       </div>
 
-      {/* Kanban */}
-      <div className={`flex-1 overflow-x-auto overscroll-x-contain ${padMain}`}>
+      {/* Mobile : onglets par statut + liste pleine largeur (scroll vertical uniquement) */}
+      <div className="flex min-h-0 flex-1 flex-col overflow-hidden md:hidden">
+        <div
+          role="tablist"
+          aria-label="Statut des tâches"
+          className="flex shrink-0 gap-1 overflow-x-auto border-b border-slate-700 bg-slate-900/90 px-2 py-2 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+        >
+          {COLUMNS.map(col => {
+            const colTasks = tasksByStatus[col.id];
+            const active = mobileStatusTab === col.id;
+            return (
+              <button
+                key={col.id}
+                type="button"
+                role="tab"
+                aria-selected={active}
+                onClick={() => setMobileStatusTab(col.id)}
+                className={`flex min-w-[3.25rem] shrink-0 flex-col items-center gap-0.5 rounded-lg border px-1.5 py-1.5 touch-manipulation transition-colors ${
+                  active
+                    ? `${col.bg} ${col.border} shadow-sm ring-1 ring-white/10`
+                    : 'border-transparent bg-slate-800/50 text-slate-500 hover:bg-slate-800'
+                }`}
+              >
+                <col.Icon className={`h-4 w-4 shrink-0 ${active ? col.color : 'text-slate-500'}`} />
+                <span
+                  className={`max-w-[4.75rem] truncate text-center text-[9px] font-semibold leading-tight sm:max-w-[5.5rem] sm:text-[10px] ${
+                    active ? col.color : 'text-slate-500'
+                  }`}
+                >
+                  {col.label}
+                </span>
+                <span
+                  className={`text-[10px] font-bold tabular-nums ${active ? col.dimColor : 'text-slate-600'}`}
+                >
+                  {colTasks.length}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+
+        {(() => {
+          const col = COLUMNS.find(c => c.id === mobileStatusTab)!;
+          const colTasks = tasksByStatus[mobileStatusTab];
+          const padMobile = compactLayout ? 'px-3 py-3' : 'px-3 py-4';
+          return (
+            <div className={`flex min-h-0 min-w-0 flex-1 flex-col ${padMobile}`}>
+              <div
+                className={`mb-2 flex shrink-0 items-center justify-between gap-2 rounded-xl border px-3 py-2.5 ${col.bg} ${col.border}`}
+              >
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-2">
+                    <col.Icon className={`h-5 w-5 shrink-0 ${col.color}`} />
+                    <span className={`truncate text-sm font-semibold ${col.color}`}>{col.label}</span>
+                    <span className={`shrink-0 rounded-full bg-slate-900/40 px-1.5 py-0.5 text-xs font-bold ${col.color}`}>
+                      {colTasks.length}
+                    </span>
+                  </div>
+                  {col.subtitle ? (
+                    <p className="mt-0.5 pl-7 text-[10px] leading-snug text-slate-500">{col.subtitle}</p>
+                  ) : null}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => openAdd(col.id)}
+                  className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg transition-colors hover:bg-white/5 ${col.dimColor} hover:text-white`}
+                  title={`Ajouter dans ${col.label}`}
+                >
+                  +
+                </button>
+              </div>
+
+              <div className="min-h-0 flex-1 space-y-2.5 overflow-y-auto overscroll-y-contain pb-4">
+                {colTasks.length === 0 ? (
+                  <div className="rounded-xl border-2 border-dashed border-slate-700/60 p-8 text-center">
+                    <p className="text-xs text-slate-600">Aucune tâche dans cette colonne</p>
+                  </div>
+                ) : (
+                  colTasks.map(task => (
+                    <KanbanTaskCard
+                      key={task.id}
+                      task={task}
+                      selected={selectedTask?.id === task.id}
+                      onToggle={() => setSelectedTask(selectedTask?.id === task.id ? null : task)}
+                      getUsersByIds={getUsersByIds}
+                    />
+                  ))
+                )}
+              </div>
+            </div>
+          );
+        })()}
+      </div>
+
+      {/* Desktop : Kanban horizontal */}
+      <div className={`hidden min-h-0 flex-1 overflow-x-auto overscroll-x-contain md:block ${padMain}`}>
         <div className="flex h-full min-w-max gap-3 pb-1 sm:gap-5 sm:pb-2">
           {COLUMNS.map(col => {
             const colTasks = tasksByStatus[col.id];
             return (
-              <div key={col.id} className="flex w-[min(17.5rem,calc(100vw-2rem))] shrink-0 flex-col gap-2.5 sm:w-72 sm:gap-3">
+              <div key={col.id} className="flex w-72 shrink-0 flex-col gap-2.5 sm:gap-3">
                 {/* Column Header */}
                 <div className={`flex items-center justify-between gap-2 px-3 py-2.5 rounded-xl ${col.bg} border ${col.border}`}>
                   <div className="min-w-0 flex-1">
@@ -551,8 +727,9 @@ export default function TaskBoard({
                     ) : null}
                   </div>
                   <button
+                    type="button"
                     onClick={() => openAdd(col.id)}
-                    className={`${col.dimColor} hover:${col.color} transition-colors w-6 h-6 flex items-center justify-center rounded-lg hover:bg-white/5`}
+                    className={`flex h-6 w-6 items-center justify-center rounded-lg transition-colors hover:bg-white/5 ${col.dimColor} hover:opacity-100`}
                     title={`Ajouter dans ${col.label}`}
                   >
                     +
@@ -562,70 +739,19 @@ export default function TaskBoard({
                 {/* Task Cards */}
                 <div className="flex-1 space-y-2.5 overflow-y-auto sm:space-y-3">
                   {colTasks.length === 0 && (
-                    <div className="border-2 border-dashed border-slate-700/60 rounded-xl p-5 text-center">
-                      <p className="text-slate-600 text-xs">Aucune tâche</p>
+                    <div className="rounded-xl border-2 border-dashed border-slate-700/60 p-5 text-center">
+                      <p className="text-xs text-slate-600">Aucune tâche</p>
                     </div>
                   )}
-                  {colTasks.map(task => {
-                    const assignedUsers = getUsersByIds(task.assignedTo);
-                    const prio = PRIORITY_CONFIG[task.priority] ?? PRIORITY_CONFIG.medium;
-                    const overdue = isOverdue(task.dueDate, task.status);
-                    const isSelected = selectedTask?.id === task.id;
-
-                    return (
-                      <div
-                        key={task.id}
-                        onClick={() => setSelectedTask(isSelected ? null : task)}
-                        className={`bg-slate-800 border rounded-xl p-3 cursor-pointer transition-all sm:p-3.5 ${
-                          isSelected
-                            ? 'border-indigo-500 shadow-lg shadow-indigo-500/10'
-                            : 'border-slate-700 hover:border-slate-600 hover:shadow-md'
-                        }`}
-                      >
-                        {/* Priority dot */}
-                        <div className="flex items-start gap-2 mb-2">
-                          <span className={`mt-1.5 w-2 h-2 rounded-full flex-shrink-0 ${prio.dot}`} />
-                          <p className="text-sm font-medium text-slate-100 leading-snug flex-1">{task.title}</p>
-                        </div>
-
-                        {task.description && (
-                          <p className="text-xs text-slate-500 mb-3 line-clamp-2 pl-4">{task.description}</p>
-                        )}
-
-                        <div className="flex flex-wrap items-center gap-2 pl-4">
-                          <span className={`text-xs px-1.5 py-0.5 rounded-full font-medium ${prio.cls}`}>
-                            {prio.label}
-                          </span>
-                          <div className="flex items-center gap-1.5 ml-auto">
-                            {task.dueDate && (
-                              <span className={`inline-flex items-center gap-1 text-xs ${overdue ? 'text-red-400' : 'text-slate-500'}`}>
-                                {overdue ? (
-                                  <IconAlertTriangle className="h-3.5 w-3.5 shrink-0" />
-                                ) : (
-                                  <IconCalendar className="h-3.5 w-3.5 shrink-0" />
-                                )}
-                                {formatDate(task.dueDate)}
-                              </span>
-                            )}
-                            {assignedUsers.length > 0 && (
-                              <div className="flex items-center -space-x-1.5">
-                                {assignedUsers.slice(0, 2).map(user => (
-                                  <div
-                                    key={user.id}
-                                    className="w-6 h-6 rounded-full ring-2 ring-slate-800 flex items-center justify-center text-white text-[10px] font-semibold shadow-sm"
-                                    style={{ backgroundColor: user.color }}
-                                    title={user.name}
-                                  >
-                                    {user.initials}
-                                  </div>
-                                ))}
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })}
+                  {colTasks.map(task => (
+                    <KanbanTaskCard
+                      key={task.id}
+                      task={task}
+                      selected={selectedTask?.id === task.id}
+                      onToggle={() => setSelectedTask(selectedTask?.id === task.id ? null : task)}
+                      getUsersByIds={getUsersByIds}
+                    />
+                  ))}
                 </div>
               </div>
             );
