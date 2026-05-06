@@ -447,7 +447,7 @@ async function loadAppData(): Promise<{ contacts: User[]; notes: Note[]; tasks: 
 
 export default function HomePage() {
   const router = useRouter();
-  const [activeView, setActiveView] = useState<'notes' | 'tasks' | 'planning'>('notes');
+  const [activeView, setActiveView] = useState<'notes' | 'tasks' | 'planning'>('planning');
   const [notes, setNotes] = useState<Note[]>([]);
   const [tasks, setTasks] = useState<Task[]>([]);
   const [contacts, setContacts] = useState<User[]>([]);

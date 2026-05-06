@@ -57,6 +57,17 @@ export const metadata: Metadata = {
       "application/json": "https://neurix.qrthecode2.com/sitemap.xml",
     },
   },
+  other: {
+    "google-adsense-account": "ca-pub-3501392384261622",
+  },
+  // Code fourni par AdSense / Search Console (balise meta google-site-verification)
+  ...(process.env.GOOGLE_SITE_VERIFICATION
+    ? {
+        verification: {
+          google: process.env.GOOGLE_SITE_VERIFICATION,
+        },
+      }
+    : {}),
 };
 
 export const viewport = {
@@ -85,12 +96,16 @@ export default function RootLayout({
   return (
     <html
       lang="fr"
+      suppressHydrationWarning
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
       <head>
         <StructuredData />
       </head>
-      <body className="min-h-dvh flex flex-col overflow-x-hidden">
+      <body
+        className="min-h-dvh flex flex-col overflow-x-hidden"
+        suppressHydrationWarning
+      >
         {children}
       </body>
     </html>

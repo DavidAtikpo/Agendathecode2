@@ -48,10 +48,23 @@ const PRIORITY_LABEL: Record<string, string> = {
   urgent: 'Urgent',
 };
 
+const PRIORITY_COLOR: Record<string, string> = {
+  low: 'bg-slate-500/30 text-slate-300',
+  medium: 'bg-sky-500/25 text-sky-300',
+  high: 'bg-amber-500/25 text-amber-300',
+  urgent: 'bg-rose-500/25 text-rose-300',
+};
+
 function formatShort(iso: string) {
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return '—';
   return d.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' });
+}
+
+function formatFull(iso: string) {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '—';
+  return d.toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' });
 }
 
 function formatMonthYear(d: Date) {
@@ -69,7 +82,7 @@ function buildRows(notes: Note[], tasks: Task[]): PlanningRow[] {
 
   for (const t of tasks) {
     const startMs = new Date(t.createdAt).getTime();
-    let endMs = t.dueDate ? new Date(t.dueDate).getTime() : addDays(startMs, 14);
+    const endMs = t.dueDate ? new Date(t.dueDate).getTime() : addDays(startMs, 14);
     const { startMs: s, endMs: e } = clampDateOrder(startMs, endMs);
     const meta = taskStatusMeta(t.status);
     out.push({
@@ -89,7 +102,7 @@ function buildRows(notes: Note[], tasks: Task[]): PlanningRow[] {
     const startMs = new Date(n.createdAt).getTime();
     const remindMs = n.remindAt ? new Date(n.remindAt).getTime() : null;
     const updatedMs = new Date(n.updatedAt).getTime();
-    let endMs = remindMs ?? Math.max(updatedMs, startMs + DAY_MS);
+    const endMs = remindMs ?? Math.max(updatedMs, startMs + DAY_MS);
     const { startMs: s, endMs: e } = clampDateOrder(startMs, endMs);
     let statusLabel = 'Idée / note';
     let progressPct: number | null = null;
@@ -120,7 +133,14 @@ function buildRows(notes: Note[], tasks: Task[]): PlanningRow[] {
     });
   }
 
-  out.sort((a, b) => a.startMs - b.startMs);
+  /* Tâches actives en haut, terminées en bas ; au sein de chaque groupe : plus récent d'abord. */
+  const doneGroup = (r: PlanningRow) =>
+    r.kind === 'task' && r.statusLabel === 'Terminé' ? 1 : 0;
+  out.sort((a, b) => {
+    const gd = doneGroup(a) - doneGroup(b);
+    if (gd !== 0) return gd;
+    return b.startMs - a.startMs || b.endMs - a.endMs;
+  });
   return out;
 }
 
@@ -147,6 +167,15 @@ function barPalette(r: PlanningRow): { track: string; fillStrong: string } {
   return { track: 'bg-indigo-950/80', fillStrong: 'bg-indigo-400/90' };
 }
 
+function statusBadgeColor(statusLabel: string, kind: PlanningKind) {
+  if (kind === 'note') return 'bg-sky-500/20 text-sky-300';
+  if (statusLabel === 'Terminé') return 'bg-emerald-500/20 text-emerald-300';
+  if (statusLabel === 'Révision') return 'bg-violet-500/20 text-violet-300';
+  if (statusLabel === 'En cours' || statusLabel === 'En cours de test') return 'bg-amber-500/20 text-amber-300';
+  if (statusLabel === 'Urgence / bug') return 'bg-rose-500/20 text-rose-300';
+  return 'bg-indigo-500/20 text-indigo-300';
+}
+
 interface MonthSegment {
   startMs: number;
   endMs: number;
@@ -160,8 +189,198 @@ interface PlanningViewProps {
   compactLayout?: boolean;
 }
 
+/* ─── Panneau de détails ─────────────────────────────────────────────────── */
+function DetailPanel({
+  row,
+  task,
+  note,
+  onClose,
+}: {
+  row: PlanningRow;
+  task: Task | undefined;
+  note: Note | undefined;
+  onClose: () => void;
+}) {
+  const pal = barPalette(row);
+  const pct = row.progressPct ?? 0;
+
+  return (
+    <div className="flex h-full w-72 shrink-0 flex-col border-l border-slate-700/80 bg-slate-900 shadow-[-8px_0_24px_-4px_rgba(0,0,0,0.5)]">
+      {/* En-tête */}
+      <div className="flex shrink-0 items-start gap-2 border-b border-slate-700/80 px-4 py-3">
+        <div className="min-w-0 flex-1">
+          <div className="mb-1 flex flex-wrap items-center gap-1.5">
+            <span
+              className={`rounded px-1.5 py-0.5 text-[9px] font-bold uppercase leading-none ${
+                row.kind === 'task' ? 'bg-indigo-500/25 text-indigo-200' : 'bg-sky-500/20 text-sky-200'
+              }`}
+            >
+              {row.kind === 'task' ? 'Tâche' : 'Note'}
+            </span>
+            <span className={`rounded px-1.5 py-0.5 text-[9px] font-semibold uppercase leading-none ${statusBadgeColor(row.statusLabel, row.kind)}`}>
+              {row.statusLabel}
+            </span>
+            {row.priorityLabel && task && (
+              <span className={`rounded px-1.5 py-0.5 text-[9px] font-semibold uppercase leading-none ${PRIORITY_COLOR[task.priority] ?? 'bg-slate-500/30 text-slate-300'}`}>
+                {row.priorityLabel}
+              </span>
+            )}
+          </div>
+          <p className="text-sm font-semibold leading-snug text-slate-100">{row.title}</p>
+        </div>
+        <button
+          type="button"
+          onClick={onClose}
+          className="mt-0.5 shrink-0 rounded p-1 text-slate-500 transition-colors hover:bg-slate-700/60 hover:text-slate-200"
+          aria-label="Fermer"
+        >
+          <svg className="h-4 w-4" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2">
+            <path d="M4 4l8 8M12 4l-8 8" strokeLinecap="round" />
+          </svg>
+        </button>
+      </div>
+
+      {/* Corps scrollable */}
+      <div className="min-h-0 flex-1 overflow-y-auto px-4 py-3 space-y-4">
+        {/* Barre de progression */}
+        {row.progressPct != null && (
+          <div>
+            <div className="mb-1 flex items-center justify-between text-[11px] text-slate-400">
+              <span>Progression</span>
+              <span className="tabular-nums font-medium text-slate-200">{pct}%</span>
+            </div>
+            <div className={`relative h-2 w-full overflow-hidden rounded-full ${pal.track}`}>
+              <div
+                className={`absolute inset-y-0 left-0 rounded-full ${pal.fillStrong} transition-all duration-300`}
+                style={{ width: `${pct}%` }}
+              />
+            </div>
+          </div>
+        )}
+
+        {/* Dates */}
+        <div className="grid grid-cols-2 gap-2">
+          <div className="rounded-lg bg-slate-800/60 px-3 py-2">
+            <p className="mb-0.5 text-[10px] font-medium uppercase tracking-wide text-slate-500">Début</p>
+            <p className="text-xs font-medium text-slate-200">{formatFull(new Date(row.startMs).toISOString())}</p>
+          </div>
+          <div className="rounded-lg bg-slate-800/60 px-3 py-2">
+            <p className="mb-0.5 text-[10px] font-medium uppercase tracking-wide text-slate-500">
+              {row.kind === 'task' ? 'Échéance' : 'Rappel'}
+            </p>
+            <p className="text-xs font-medium text-slate-200">{formatFull(new Date(row.endMs).toISOString())}</p>
+          </div>
+        </div>
+
+        {/* Durée */}
+        <div className="rounded-lg bg-slate-800/60 px-3 py-2">
+          <p className="mb-0.5 text-[10px] font-medium uppercase tracking-wide text-slate-500">Durée</p>
+          <p className="text-xs font-medium text-slate-200">
+            {durationDays(row.startMs, row.endMs)} jour{durationDays(row.startMs, row.endMs) > 1 ? 's' : ''}
+          </p>
+        </div>
+
+        {/* Description (tâche) */}
+        {task && task.description && (
+          <div>
+            <p className="mb-1.5 text-[10px] font-medium uppercase tracking-wide text-slate-500">Description</p>
+            <p className="whitespace-pre-wrap text-xs leading-relaxed text-slate-300">{task.description}</p>
+          </div>
+        )}
+
+        {/* Contenu (note) */}
+        {note && note.content && (
+          <div>
+            <p className="mb-1.5 text-[10px] font-medium uppercase tracking-wide text-slate-500">Contenu</p>
+            <p className="whitespace-pre-wrap text-xs leading-relaxed text-slate-300 line-clamp-[12]">{note.content}</p>
+          </div>
+        )}
+
+        {/* Rappel e-mail (note) */}
+        {note && note.reminderByEmail && (
+          <div className="flex items-center gap-2 rounded-lg bg-indigo-500/10 px-3 py-2 text-xs text-indigo-300">
+            <svg className="h-3.5 w-3.5 shrink-0" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6">
+              <rect x="1" y="3" width="14" height="10" rx="2" />
+              <path d="M1 5l7 5 7-5" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+            Rappel e-mail activé
+          </div>
+        )}
+
+        {/* Assignés (tâche) */}
+        {task && task.assignedTo.length > 0 && (
+          <div>
+            <p className="mb-1.5 text-[10px] font-medium uppercase tracking-wide text-slate-500">
+              Assigné{task.assignedTo.length > 1 ? 's' : ''} ({task.assignedTo.length})
+            </p>
+            <div className="flex flex-wrap gap-1.5">
+              {task.assignedTo.map(uid => (
+                <span key={uid} className="rounded bg-slate-700/60 px-2 py-0.5 text-[11px] text-slate-300">
+                  {uid}
+                </span>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Pièces jointes (tâche) */}
+        {task && task.assets && task.assets.length > 0 && (
+          <div>
+            <p className="mb-1.5 text-[10px] font-medium uppercase tracking-wide text-slate-500">
+              Pièce{task.assets.length > 1 ? 's' : ''} jointe{task.assets.length > 1 ? 's' : ''} ({task.assets.length})
+            </p>
+            <div className="space-y-1">
+              {task.assets.map(a => (
+                <a
+                  key={a.id}
+                  href={a.url}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="flex items-center gap-2 rounded bg-slate-800/60 px-2 py-1.5 text-[11px] text-slate-300 hover:bg-slate-700/60 hover:text-slate-100 transition-colors"
+                >
+                  <svg className="h-3 w-3 shrink-0 text-slate-500" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6">
+                    <path d="M4 2h6l4 4v8a1 1 0 01-1 1H3a1 1 0 01-1-1V3a1 1 0 011-1z" />
+                    <path d="M10 2v4h4" strokeLinejoin="round" />
+                  </svg>
+                  <span className="truncate">{a.originalName}</span>
+                </a>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Métadonnées bas */}
+        <div className="border-t border-slate-700/60 pt-3 space-y-1">
+          {task && (
+            <p className="text-[10px] text-slate-600">
+              Créé le {formatFull(task.createdAt)}
+            </p>
+          )}
+          {task && task.updatedAt !== task.createdAt && (
+            <p className="text-[10px] text-slate-600">
+              Mis à jour le {formatFull(task.updatedAt)}
+            </p>
+          )}
+          {note && (
+            <p className="text-[10px] text-slate-600">
+              Créé le {formatFull(note.createdAt)}
+            </p>
+          )}
+          {note && note.updatedAt !== note.createdAt && (
+            <p className="text-[10px] text-slate-600">
+              Mis à jour le {formatFull(note.updatedAt)}
+            </p>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ─── Composant principal ────────────────────────────────────────────────── */
 export default function PlanningView({ notes, tasks, compactLayout }: PlanningViewProps) {
   const [filter, setFilter] = useState<'all' | 'tasks' | 'notes'>('all');
+  const [selectedId, setSelectedId] = useState<string | null>(null);
   const leftBodyRef = useRef<HTMLDivElement>(null);
   const rightBodyRef = useRef<HTMLDivElement>(null);
   const topHeaderScrollRef = useRef<HTMLDivElement>(null);
@@ -169,12 +388,36 @@ export default function PlanningView({ notes, tasks, compactLayout }: PlanningVi
   const syncingHorizontal = useRef(false);
   const skipRightHorizontalEcho = useRef(false);
 
+  const taskMap = useMemo(() => {
+    const m = new Map<string, Task>();
+    for (const t of tasks) m.set(t.id, t);
+    return m;
+  }, [tasks]);
+
+  const noteMap = useMemo(() => {
+    const m = new Map<string, Note>();
+    for (const n of notes) m.set(n.id, n);
+    return m;
+  }, [notes]);
+
   const rows = useMemo(() => {
     const base = buildRows(notes, tasks);
     if (filter === 'tasks') return base.filter(r => r.kind === 'task');
     if (filter === 'notes') return base.filter(r => r.kind === 'note');
     return base;
   }, [notes, tasks, filter]);
+
+  const selectedRow = useMemo(
+    () => (selectedId ? rows.find(r => r.id === selectedId) ?? null : null),
+    [selectedId, rows],
+  );
+
+  /* Fermer le détail si la ligne disparaît (filtre changé) */
+  useEffect(() => {
+    if (selectedId && !rows.find(r => r.id === selectedId)) {
+      setSelectedId(null);
+    }
+  }, [rows, selectedId]);
 
   const { rangeMin, rangeMax, spanMs } = useMemo(() => {
     if (rows.length === 0) {
@@ -284,6 +527,7 @@ export default function PlanningView({ notes, tasks, compactLayout }: PlanningVi
 
   return (
     <div className="flex h-full min-h-0 flex-col bg-[#0f1419]">
+      {/* Barre d'outils */}
       <div
         className={`shrink-0 border-b border-slate-700/80 bg-slate-900/90 ${compactLayout ? 'px-3 py-2' : 'px-4 py-3'}`}
       >
@@ -356,10 +600,16 @@ export default function PlanningView({ notes, tasks, compactLayout }: PlanningVi
               onScroll={onLeftScroll}
             >
               {rows.map((r, i) => (
-                <div
+                <button
                   key={r.id}
-                  className={`grid grid-cols-[minmax(0,1fr)_46px_46px_26px_28px_minmax(0,72px)] items-center gap-x-0.5 border-b border-slate-800/90 px-1.5 ${cell} ${
-                    i % 2 === 1 ? 'bg-slate-800/25' : 'bg-transparent'
+                  type="button"
+                  onClick={() => setSelectedId(prev => (prev === r.id ? null : r.id))}
+                  className={`grid w-full grid-cols-[minmax(0,1fr)_46px_46px_26px_28px_minmax(0,72px)] items-center gap-x-0.5 border-b border-slate-800/90 px-1.5 text-left ${cell} transition-colors ${
+                    selectedId === r.id
+                      ? 'bg-indigo-500/15 ring-inset ring-1 ring-indigo-500/30'
+                      : i % 2 === 1
+                        ? 'bg-slate-800/25 hover:bg-slate-700/30'
+                        : 'bg-transparent hover:bg-slate-700/20'
                   }`}
                   style={{ height: rowH }}
                 >
@@ -389,7 +639,7 @@ export default function PlanningView({ notes, tasks, compactLayout }: PlanningVi
                   <span className="truncate text-center text-[10px] leading-tight text-slate-400" title={r.statusLabel}>
                     {r.statusLabel}
                   </span>
-                </div>
+                </button>
               ))}
             </div>
           </div>
@@ -428,7 +678,7 @@ export default function PlanningView({ notes, tasks, compactLayout }: PlanningVi
                   backgroundSize: `${timelineWidthPx}px 100%`,
                 }}
               >
-                {/* Ligne « aujourd’hui » */}
+                {/* Ligne « aujourd'hui » */}
                 {todayX >= 0 && todayX <= timelineWidthPx ? (
                   <div
                     className="pointer-events-none absolute bottom-0 top-0 z-20 w-px bg-rose-500/90 shadow-[0_0_8px_rgba(244,63,94,0.5)]"
@@ -451,10 +701,16 @@ export default function PlanningView({ notes, tasks, compactLayout }: PlanningVi
                   const pct = r.progressPct ?? 0;
 
                   return (
-                    <div
+                    <button
                       key={r.id}
-                      className={`absolute left-0 right-0 box-border flex items-center border-b border-slate-800/90 pl-1 pr-2 ${
-                        i % 2 === 1 ? 'bg-slate-900/40' : 'bg-slate-900/20'
+                      type="button"
+                      onClick={() => setSelectedId(prev => (prev === r.id ? null : r.id))}
+                      className={`absolute left-0 right-0 box-border flex w-full cursor-pointer items-center border-b border-slate-800/90 pl-1 pr-2 transition-colors ${
+                        selectedId === r.id
+                          ? 'bg-indigo-500/10'
+                          : i % 2 === 1
+                            ? 'bg-slate-900/40 hover:bg-slate-800/40'
+                            : 'bg-slate-900/20 hover:bg-slate-800/30'
                       }`}
                       style={{ top: i * rowH, height: rowH, width: timelineWidthPx }}
                     >
@@ -475,12 +731,22 @@ export default function PlanningView({ notes, tasks, compactLayout }: PlanningVi
                           </span>
                         ) : null}
                       </div>
-                    </div>
+                    </button>
                   );
                 })}
               </div>
             </div>
           </div>
+
+          {/* Panneau de détails */}
+          {selectedRow && (
+            <DetailPanel
+              row={selectedRow}
+              task={selectedRow.kind === 'task' ? taskMap.get(selectedRow.id.slice(5)) : undefined}
+              note={selectedRow.kind === 'note' ? noteMap.get(selectedRow.id.slice(5)) : undefined}
+              onClose={() => setSelectedId(null)}
+            />
+          )}
         </div>
       )}
     </div>
