@@ -100,7 +100,16 @@ export async function POST(request: Request, ctx: Ctx) {
     }
 
     const bytes = Buffer.from(await file.arrayBuffer());
+    const isImage = file.type.startsWith('image/');
     const isVideo = file.type.startsWith('video/');
+    /* Pour les documents (PDF, Office, zip, etc.) on utilise « raw » :
+       les URLs `/image/upload/*.pdf` sont bloquées en 401 par défaut côté
+       Cloudinary, alors que `/raw/upload/...` est servi sans restriction. */
+    const resourceType: 'image' | 'video' | 'raw' = isImage
+      ? 'image'
+      : isVideo
+        ? 'video'
+        : 'raw';
     const folder = `agenda/notes/${id}`;
 
     let uploaded: { secure_url: string; public_id: string };
@@ -109,7 +118,7 @@ export async function POST(request: Request, ctx: Ctx) {
         const stream = cloud.uploader.upload_stream(
           {
             folder,
-            resource_type: isVideo ? 'video' : 'auto',
+            resource_type: resourceType,
             use_filename: true,
             unique_filename: true,
           },

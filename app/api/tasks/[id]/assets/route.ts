@@ -56,13 +56,22 @@ export async function POST(request: Request, ctx: Ctx) {
   }
 
   const bytes = Buffer.from(await file.arrayBuffer());
+  const isImage = file.type.startsWith('image/');
   const isVideo = file.type.startsWith('video/');
+  /* PDF / Office / zip → resource_type 'raw' (les URLs `/image/upload/*.pdf`
+     sont bloquées par Cloudinary par défaut, alors que `/raw/upload/...`
+     est servi sans restriction). */
+  const resourceType: 'image' | 'video' | 'raw' = isImage
+    ? 'image'
+    : isVideo
+      ? 'video'
+      : 'raw';
   const folder = `agenda/tasks/${id}/${kind}`;
   const uploaded = await new Promise<{ secure_url: string; public_id: string }>((resolve, reject) => {
     const stream = cloud.uploader.upload_stream(
       {
         folder,
-        resource_type: isVideo ? 'video' : 'auto',
+        resource_type: resourceType,
         use_filename: true,
         unique_filename: true,
       },

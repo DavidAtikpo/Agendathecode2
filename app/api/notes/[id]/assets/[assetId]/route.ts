@@ -42,17 +42,29 @@ export async function DELETE(_: Request, ctx: Ctx) {
     /* Tente la suppression Cloudinary (best-effort : on continue même en cas d’échec). */
     const cloud = ensureCloudinary();
     if (cloud && asset.publicId) {
+      const isImage = asset.mediaType.startsWith('image/');
       const isVideo = asset.mediaType.startsWith('video/');
+      const primary: 'image' | 'video' | 'raw' = isImage
+        ? 'image'
+        : isVideo
+          ? 'video'
+          : 'raw';
+      const fallbacks: ('image' | 'video' | 'raw')[] = primary === 'raw'
+        ? ['image']
+        : ['raw'];
       try {
         await cloud.uploader.destroy(asset.publicId, {
-          resource_type: isVideo ? 'video' : 'image',
+          resource_type: primary,
           invalidate: true,
         });
       } catch {
-        try {
-          await cloud.uploader.destroy(asset.publicId, { resource_type: 'raw', invalidate: true });
-        } catch {
-          /* on ignore : l’entrée DB est de toute façon supprimée. */
+        for (const rt of fallbacks) {
+          try {
+            await cloud.uploader.destroy(asset.publicId, { resource_type: rt, invalidate: true });
+            break;
+          } catch {
+            /* on continue */
+          }
         }
       }
     }
