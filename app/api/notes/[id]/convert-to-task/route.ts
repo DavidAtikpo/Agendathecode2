@@ -29,90 +29,124 @@ const ALLOWED_PRIORITY: Record<string, TaskPriority> = {
  *   re-uploader sur Cloudinary (DB-level move, le fichier reste partagé).
  * - Optionnellement supprime la note d'origine.
  */
+function isMissingTableError(err: unknown): boolean {
+  if (!err || typeof err !== 'object') return false;
+  const e = err as { code?: string; message?: string };
+  if (e.code === 'P2021') return true;
+  if (typeof e.message === 'string') {
+    const m = e.message.toLowerCase();
+    return (
+      m.includes('does not exist') &&
+      (m.includes('noteasset') || m.includes('note_asset') || m.includes('"noteasset"'))
+    );
+  }
+  return false;
+}
+
 export async function POST(request: Request, ctx: Ctx) {
-  const sessionId = await getSessionUserId();
-  if (!sessionId) {
-    return NextResponse.json({ error: 'Non autorisé' }, { status: 401 });
-  }
-  const { id } = await ctx.params;
-
-  let body: {
-    deleteOriginal?: boolean;
-    priority?: string;
-    status?: string;
-    dueDate?: string | null;
-  } = {};
   try {
-    body = await request.json();
-  } catch {
-    /* corps optionnel */
-  }
+    const sessionId = await getSessionUserId();
+    if (!sessionId) {
+      return NextResponse.json({ error: 'Non autorisé' }, { status: 401 });
+    }
+    const { id } = await ctx.params;
 
-  const note = await prisma.note.findFirst({
-    where: { id, userId: sessionId },
-    include: { assets: true },
-  });
-  if (!note) {
-    return NextResponse.json({ error: 'Note introuvable' }, { status: 404 });
-  }
+    let body: {
+      deleteOriginal?: boolean;
+      priority?: string;
+      status?: string;
+      dueDate?: string | null;
+    } = {};
+    try {
+      body = await request.json();
+    } catch {
+      /* corps optionnel */
+    }
 
-  const status = (body.status && ALLOWED_STATUS[body.status]) || TaskStatus.todo;
-  const priority = (body.priority && ALLOWED_PRIORITY[body.priority]) || TaskPriority.medium;
-  const dueDate =
-    body.dueDate && String(body.dueDate).trim() !== '' && !Number.isNaN(new Date(body.dueDate).getTime())
-      ? new Date(body.dueDate)
-      : note.remindAt;
-
-  /* Transaction : création tâche + transfert assets + (option) suppression note. */
-  const created = await prisma.$transaction(async tx => {
-    const task = await tx.task.create({
-      data: {
-        title: note.title || 'Sans titre',
-        description: note.content ?? '',
-        status,
-        priority,
-        dueDate,
-        createdById: sessionId,
-        assignees: { create: [{ userId: sessionId }] },
-        assigneeNotifiedAt: new Date(),
-      },
+    const note = await prisma.note.findFirst({
+      where: { id, userId: sessionId },
+      include: { assets: true },
     });
+    if (!note) {
+      return NextResponse.json({ error: 'Note introuvable' }, { status: 404 });
+    }
 
-    if (note.assets.length > 0) {
-      await tx.taskAsset.createMany({
-        data: note.assets.map(a => ({
-          taskId: task.id,
-          uploaderId: a.uploaderId,
-          kind: TaskAssetKind.input,
-          mediaType: a.mediaType,
-          originalName: a.originalName,
-          bytes: a.bytes,
-          url: a.url,
-          publicId: a.publicId,
-        })),
+    const status = (body.status && ALLOWED_STATUS[body.status]) || TaskStatus.todo;
+    const priority = (body.priority && ALLOWED_PRIORITY[body.priority]) || TaskPriority.medium;
+    const dueDate =
+      body.dueDate && String(body.dueDate).trim() !== '' && !Number.isNaN(new Date(body.dueDate).getTime())
+        ? new Date(body.dueDate)
+        : note.remindAt;
+
+    /* Transaction : création tâche + transfert assets + (option) suppression note. */
+    const created = await prisma.$transaction(async tx => {
+      const task = await tx.task.create({
+        data: {
+          title: note.title || 'Sans titre',
+          description: note.content ?? '',
+          status,
+          priority,
+          dueDate,
+          createdById: sessionId,
+          assignees: { create: [{ userId: sessionId }] },
+          assigneeNotifiedAt: new Date(),
+        },
       });
-      /* Les fichiers Cloudinary appartiennent désormais à la tâche : on
-         supprime les NoteAsset pour éviter une double-suppression. */
-      await tx.noteAsset.deleteMany({ where: { noteId: note.id } });
-    }
 
-    if (body.deleteOriginal) {
-      await tx.note.delete({ where: { id: note.id } });
-    }
+      if (note.assets.length > 0) {
+        await tx.taskAsset.createMany({
+          data: note.assets.map(a => ({
+            taskId: task.id,
+            uploaderId: a.uploaderId,
+            kind: TaskAssetKind.input,
+            mediaType: a.mediaType,
+            originalName: a.originalName,
+            bytes: a.bytes,
+            url: a.url,
+            publicId: a.publicId,
+          })),
+        });
+        /* Les fichiers Cloudinary appartiennent désormais à la tâche : on
+           supprime les NoteAsset pour éviter une double-suppression. */
+        await tx.noteAsset.deleteMany({ where: { noteId: note.id } });
+      }
 
-    const full = await tx.task.findUniqueOrThrow({
-      where: { id: task.id },
-      include: TASK_WITH_RELATIONS_INCLUDE,
+      if (body.deleteOriginal) {
+        await tx.note.delete({ where: { id: note.id } });
+      }
+
+      const full = await tx.task.findUniqueOrThrow({
+        where: { id: task.id },
+        include: TASK_WITH_RELATIONS_INCLUDE,
+      });
+      return full;
     });
-    return full;
-  });
 
-  return NextResponse.json(
-    {
-      task: serializeTask(created),
-      noteDeleted: !!body.deleteOriginal,
-      noteId: note.id,
-    },
-    { status: 201 },
-  );
+    return NextResponse.json(
+      {
+        task: serializeTask(created),
+        noteDeleted: !!body.deleteOriginal,
+        noteId: note.id,
+      },
+      { status: 201 },
+    );
+  } catch (err) {
+    console.error('[notes/:id/convert-to-task POST]', err);
+    if (isMissingTableError(err)) {
+      return NextResponse.json(
+        {
+          error:
+            'Table « NoteAsset » introuvable. Lancez `npx prisma db push` pour appliquer la migration.',
+        },
+        { status: 500 },
+      );
+    }
+    return NextResponse.json(
+      {
+        error:
+          err instanceof Error ? `Erreur serveur : ${err.message}` : 'Erreur serveur inconnue',
+      },
+      { status: 500 },
+    );
+  }
 }

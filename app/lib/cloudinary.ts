@@ -7,7 +7,13 @@ function getCloudinaryConfig() {
   const apiKey = process.env.CLOUDINARY_API_KEY?.trim();
   const apiSecret = process.env.CLOUDINARY_API_SECRET?.trim();
   if (!cloudName || !apiKey || !apiSecret) return null;
-  return { cloudName, apiKey, apiSecret };
+  /* Le SDK Cloudinary v2 attend des clés en snake_case. */
+  return {
+    cloud_name: cloudName,
+    api_key: apiKey,
+    api_secret: apiSecret,
+    secure: true,
+  };
 }
 
 export function ensureCloudinary() {
