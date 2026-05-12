@@ -20,6 +20,7 @@ import ChatPanel from './components/ChatPanel';
 import ProPlanBanner from './components/ProPlanBanner';
 import ProFeaturesModal from './components/ProFeaturesModal';
 import { Note, Task, User, ChatMessage, TaskStatus } from './types';
+import { uploadWithProgress, type UploadProgress } from './lib/upload-with-progress';
 import { useNoteReminders, formatReminderLabel } from './lib/useNoteReminders';
 import { normalizeWhatsAppPhone } from './lib/whatsappReminder';
 import {
@@ -834,29 +835,20 @@ export default function HomePage() {
   );
 
   const uploadNoteAsset = useCallback(
-    async (noteId: string, file: File): Promise<Note> => {
+    async (
+      noteId: string,
+      file: File,
+      opts?: { onProgress?: (p: UploadProgress) => void; signal?: AbortSignal },
+    ): Promise<Note> => {
       if (isGuest) throw new Error('Connectez-vous pour ajouter une pièce jointe.');
-      const fd = new FormData();
-      fd.append('file', file);
-      const res = await fetch(`/api/notes/${noteId}/assets`, {
-        method: 'POST',
-        body: fd,
-        ...fetchOpts,
+      const result = await uploadWithProgress<Note>(`/api/notes/${noteId}/assets`, file, {
+        onProgress: opts?.onProgress,
+        ...(opts?.signal ? { signal: opts.signal } : {}),
       });
-      let payload: unknown;
-      try {
-        payload = await res.json();
-      } catch {
-        throw new Error(`Réponse invalide du serveur (${res.status})`);
+      if (!result.ok || !result.data) {
+        throw new Error(result.error ?? `Upload impossible (${result.status})`);
       }
-      if (!res.ok) {
-        const msg =
-          typeof payload === 'object' && payload !== null && 'error' in payload && typeof (payload as { error: unknown }).error === 'string'
-            ? (payload as { error: string }).error
-            : `Upload impossible (${res.status})`;
-        throw new Error(msg);
-      }
-      const updated = payload as Note;
+      const updated = result.data;
       setNotes(prev => prev.map(n => (n.id === updated.id ? updated : n)));
       return updated;
     },

@@ -2,6 +2,7 @@
 
 import { useState, useMemo, useRef, type ComponentType } from 'react';
 import { Task, TaskAsset, User, TaskStatus, TaskPriority } from '../types';
+import { uploadWithProgress } from '../lib/upload-with-progress';
 import {
   IconAlertTriangle,
   IconBolt,
@@ -165,6 +166,43 @@ function CollaboratorsIcon({ className }: { className?: string }) {
   );
 }
 
+function UploadProgressInline({
+  name,
+  percent,
+  phase,
+}: {
+  name: string;
+  percent: number | null;
+  phase: 'uploading' | 'processing';
+}) {
+  const indeterminate = percent === null;
+  const display = indeterminate ? null : Math.max(0, Math.min(100, percent ?? 0));
+  return (
+    <div className="rounded-lg border border-indigo-500/40 bg-indigo-500/5 px-2.5 py-2">
+      <p className="mb-1 truncate text-[11px] font-medium text-slate-100">{name}</p>
+      <div className="h-1.5 w-full overflow-hidden rounded-full bg-slate-700/80">
+        {indeterminate ? (
+          <div className="h-full w-1/3 animate-pulse rounded-full bg-indigo-500/80" />
+        ) : (
+          <div
+            className={`h-full rounded-full transition-[width] duration-200 ease-out ${
+              phase === 'processing' ? 'bg-emerald-500/90' : 'bg-indigo-500/90'
+            }`}
+            style={{ width: `${display}%` }}
+          />
+        )}
+      </div>
+      <p className="mt-0.5 text-[10px] tabular-nums text-slate-400">
+        {phase === 'processing'
+          ? 'Traitement côté serveur…'
+          : indeterminate
+            ? 'Envoi en cours…'
+            : `Envoi ${display}%`}
+      </p>
+    </div>
+  );
+}
+
 function AssetList({
   title,
   emptyLabel,
@@ -315,6 +353,11 @@ export default function TaskBoard({
   const [mobileStatusTab, setMobileStatusTab] = useState<TaskStatus>('todo');
   const [assetBusy, setAssetBusy] = useState<'input' | 'output' | null>(null);
   const [assetError, setAssetError] = useState<string | null>(null);
+  const [assetProgress, setAssetProgress] = useState<{
+    name: string;
+    percent: number | null;
+    phase: 'uploading' | 'processing';
+  } | null>(null);
   const [draftInputVideo, setDraftInputVideo] = useState<File | null>(null);
   const [draftInputFile, setDraftInputFile] = useState<File | null>(null);
   const [draftOutputFile, setDraftOutputFile] = useState<File | null>(null);
@@ -443,25 +486,25 @@ export default function TaskBoard({
     if (!taskId || !file || assetBusy) return;
     setAssetError(null);
     setAssetBusy(kind);
+    setAssetProgress({ name: file.name, percent: 0, phase: 'uploading' });
     try {
-      const fd = new FormData();
-      fd.append('kind', kind);
-      fd.append('file', file);
-      const res = await fetch(`/api/tasks/${taskId}/assets`, {
-        method: 'POST',
-        body: fd,
-        credentials: 'include',
+      const result = await uploadWithProgress<Task>(`/api/tasks/${taskId}/assets`, file, {
+        fields: { kind },
+        onProgress: p => {
+          setAssetProgress({ name: file.name, percent: p.percent, phase: p.phase });
+        },
       });
-      const payload = await res.json();
-      if (!res.ok) {
-        throw new Error(payload?.error ?? 'Upload impossible');
+      if (!result.ok || !result.data) {
+        throw new Error(result.error ?? `Upload impossible (${result.status})`);
       }
-      const updated = payload as Task;
+      const updated = result.data;
       setSelectedTask(prev => (prev && prev.id === updated.id ? updated : prev));
       setEditingTask(prev => (prev && prev.id === updated.id ? updated : prev));
       await onUpdate(updated.id, {});
+      setAssetProgress(null);
     } catch (e: unknown) {
       setAssetError(e instanceof Error ? e.message : 'Erreur upload');
+      setAssetProgress(null);
     } finally {
       setAssetBusy(null);
     }
@@ -821,7 +864,13 @@ export default function TaskBoard({
                 {isGuestUser ? (
                   <p className="text-[11px] text-slate-500">Connectez-vous pour ajouter des vidéos et pièces jointes.</p>
                 ) : null}
-                {assetBusy && <p className="text-[11px] text-indigo-300">Upload en cours…</p>}
+                {assetProgress ? (
+                  <UploadProgressInline
+                    name={assetProgress.name}
+                    percent={assetProgress.percent}
+                    phase={assetProgress.phase}
+                  />
+                ) : null}
                 {assetError && <p className="text-[11px] text-red-300">{assetError}</p>}
 
                 <AssetList
@@ -1144,7 +1193,13 @@ export default function TaskBoard({
                     </div>
                   </div>
                 )}
-                {assetBusy && <p className="text-[11px] text-indigo-300">Upload en cours…</p>}
+                {assetProgress ? (
+                  <UploadProgressInline
+                    name={assetProgress.name}
+                    percent={assetProgress.percent}
+                    phase={assetProgress.phase}
+                  />
+                ) : null}
                 {assetError && <p className="text-[11px] text-red-300">{assetError}</p>}
               </div>
 

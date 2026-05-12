@@ -9,6 +9,7 @@ import {
   formatReminderRelative,
   requestReminderPermission,
 } from '../lib/useNoteReminders';
+import type { UploadProgress } from '../lib/upload-with-progress';
 import { normalizeWhatsAppPhone } from '../lib/whatsappReminder';
 import {
   IconBell,
@@ -52,7 +53,11 @@ interface NotesSectionProps {
   whatsappAutoOpen: boolean;
   onWhatsappAutoOpenChange: (value: boolean) => void;
   /** Upload d’une photo/document Cloudinary. Renvoie la note mise à jour. */
-  onUploadAsset?: (noteId: string, file: File) => Promise<Note>;
+  onUploadAsset?: (
+    noteId: string,
+    file: File,
+    opts?: { onProgress?: (p: UploadProgress) => void; signal?: AbortSignal },
+  ) => Promise<Note>;
   /** Suppression d’une pièce jointe. Renvoie la note mise à jour. */
   onDeleteAsset?: (noteId: string, assetId: string) => Promise<Note>;
   /** Conversion d’une note en tâche. Les pièces jointes sont déplacées sur la nouvelle tâche. */
@@ -175,6 +180,40 @@ function isImageAsset(asset: NoteAsset) {
   return asset.mediaType.startsWith('image/');
 }
 
+function UploadProgressRow({
+  percent,
+  phase,
+}: {
+  percent: number | null;
+  phase: 'uploading' | 'processing';
+}) {
+  const isIndeterminate = percent === null;
+  const display = isIndeterminate ? null : Math.max(0, Math.min(100, percent ?? 0));
+  return (
+    <div className="space-y-0.5">
+      <div className="h-1.5 w-full overflow-hidden rounded-full bg-slate-700/80">
+        {isIndeterminate ? (
+          <div className="h-full w-1/3 animate-pulse rounded-full bg-indigo-500/80" />
+        ) : (
+          <div
+            className={`h-full rounded-full transition-[width] duration-200 ease-out ${
+              phase === 'processing' ? 'bg-emerald-500/90' : 'bg-indigo-500/90'
+            }`}
+            style={{ width: `${display}%` }}
+          />
+        )}
+      </div>
+      <p className="text-[10px] tabular-nums text-slate-400">
+        {phase === 'processing'
+          ? 'Traitement côté serveur…'
+          : isIndeterminate
+            ? 'Envoi en cours…'
+            : `Envoi ${display}%`}
+      </p>
+    </div>
+  );
+}
+
 export default function NotesSection({
   notes,
   onAdd,
@@ -210,7 +249,16 @@ export default function NotesSection({
   const contentRef = useRef<HTMLTextAreaElement>(null);
 
   /* Pièces jointes : drafts (création) + état d’upload (édition) */
+  type UploadStatus =
+    | { kind: 'pending' }
+    | { kind: 'uploading'; percent: number | null; phase: 'uploading' | 'processing' }
+    | { kind: 'done' }
+    | { kind: 'error'; message: string };
   const [draftAssets, setDraftAssets] = useState<File[]>([]);
+  const [draftStatuses, setDraftStatuses] = useState<UploadStatus[]>([]);
+  const [editingUpload, setEditingUpload] = useState<
+    { name: string; size: number; status: UploadStatus } | null
+  >(null);
   const [assetBusy, setAssetBusy] = useState(false);
   const [assetError, setAssetError] = useState<string | null>(null);
   const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
@@ -238,6 +286,8 @@ export default function NotesSection({
 
   const resetDrafts = useCallback(() => {
     setDraftAssets([]);
+    setDraftStatuses([]);
+    setEditingUpload(null);
     setAssetError(null);
   }, []);
 
@@ -246,11 +296,29 @@ export default function NotesSection({
       if (!editingNote || !onUploadAsset) return;
       setAssetError(null);
       setAssetBusy(true);
+      setEditingUpload({
+        name: file.name,
+        size: file.size,
+        status: { kind: 'uploading', percent: 0, phase: 'uploading' },
+      });
       try {
-        const updated = await onUploadAsset(editingNote.id, file);
+        const updated = await onUploadAsset(editingNote.id, file, {
+          onProgress: p => {
+            setEditingUpload(prev =>
+              prev
+                ? { ...prev, status: { kind: 'uploading', percent: p.percent, phase: p.phase } }
+                : prev,
+            );
+          },
+        });
         setEditingNote(updated);
+        setEditingUpload(prev => (prev ? { ...prev, status: { kind: 'done' } } : prev));
+        /* On nettoie l’indicateur après un court délai pour laisser voir le 100%. */
+        window.setTimeout(() => setEditingUpload(null), 800);
       } catch (e: unknown) {
-        setAssetError(e instanceof Error ? e.message : 'Upload impossible');
+        const msg = e instanceof Error ? e.message : 'Upload impossible';
+        setAssetError(msg);
+        setEditingUpload(prev => (prev ? { ...prev, status: { kind: 'error', message: msg } } : prev));
       } finally {
         setAssetBusy(false);
       }
@@ -357,20 +425,46 @@ export default function NotesSection({
 
     if (createdNote && draftAssets.length > 0 && onUploadAsset) {
       setAssetBusy(true);
-      try {
-        for (const file of draftAssets) {
-          await onUploadAsset(createdNote.id, file);
+      /* On démarre tous les fichiers en « pending » pour afficher leur barre. */
+      setDraftStatuses(draftAssets.map(() => ({ kind: 'pending' })));
+      let firstError: string | null = null;
+      for (let i = 0; i < draftAssets.length; i++) {
+        const file = draftAssets[i];
+        setDraftStatuses(prev => {
+          const next = [...prev];
+          next[i] = { kind: 'uploading', percent: 0, phase: 'uploading' };
+          return next;
+        });
+        try {
+          await onUploadAsset(createdNote.id, file, {
+            onProgress: p => {
+              setDraftStatuses(prev => {
+                const next = [...prev];
+                next[i] = { kind: 'uploading', percent: p.percent, phase: p.phase };
+                return next;
+              });
+            },
+          });
+          setDraftStatuses(prev => {
+            const next = [...prev];
+            next[i] = { kind: 'done' };
+            return next;
+          });
+        } catch (e: unknown) {
+          const msg = e instanceof Error ? e.message : 'Upload impossible';
+          if (!firstError) firstError = msg;
+          setDraftStatuses(prev => {
+            const next = [...prev];
+            next[i] = { kind: 'error', message: msg };
+            return next;
+          });
         }
-      } catch (e: unknown) {
-        setAssetError(
-          e instanceof Error
-            ? `Note créée, mais une pièce jointe a échoué : ${e.message}`
-            : 'Note créée, mais une pièce jointe a échoué.',
-        );
-        setAssetBusy(false);
-        return;
       }
       setAssetBusy(false);
+      if (firstError) {
+        setAssetError(`Note créée, mais une pièce jointe a échoué : ${firstError}`);
+        return;
+      }
     }
     setShowModal(false);
   };
@@ -383,6 +477,7 @@ export default function NotesSection({
         void handleEditingUpload(file);
       } else {
         setDraftAssets(prev => [...prev, file]);
+        setDraftStatuses(prev => [...prev, { kind: 'pending' }]);
       }
     },
     [editingNote, handleEditingUpload],
@@ -390,6 +485,7 @@ export default function NotesSection({
 
   const removeDraft = useCallback((index: number) => {
     setDraftAssets(prev => prev.filter((_, i) => i !== index));
+    setDraftStatuses(prev => prev.filter((_, i) => i !== index));
   }, []);
 
   /* Microphone feeds into the content textarea */
@@ -794,12 +890,44 @@ export default function NotesSection({
                         e.currentTarget.value = '';
                       }}
                     />
-                    {assetBusy && (
-                      <p className="mt-2 text-[11px] text-indigo-300">Envoi en cours…</p>
-                    )}
                     {assetError && (
                       <p className="mt-2 text-[11px] text-red-300">{assetError}</p>
                     )}
+
+                    {/* Upload en cours (mode édition) */}
+                    {editingNote && editingUpload ? (
+                      <div className="mt-3 rounded-lg border border-indigo-500/40 bg-indigo-500/5 p-2.5">
+                        <div className="flex items-center gap-2">
+                          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded border border-indigo-500/40 bg-slate-900 text-indigo-300">
+                            <IconPaperclip className="h-4 w-4" />
+                          </span>
+                          <div className="min-w-0 flex-1">
+                            <p className="truncate text-xs font-medium text-slate-100">
+                              {editingUpload.name}
+                            </p>
+                            <p className="text-[10px] text-slate-400">
+                              {formatBytes(editingUpload.size)}
+                            </p>
+                          </div>
+                        </div>
+                        <div className="mt-2">
+                          {editingUpload.status.kind === 'uploading' ? (
+                            <UploadProgressRow
+                              percent={editingUpload.status.percent}
+                              phase={editingUpload.status.phase}
+                            />
+                          ) : editingUpload.status.kind === 'done' ? (
+                            <p className="text-[11px] font-medium text-emerald-300">
+                              ✓ Téléversé
+                            </p>
+                          ) : editingUpload.status.kind === 'error' ? (
+                            <p className="text-[11px] text-red-300">
+                              ✕ {editingUpload.status.message}
+                            </p>
+                          ) : null}
+                        </div>
+                      </div>
+                    ) : null}
 
                     {/* Liste des pièces déjà attachées (mode édition) */}
                     {editingNote && editingAssets.length > 0 ? (
@@ -862,39 +990,68 @@ export default function NotesSection({
                     {/* Brouillons en attente d’upload (création) */}
                     {!editingNote && draftPreviews.length > 0 ? (
                       <ul className="mt-3 space-y-1.5">
-                        {draftPreviews.map((p, i) => (
-                          <li
-                            key={`${p.file.name}-${i}`}
-                            className="flex items-center gap-2 rounded-lg border border-dashed border-slate-600 bg-slate-900/40 px-2 py-1.5"
-                          >
-                            {p.isImage ? (
-                              <span className="h-9 w-9 shrink-0 overflow-hidden rounded border border-slate-700 bg-slate-800">
-                                <img src={p.url} alt={p.file.name} className="h-full w-full object-cover" />
-                              </span>
-                            ) : (
-                              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded border border-slate-700 bg-slate-800 text-slate-400">
-                                <IconFile className="h-4 w-4" />
-                              </span>
-                            )}
-                            <div className="min-w-0 flex-1">
-                              <p className="truncate text-xs font-medium text-slate-200">{p.file.name}</p>
-                              <p className="text-[10px] text-slate-500">
-                                {p.isImage ? 'Image' : 'Document'} · {formatBytes(p.file.size)} · en attente
-                              </p>
-                            </div>
-                            <button
-                              type="button"
-                              onClick={() => removeDraft(i)}
-                              className="rounded-md p-1 text-slate-500 hover:bg-red-500/15 hover:text-red-300"
-                              title="Retirer"
+                        {draftPreviews.map((p, i) => {
+                          const status: UploadStatus =
+                            draftStatuses[i] ?? { kind: 'pending' };
+                          const showRemove = status.kind === 'pending';
+                          const borderCls =
+                            status.kind === 'done'
+                              ? 'border-emerald-500/40 bg-emerald-500/5'
+                              : status.kind === 'error'
+                                ? 'border-red-500/40 bg-red-500/5'
+                                : status.kind === 'uploading'
+                                  ? 'border-indigo-500/40 bg-indigo-500/5'
+                                  : 'border-dashed border-slate-600 bg-slate-900/40';
+                          return (
+                            <li
+                              key={`${p.file.name}-${i}`}
+                              className={`rounded-lg border px-2 py-1.5 ${borderCls}`}
                             >
-                              <IconX className="h-3.5 w-3.5" />
-                            </button>
-                          </li>
-                        ))}
-                        <p className="text-[10px] text-slate-500">
-                          Les pièces seront envoyées automatiquement après création de la note.
-                        </p>
+                              <div className="flex items-center gap-2">
+                                {p.isImage ? (
+                                  <span className="h-9 w-9 shrink-0 overflow-hidden rounded border border-slate-700 bg-slate-800">
+                                    <img src={p.url} alt={p.file.name} className="h-full w-full object-cover" />
+                                  </span>
+                                ) : (
+                                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded border border-slate-700 bg-slate-800 text-slate-400">
+                                    <IconFile className="h-4 w-4" />
+                                  </span>
+                                )}
+                                <div className="min-w-0 flex-1">
+                                  <p className="truncate text-xs font-medium text-slate-200">{p.file.name}</p>
+                                  <p className="text-[10px] text-slate-500">
+                                    {p.isImage ? 'Image' : 'Document'} · {formatBytes(p.file.size)}
+                                    {status.kind === 'pending' ? ' · en attente' : ''}
+                                    {status.kind === 'done' ? ' · ✓ envoyé' : ''}
+                                  </p>
+                                </div>
+                                {showRemove ? (
+                                  <button
+                                    type="button"
+                                    onClick={() => removeDraft(i)}
+                                    className="rounded-md p-1 text-slate-500 hover:bg-red-500/15 hover:text-red-300"
+                                    title="Retirer"
+                                  >
+                                    <IconX className="h-3.5 w-3.5" />
+                                  </button>
+                                ) : null}
+                              </div>
+                              {status.kind === 'uploading' ? (
+                                <div className="mt-2">
+                                  <UploadProgressRow percent={status.percent} phase={status.phase} />
+                                </div>
+                              ) : null}
+                              {status.kind === 'error' ? (
+                                <p className="mt-1.5 text-[11px] text-red-300">✕ {status.message}</p>
+                              ) : null}
+                            </li>
+                          );
+                        })}
+                        {draftStatuses.every(s => s.kind === 'pending') ? (
+                          <p className="text-[10px] text-slate-500">
+                            Les pièces seront envoyées automatiquement après création de la note.
+                          </p>
+                        ) : null}
                       </ul>
                     ) : null}
 
