@@ -802,7 +802,7 @@ export default function HomePage() {
   }, [router]);
 
   const addNote = useCallback(
-    async (data: Omit<Note, 'id' | 'createdAt' | 'updatedAt'>) => {
+    async (data: Omit<Note, 'id' | 'createdAt' | 'updatedAt'>): Promise<Note | void> => {
       if (isGuest) {
         const now = new Date().toISOString();
         const note: Note = {
@@ -815,9 +815,10 @@ export default function HomePage() {
           ownerInitials: displayUser.initials,
           ownerColor: displayUser.color,
           sharedWith: data.sharedWith ?? [],
+          assets: [],
         };
         setNotes(prev => [note, ...prev]);
-        return;
+        return note;
       }
       const res = await fetch('/api/notes', {
         method: 'POST',
@@ -827,8 +828,138 @@ export default function HomePage() {
       });
       const note: Note = await res.json();
       setNotes(prev => [note, ...prev]);
+      return note;
     },
     [isGuest, displayUser]
+  );
+
+  const uploadNoteAsset = useCallback(
+    async (noteId: string, file: File): Promise<Note> => {
+      if (isGuest) throw new Error('Connectez-vous pour ajouter une pièce jointe.');
+      const fd = new FormData();
+      fd.append('file', file);
+      const res = await fetch(`/api/notes/${noteId}/assets`, {
+        method: 'POST',
+        body: fd,
+        ...fetchOpts,
+      });
+      let payload: unknown;
+      try {
+        payload = await res.json();
+      } catch {
+        throw new Error(`Réponse invalide du serveur (${res.status})`);
+      }
+      if (!res.ok) {
+        const msg =
+          typeof payload === 'object' && payload !== null && 'error' in payload && typeof (payload as { error: unknown }).error === 'string'
+            ? (payload as { error: string }).error
+            : `Upload impossible (${res.status})`;
+        throw new Error(msg);
+      }
+      const updated = payload as Note;
+      setNotes(prev => prev.map(n => (n.id === updated.id ? updated : n)));
+      return updated;
+    },
+    [isGuest]
+  );
+
+  const deleteNoteAsset = useCallback(
+    async (noteId: string, assetId: string): Promise<Note> => {
+      if (isGuest) throw new Error('Connectez-vous pour gérer les pièces jointes.');
+      const res = await fetch(`/api/notes/${noteId}/assets/${assetId}`, {
+        method: 'DELETE',
+        ...fetchOpts,
+      });
+      let payload: unknown;
+      try {
+        payload = await res.json();
+      } catch {
+        throw new Error(`Réponse invalide du serveur (${res.status})`);
+      }
+      if (!res.ok) {
+        const msg =
+          typeof payload === 'object' && payload !== null && 'error' in payload && typeof (payload as { error: unknown }).error === 'string'
+            ? (payload as { error: string }).error
+            : `Suppression impossible (${res.status})`;
+        throw new Error(msg);
+      }
+      const updated = payload as Note;
+      setNotes(prev => prev.map(n => (n.id === updated.id ? updated : n)));
+      return updated;
+    },
+    [isGuest]
+  );
+
+  const convertNoteToTask = useCallback(
+    async (noteId: string, opts: { deleteOriginal: boolean }): Promise<Task> => {
+      if (isGuest) {
+        const note = notes.find(n => n.id === noteId);
+        if (!note) throw new Error('Note introuvable');
+        const now = new Date().toISOString();
+        const task: Task = {
+          id: genId(),
+          title: note.title || 'Sans titre',
+          description: note.content ?? '',
+          status: 'todo',
+          assignedTo: [GUEST_USER_ID],
+          createdBy: GUEST_USER_ID,
+          priority: 'medium',
+          createdAt: now,
+          updatedAt: now,
+          ...(note.remindAt
+            ? { dueDate: new Date(note.remindAt).toISOString() }
+            : {}),
+          assets: (note.assets ?? []).map(a => ({
+            id: genId(),
+            kind: 'input',
+            mediaType: a.mediaType,
+            originalName: a.originalName,
+            bytes: a.bytes ?? null,
+            url: a.url,
+            createdAt: a.createdAt,
+            uploaderId: a.uploaderId,
+          })),
+        };
+        setTasks(prev => [task, ...prev]);
+        if (opts.deleteOriginal) {
+          setNotes(prev => prev.filter(n => n.id !== noteId));
+        } else {
+          setNotes(prev => prev.map(n => (n.id === noteId ? { ...n, assets: [] } : n)));
+        }
+        setActiveView('tasks');
+        return task;
+      }
+      const res = await fetch(`/api/notes/${noteId}/convert-to-task`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        ...fetchOpts,
+        body: JSON.stringify({ deleteOriginal: opts.deleteOriginal }),
+      });
+      let payload: unknown;
+      try {
+        payload = await res.json();
+      } catch {
+        throw new Error(`Réponse invalide du serveur (${res.status})`);
+      }
+      if (!res.ok) {
+        const msg =
+          typeof payload === 'object' && payload !== null && 'error' in payload && typeof (payload as { error: unknown }).error === 'string'
+            ? (payload as { error: string }).error
+            : `Conversion impossible (${res.status})`;
+        throw new Error(msg);
+      }
+      const data = payload as { task: Task; noteDeleted: boolean; noteId: string };
+      setTasks(prev => [data.task, ...prev]);
+      if (data.noteDeleted) {
+        setNotes(prev => prev.filter(n => n.id !== data.noteId));
+      } else {
+        /* La note est conservée mais ses pièces jointes ont migré vers la tâche. */
+        setNotes(prev => prev.map(n => (n.id === data.noteId ? { ...n, assets: [] } : n)));
+      }
+      setActiveView('tasks');
+      return data.task;
+    },
+    [isGuest, notes]
   );
 
   const updateNote = useCallback(
@@ -1264,6 +1395,9 @@ export default function HomePage() {
                   onAdd={addNote}
                   onUpdate={updateNote}
                   onDelete={deleteNote}
+                  onUploadAsset={isGuest ? undefined : uploadNoteAsset}
+                  onDeleteAsset={isGuest ? undefined : deleteNoteAsset}
+                  onConvertToTask={convertNoteToTask}
                   currentUser={displayUser}
                   collaborators={assignableUsers}
                   isGuest={isGuest}

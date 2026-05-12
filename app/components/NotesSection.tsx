@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useMemo, useRef, useEffect, useCallback } from 'react';
-import { Note, User } from '../types';
+import { Note, NoteAsset, User } from '../types';
 import {
   toDatetimeLocalValue,
   fromDatetimeLocalValue,
@@ -12,11 +12,16 @@ import {
 import { normalizeWhatsAppPhone } from '../lib/whatsappReminder';
 import {
   IconBell,
+  IconCamera,
   IconChevronDown,
   IconChevronUp,
+  IconClipboardList,
   IconEnvelope,
+  IconFile,
+  IconImage,
   IconLightBulb,
   IconMicrophone,
+  IconPaperclip,
   IconPencil,
   IconPin,
   IconPlus,
@@ -27,7 +32,10 @@ import {
 
 interface NotesSectionProps {
   notes: Note[];
-  onAdd: (data: Omit<Note, 'id' | 'createdAt' | 'updatedAt'>) => void;
+  /** Renvoie la note créée (si possible) afin d’y rattacher d’éventuelles pièces jointes en attente. */
+  onAdd: (
+    data: Omit<Note, 'id' | 'createdAt' | 'updatedAt'>,
+  ) => Note | void | Promise<Note | void>;
   onUpdate: (id: string, data: Partial<Note>) => void;
   onDelete: (id: string) => void;
   currentUser: User;
@@ -43,6 +51,15 @@ interface NotesSectionProps {
   onWhatsappPhoneChange: (value: string) => void;
   whatsappAutoOpen: boolean;
   onWhatsappAutoOpenChange: (value: boolean) => void;
+  /** Upload d’une photo/document Cloudinary. Renvoie la note mise à jour. */
+  onUploadAsset?: (noteId: string, file: File) => Promise<Note>;
+  /** Suppression d’une pièce jointe. Renvoie la note mise à jour. */
+  onDeleteAsset?: (noteId: string, assetId: string) => Promise<Note>;
+  /** Conversion d’une note en tâche. Les pièces jointes sont déplacées sur la nouvelle tâche. */
+  onConvertToTask?: (
+    noteId: string,
+    opts: { deleteOriginal: boolean },
+  ) => Promise<unknown>;
 }
 
 interface FormData {
@@ -141,6 +158,23 @@ function isNoteOwner(note: Note, currentUserId: string) {
   return (note.ownerId ?? currentUserId) === currentUserId;
 }
 
+function formatBytes(bytes: number | null | undefined) {
+  if (!bytes || bytes <= 0) return '—';
+  const units = ['o', 'Ko', 'Mo', 'Go'];
+  let value = bytes;
+  let idx = 0;
+  while (value >= 1024 && idx < units.length - 1) {
+    value /= 1024;
+    idx += 1;
+  }
+  const fixed = value >= 100 || idx === 0 ? 0 : 1;
+  return `${value.toFixed(fixed)} ${units[idx]}`;
+}
+
+function isImageAsset(asset: NoteAsset) {
+  return asset.mediaType.startsWith('image/');
+}
+
 export default function NotesSection({
   notes,
   onAdd,
@@ -155,6 +189,9 @@ export default function NotesSection({
   onWhatsappAutoOpenChange,
   compactLayout = false,
   showWhatsAppSection = true,
+  onUploadAsset,
+  onDeleteAsset,
+  onConvertToTask,
 }: NotesSectionProps) {
   const padHeader = compactLayout ? 'px-3 py-2 sm:px-4' : 'px-3 py-2.5 sm:px-5';
   const padContent = compactLayout ? 'p-3 sm:p-4' : 'p-4 sm:p-6';
@@ -171,6 +208,72 @@ export default function NotesSection({
     sharedWith: [],
   });
   const contentRef = useRef<HTMLTextAreaElement>(null);
+
+  /* Pièces jointes : drafts (création) + état d’upload (édition) */
+  const [draftAssets, setDraftAssets] = useState<File[]>([]);
+  const [assetBusy, setAssetBusy] = useState(false);
+  const [assetError, setAssetError] = useState<string | null>(null);
+  const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
+  const [previewNote, setPreviewNote] = useState<Note | null>(null);
+  const cameraInputRef = useRef<HTMLInputElement | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+
+  const uploadsSupported = !!onUploadAsset && !isGuest;
+
+  const editingAssets = editingNote?.assets ?? [];
+
+  const draftPreviews = useMemo(() => {
+    return draftAssets.map(file => ({
+      file,
+      url: URL.createObjectURL(file),
+      isImage: file.type.startsWith('image/'),
+    }));
+  }, [draftAssets]);
+
+  useEffect(() => {
+    return () => {
+      draftPreviews.forEach(p => URL.revokeObjectURL(p.url));
+    };
+  }, [draftPreviews]);
+
+  const resetDrafts = useCallback(() => {
+    setDraftAssets([]);
+    setAssetError(null);
+  }, []);
+
+  const handleEditingUpload = useCallback(
+    async (file: File) => {
+      if (!editingNote || !onUploadAsset) return;
+      setAssetError(null);
+      setAssetBusy(true);
+      try {
+        const updated = await onUploadAsset(editingNote.id, file);
+        setEditingNote(updated);
+      } catch (e: unknown) {
+        setAssetError(e instanceof Error ? e.message : 'Upload impossible');
+      } finally {
+        setAssetBusy(false);
+      }
+    },
+    [editingNote, onUploadAsset],
+  );
+
+  const handleEditingDeleteAsset = useCallback(
+    async (assetId: string) => {
+      if (!editingNote || !onDeleteAsset) return;
+      setAssetError(null);
+      setAssetBusy(true);
+      try {
+        const updated = await onDeleteAsset(editingNote.id, assetId);
+        setEditingNote(updated);
+      } catch (e: unknown) {
+        setAssetError(e instanceof Error ? e.message : 'Suppression impossible');
+      } finally {
+        setAssetBusy(false);
+      }
+    },
+    [editingNote, onDeleteAsset],
+  );
 
   const filtered = useMemo(() => {
     const q = search.toLowerCase();
@@ -199,6 +302,7 @@ export default function NotesSection({
       reminderByEmail: !isGuest,
       sharedWith: [],
     });
+    resetDrafts();
     setShowModal(true);
   };
 
@@ -211,11 +315,12 @@ export default function NotesSection({
       reminderByEmail: isGuest ? false : note.reminderByEmail !== false,
       sharedWith: [...(note.sharedWith ?? [])],
     });
+    resetDrafts();
     setShowModal(true);
   };
 
-  const handleSubmit = () => {
-    if (!form.title.trim()) return;
+  const handleSubmit = async () => {
+    if (!form.title.trim() || assetBusy) return;
     const remindAt = fromDatetimeLocalValue(form.remindLocal);
     if (remindAt) {
       void requestReminderPermission();
@@ -230,8 +335,14 @@ export default function NotesSection({
         reminderByEmail: emailOk,
         ...sharePayload,
       });
-    } else {
-      onAdd({
+      setShowModal(false);
+      return;
+    }
+
+    setAssetError(null);
+    let createdNote: Note | void;
+    try {
+      createdNote = await onAdd({
         title: form.title.trim(),
         content: form.content,
         pinned: false,
@@ -239,9 +350,47 @@ export default function NotesSection({
         reminderByEmail: emailOk,
         ...sharePayload,
       });
+    } catch (e: unknown) {
+      setAssetError(e instanceof Error ? e.message : 'Création impossible');
+      return;
+    }
+
+    if (createdNote && draftAssets.length > 0 && onUploadAsset) {
+      setAssetBusy(true);
+      try {
+        for (const file of draftAssets) {
+          await onUploadAsset(createdNote.id, file);
+        }
+      } catch (e: unknown) {
+        setAssetError(
+          e instanceof Error
+            ? `Note créée, mais une pièce jointe a échoué : ${e.message}`
+            : 'Note créée, mais une pièce jointe a échoué.',
+        );
+        setAssetBusy(false);
+        return;
+      }
+      setAssetBusy(false);
     }
     setShowModal(false);
   };
+
+  const handleAssetSelect = useCallback(
+    (file: File | null) => {
+      if (!file) return;
+      setAssetError(null);
+      if (editingNote) {
+        void handleEditingUpload(file);
+      } else {
+        setDraftAssets(prev => [...prev, file]);
+      }
+    },
+    [editingNote, handleEditingUpload],
+  );
+
+  const removeDraft = useCallback((index: number) => {
+    setDraftAssets(prev => prev.filter((_, i) => i !== index));
+  }, []);
 
   /* Microphone feeds into the content textarea */
   const handleTranscript = useCallback((text: string) => {
@@ -418,6 +567,9 @@ export default function NotesSection({
                       onEdit={() => openEdit(note)}
                       onDelete={() => onDelete(note.id)}
                       onTogglePin={() => onUpdate(note.id, { pinned: !note.pinned })}
+                      onOpenImage={url => setLightboxUrl(url)}
+                      onOpenAssets={() => setPreviewNote(note)}
+                      onConvertToTask={onConvertToTask}
                     />
                   ))}
                 </div>
@@ -442,6 +594,9 @@ export default function NotesSection({
                       onEdit={() => openEdit(note)}
                       onDelete={() => onDelete(note.id)}
                       onTogglePin={() => onUpdate(note.id, { pinned: !note.pinned })}
+                      onOpenImage={url => setLightboxUrl(url)}
+                      onOpenAssets={() => setPreviewNote(note)}
+                      onConvertToTask={onConvertToTask}
                     />
                   ))}
                 </div>
@@ -455,7 +610,12 @@ export default function NotesSection({
       {showModal && (
         <div
           className="fixed inset-0 z-50 flex items-end justify-center bg-black/70 p-0 backdrop-blur-sm sm:items-center sm:p-4"
-          onClick={() => { if (recording) toggleMic(); setShowModal(false); }}
+          onClick={() => {
+            if (assetBusy) return;
+            if (recording) toggleMic();
+            resetDrafts();
+            setShowModal(false);
+          }}
         >
           <div
             className="max-h-[min(100dvh,100%)] w-full max-w-lg overflow-y-auto rounded-t-2xl border border-slate-700 border-b-0 bg-slate-800 shadow-2xl sm:rounded-2xl sm:border-b"
@@ -477,8 +637,14 @@ export default function NotesSection({
                 )}
               </h3>
               <button
-                onClick={() => { if (recording) toggleMic(); setShowModal(false); }}
-                className="text-slate-500 hover:text-slate-300 transition-colors w-7 h-7 flex items-center justify-center rounded-lg hover:bg-slate-700"
+                onClick={() => {
+                  if (assetBusy) return;
+                  if (recording) toggleMic();
+                  resetDrafts();
+                  setShowModal(false);
+                }}
+                disabled={assetBusy}
+                className="text-slate-500 hover:text-slate-300 transition-colors w-7 h-7 flex items-center justify-center rounded-lg hover:bg-slate-700 disabled:opacity-40"
                 aria-label="Fermer"
               >
                 <IconX className="h-5 w-5" />
@@ -574,6 +740,175 @@ export default function NotesSection({
                   <p className="text-xs text-red-400/80 mt-1.5 flex items-center gap-1">
                     <span className="w-1.5 h-1.5 bg-red-400 rounded-full animate-pulse" />
                     Enregistrement en cours — cliquez sur &quot;Écoute…&quot; pour arrêter
+                  </p>
+                )}
+              </div>
+
+              {/* Photos & documents */}
+              <div className="rounded-xl border border-slate-600/80 bg-slate-800/50 p-3">
+                <label className="mb-2 block text-xs font-semibold uppercase tracking-wider text-slate-400">
+                  Photos & documents
+                </label>
+                {uploadsSupported ? (
+                  <>
+                    <div className="grid grid-cols-2 gap-2">
+                      <button
+                        type="button"
+                        onClick={() => cameraInputRef.current?.click()}
+                        disabled={assetBusy}
+                        className="flex items-center justify-center gap-1.5 rounded-lg border border-slate-600 bg-slate-900/60 px-3 py-2 text-xs font-medium text-slate-200 transition-colors hover:border-indigo-500/60 hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        <IconCamera className="h-4 w-4 text-indigo-300" />
+                        Prendre une photo
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => fileInputRef.current?.click()}
+                        disabled={assetBusy}
+                        className="flex items-center justify-center gap-1.5 rounded-lg border border-slate-600 bg-slate-900/60 px-3 py-2 text-xs font-medium text-slate-200 transition-colors hover:border-indigo-500/60 hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        <IconPaperclip className="h-4 w-4 text-indigo-300" />
+                        Photo / document
+                      </button>
+                    </div>
+                    <input
+                      ref={cameraInputRef}
+                      type="file"
+                      accept="image/*"
+                      capture="environment"
+                      className="hidden"
+                      onChange={e => {
+                        const file = e.target.files?.[0] ?? null;
+                        handleAssetSelect(file);
+                        e.currentTarget.value = '';
+                      }}
+                    />
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      accept="image/*,application/pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv,.zip"
+                      className="hidden"
+                      onChange={e => {
+                        const file = e.target.files?.[0] ?? null;
+                        handleAssetSelect(file);
+                        e.currentTarget.value = '';
+                      }}
+                    />
+                    {assetBusy && (
+                      <p className="mt-2 text-[11px] text-indigo-300">Envoi en cours…</p>
+                    )}
+                    {assetError && (
+                      <p className="mt-2 text-[11px] text-red-300">{assetError}</p>
+                    )}
+
+                    {/* Liste des pièces déjà attachées (mode édition) */}
+                    {editingNote && editingAssets.length > 0 ? (
+                      <ul className="mt-3 space-y-1.5">
+                        {editingAssets.map(asset => (
+                          <li
+                            key={asset.id}
+                            className="flex items-center gap-2 rounded-lg border border-slate-700 bg-slate-900/60 px-2 py-1.5"
+                          >
+                            {isImageAsset(asset) ? (
+                              <button
+                                type="button"
+                                onClick={() => setLightboxUrl(asset.url)}
+                                className="h-9 w-9 shrink-0 overflow-hidden rounded border border-slate-700 bg-slate-800"
+                                title="Aperçu"
+                              >
+                                <img
+                                  src={asset.url}
+                                  alt={asset.originalName}
+                                  className="h-full w-full object-cover"
+                                />
+                              </button>
+                            ) : (
+                              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded border border-slate-700 bg-slate-800 text-slate-400">
+                                <IconFile className="h-4 w-4" />
+                              </span>
+                            )}
+                            <div className="min-w-0 flex-1">
+                              <p className="truncate text-xs font-medium text-slate-200">
+                                {asset.originalName}
+                              </p>
+                              <p className="text-[10px] text-slate-500">
+                                {isImageAsset(asset) ? 'Image' : 'Document'} · {formatBytes(asset.bytes)}
+                              </p>
+                            </div>
+                            <a
+                              href={asset.url}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="rounded-md border border-slate-600 px-2 py-1 text-[10px] text-slate-300 hover:border-slate-500 hover:text-slate-100"
+                            >
+                              Ouvrir
+                            </a>
+                            {onDeleteAsset && isNoteOwner(editingNote, currentUser.id) ? (
+                              <button
+                                type="button"
+                                onClick={() => void handleEditingDeleteAsset(asset.id)}
+                                disabled={assetBusy}
+                                className="rounded-md p-1 text-slate-500 hover:bg-red-500/15 hover:text-red-300 disabled:opacity-50"
+                                title="Supprimer"
+                              >
+                                <IconTrash className="h-3.5 w-3.5" />
+                              </button>
+                            ) : null}
+                          </li>
+                        ))}
+                      </ul>
+                    ) : null}
+
+                    {/* Brouillons en attente d’upload (création) */}
+                    {!editingNote && draftPreviews.length > 0 ? (
+                      <ul className="mt-3 space-y-1.5">
+                        {draftPreviews.map((p, i) => (
+                          <li
+                            key={`${p.file.name}-${i}`}
+                            className="flex items-center gap-2 rounded-lg border border-dashed border-slate-600 bg-slate-900/40 px-2 py-1.5"
+                          >
+                            {p.isImage ? (
+                              <span className="h-9 w-9 shrink-0 overflow-hidden rounded border border-slate-700 bg-slate-800">
+                                <img src={p.url} alt={p.file.name} className="h-full w-full object-cover" />
+                              </span>
+                            ) : (
+                              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded border border-slate-700 bg-slate-800 text-slate-400">
+                                <IconFile className="h-4 w-4" />
+                              </span>
+                            )}
+                            <div className="min-w-0 flex-1">
+                              <p className="truncate text-xs font-medium text-slate-200">{p.file.name}</p>
+                              <p className="text-[10px] text-slate-500">
+                                {p.isImage ? 'Image' : 'Document'} · {formatBytes(p.file.size)} · en attente
+                              </p>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => removeDraft(i)}
+                              className="rounded-md p-1 text-slate-500 hover:bg-red-500/15 hover:text-red-300"
+                              title="Retirer"
+                            >
+                              <IconX className="h-3.5 w-3.5" />
+                            </button>
+                          </li>
+                        ))}
+                        <p className="text-[10px] text-slate-500">
+                          Les pièces seront envoyées automatiquement après création de la note.
+                        </p>
+                      </ul>
+                    ) : null}
+
+                    {!editingNote && draftPreviews.length === 0 ? (
+                      <p className="mt-2 text-[11px] leading-snug text-slate-500">
+                        Photographiez un tableau, un croquis ou joignez un PDF / document. Maximum 50 Mo par fichier.
+                      </p>
+                    ) : null}
+                  </>
+                ) : (
+                  <p className="text-[11px] leading-snug text-slate-500">
+                    {isGuest
+                      ? 'Connectez-vous pour ajouter des photos ou des documents à vos notes.'
+                      : 'Téléversement non disponible.'}
                   </p>
                 )}
               </div>
@@ -686,22 +1021,116 @@ export default function NotesSection({
             {/* Actions */}
             <div className="flex justify-end gap-3 border-t border-slate-700 p-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] sm:pb-5">
               <button
-                onClick={() => { if (recording) toggleMic(); setShowModal(false); }}
-                className="px-4 py-2 text-sm text-slate-400 hover:text-slate-200 transition-colors rounded-lg hover:bg-slate-700"
+                onClick={() => { if (recording) toggleMic(); resetDrafts(); setShowModal(false); }}
+                disabled={assetBusy}
+                className="px-4 py-2 text-sm text-slate-400 hover:text-slate-200 transition-colors rounded-lg hover:bg-slate-700 disabled:opacity-50"
               >
                 Annuler
               </button>
               <button
-                onClick={handleSubmit}
-                disabled={!form.title.trim()}
+                onClick={() => void handleSubmit()}
+                disabled={!form.title.trim() || assetBusy}
                 className="bg-indigo-500 hover:bg-indigo-400 disabled:opacity-50 disabled:cursor-not-allowed text-white px-5 py-2 rounded-xl text-sm font-medium transition-all shadow-lg shadow-indigo-500/20"
               >
-                {editingNote ? 'Enregistrer' : 'Ajouter'}
+                {assetBusy
+                  ? 'Envoi…'
+                  : editingNote
+                    ? 'Enregistrer'
+                    : draftAssets.length > 0
+                      ? `Ajouter (+${draftAssets.length})`
+                      : 'Ajouter'}
               </button>
             </div>
           </div>
         </div>
       )}
+
+      {/* Lightbox image */}
+      {lightboxUrl ? (
+        <div
+          className="fixed inset-0 z-[60] flex items-center justify-center bg-black/85 p-4 backdrop-blur-sm"
+          onClick={() => setLightboxUrl(null)}
+        >
+          <button
+            type="button"
+            onClick={() => setLightboxUrl(null)}
+            className="absolute right-4 top-4 rounded-full bg-slate-900/80 p-2 text-white shadow-lg hover:bg-slate-800"
+            aria-label="Fermer l’aperçu"
+          >
+            <IconX className="h-5 w-5" />
+          </button>
+          <img
+            src={lightboxUrl}
+            alt=""
+            className="max-h-[90vh] max-w-full rounded-lg object-contain shadow-2xl"
+            onClick={e => e.stopPropagation()}
+          />
+        </div>
+      ) : null}
+
+      {/* Aperçu pièces jointes (click depuis une carte note) */}
+      {previewNote ? (
+        <div
+          className="fixed inset-0 z-[55] flex items-end justify-center bg-black/70 p-0 backdrop-blur-sm sm:items-center sm:p-4"
+          onClick={() => setPreviewNote(null)}
+        >
+          <div
+            className="max-h-[min(90dvh,100%)] w-full max-w-md overflow-y-auto rounded-t-2xl border border-slate-700 border-b-0 bg-slate-800 p-5 shadow-2xl sm:rounded-2xl sm:border-b"
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="mb-3 flex items-center justify-between">
+              <h3 className="font-semibold text-white">{previewNote.title}</h3>
+              <button
+                type="button"
+                onClick={() => setPreviewNote(null)}
+                className="text-slate-500 hover:text-slate-300 w-7 h-7 flex items-center justify-center rounded-lg hover:bg-slate-700"
+                aria-label="Fermer"
+              >
+                <IconX className="h-5 w-5" />
+              </button>
+            </div>
+            <p className="mb-3 text-[11px] uppercase tracking-wider text-slate-500">
+              Pièces jointes ({previewNote.assets?.length ?? 0})
+            </p>
+            <ul className="space-y-2">
+              {(previewNote.assets ?? []).map(asset => (
+                <li
+                  key={asset.id}
+                  className="flex items-center gap-2 rounded-lg border border-slate-700 bg-slate-900/60 px-2 py-2"
+                >
+                  {isImageAsset(asset) ? (
+                    <button
+                      type="button"
+                      onClick={() => setLightboxUrl(asset.url)}
+                      className="h-12 w-12 shrink-0 overflow-hidden rounded border border-slate-700 bg-slate-800"
+                    >
+                      <img src={asset.url} alt={asset.originalName} className="h-full w-full object-cover" />
+                    </button>
+                  ) : (
+                    <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded border border-slate-700 bg-slate-800 text-slate-400">
+                      <IconFile className="h-5 w-5" />
+                    </span>
+                  )}
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-medium text-slate-200">{asset.originalName}</p>
+                    <p className="text-[11px] text-slate-500">
+                      {isImageAsset(asset) ? 'Image' : 'Document'} · {formatBytes(asset.bytes)}
+                    </p>
+                  </div>
+                  <a
+                    href={asset.url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="rounded-md border border-slate-600 px-2 py-1 text-[11px] text-slate-300 hover:border-slate-500 hover:text-slate-100"
+                  >
+                    Ouvrir
+                  </a>
+                </li>
+              ))}
+            </ul>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -716,6 +1145,12 @@ interface NoteCardProps {
   onEdit: () => void;
   onDelete: () => void;
   onTogglePin: () => void;
+  onOpenImage?: (url: string) => void;
+  onOpenAssets?: () => void;
+  onConvertToTask?: (
+    noteId: string,
+    opts: { deleteOriginal: boolean },
+  ) => Promise<unknown>;
 }
 
 function NoteCard({
@@ -727,15 +1162,38 @@ function NoteCard({
   onEdit,
   onDelete,
   onTogglePin,
+  onOpenImage,
+  onOpenAssets,
+  onConvertToTask,
 }: NoteCardProps) {
   const [hover, setHover] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [convertOpen, setConvertOpen] = useState(false);
+  const [converting, setConverting] = useState(false);
+  const [convertError, setConvertError] = useState<string | null>(null);
   const preview = note.content.length > 160 ? note.content.slice(0, 160) + '…' : note.content;
   const needsExpand = note.content.length > 160;
   const isOwner = isNoteOwner(note, currentUserId);
   const sharedNames = (note.sharedWith ?? [])
     .map(id => collaborators.find(u => u.id === id)?.name ?? id)
     .filter(Boolean);
+  const assets = note.assets ?? [];
+  const imageAssets = assets.filter(isImageAsset);
+  const docAssets = assets.filter(a => !isImageAsset(a));
+
+  const runConvert = async (deleteOriginal: boolean) => {
+    if (!onConvertToTask || converting) return;
+    setConvertError(null);
+    setConverting(true);
+    try {
+      await onConvertToTask(note.id, { deleteOriginal });
+      setConvertOpen(false);
+    } catch (e: unknown) {
+      setConvertError(e instanceof Error ? e.message : 'Conversion impossible');
+    } finally {
+      setConverting(false);
+    }
+  };
 
   return (
     <div
@@ -768,7 +1226,11 @@ function NoteCard({
         <h4 className="font-semibold text-slate-100 text-sm leading-snug flex-1">{note.title}</h4>
         <div
           className={`flex flex-shrink-0 items-center gap-1 transition-opacity ${
-            isOwner ? (hover ? 'opacity-100' : 'opacity-0') : 'opacity-0 pointer-events-none'
+            isOwner
+              ? hover
+                ? 'opacity-100'
+                : 'opacity-100 md:opacity-0'
+              : 'opacity-0 pointer-events-none'
           }`}
         >
           <button
@@ -785,6 +1247,19 @@ function NoteCard({
           >
             <IconPencil className="h-4 w-4" />
           </button>
+          {onConvertToTask ? (
+            <button
+              onClick={() => {
+                setConvertError(null);
+                setConvertOpen(true);
+              }}
+              className="text-slate-500 hover:text-emerald-400 transition-colors p-0.5"
+              title="Convertir en tâche"
+              aria-label="Convertir en tâche"
+            >
+              <IconClipboardList className="h-4 w-4" />
+            </button>
+          ) : null}
           {confirmDelete ? (
             <button
               onClick={onDelete}
@@ -803,6 +1278,49 @@ function NoteCard({
           )}
         </div>
       </div>
+
+      {/* Boîte de conversion en tâche */}
+      {convertOpen ? (
+        <div className="mb-3 rounded-xl border border-emerald-500/30 bg-emerald-500/5 p-3">
+          <p className="mb-2 flex items-center gap-1.5 text-[11px] font-semibold text-emerald-300">
+            <IconClipboardList className="h-3.5 w-3.5" />
+            Convertir cette idée en tâche
+          </p>
+          <p className="mb-3 text-[11px] leading-snug text-slate-400">
+            Une nouvelle tâche sera créée dans la colonne « À faire » avec le titre, le contenu et les pièces jointes.
+            {note.remindAt ? ' Le rappel devient la date limite.' : ''}
+          </p>
+          {convertError ? (
+            <p className="mb-2 text-[11px] text-red-300">{convertError}</p>
+          ) : null}
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            <button
+              type="button"
+              onClick={() => setConvertOpen(false)}
+              disabled={converting}
+              className="rounded-lg px-2.5 py-1 text-[11px] text-slate-400 hover:bg-slate-700 hover:text-slate-200 disabled:opacity-50"
+            >
+              Annuler
+            </button>
+            <button
+              type="button"
+              onClick={() => void runConvert(false)}
+              disabled={converting}
+              className="rounded-lg border border-emerald-500/40 bg-emerald-500/10 px-2.5 py-1 text-[11px] font-medium text-emerald-200 hover:bg-emerald-500/20 disabled:opacity-50"
+            >
+              {converting ? 'Conversion…' : 'Garder la note'}
+            </button>
+            <button
+              type="button"
+              onClick={() => void runConvert(true)}
+              disabled={converting}
+              className="rounded-lg bg-emerald-500 px-2.5 py-1 text-[11px] font-semibold text-white shadow-sm hover:bg-emerald-400 disabled:opacity-50"
+            >
+              {converting ? 'Conversion…' : 'Convertir et supprimer la note'}
+            </button>
+          </div>
+        </div>
+      ) : null}
 
       {/* Content */}
       {note.content && (
@@ -830,6 +1348,78 @@ function NoteCard({
           )}
         </div>
       )}
+
+      {/* Pièces jointes (vignettes images + documents) */}
+      {assets.length > 0 ? (
+        <div className="mb-3 space-y-2">
+          {imageAssets.length > 0 ? (
+            <div className="flex flex-wrap gap-1.5">
+              {imageAssets.slice(0, 4).map(asset => (
+                <button
+                  key={asset.id}
+                  type="button"
+                  onClick={() => onOpenImage?.(asset.url)}
+                  className="group relative h-16 w-16 overflow-hidden rounded-lg border border-slate-700 bg-slate-900"
+                  title={asset.originalName}
+                >
+                  <img
+                    src={asset.url}
+                    alt={asset.originalName}
+                    className="h-full w-full object-cover transition-transform group-hover:scale-105"
+                    loading="lazy"
+                  />
+                </button>
+              ))}
+              {imageAssets.length > 4 ? (
+                <button
+                  type="button"
+                  onClick={onOpenAssets}
+                  className="flex h-16 w-16 flex-col items-center justify-center rounded-lg border border-slate-700 bg-slate-900 text-[11px] font-semibold text-slate-300 hover:border-indigo-500/60 hover:text-white"
+                >
+                  +{imageAssets.length - 4}
+                  <span className="text-[9px] font-normal text-slate-500">photos</span>
+                </button>
+              ) : null}
+            </div>
+          ) : null}
+          {docAssets.length > 0 ? (
+            <div className="flex flex-wrap gap-1.5">
+              {docAssets.slice(0, 3).map(asset => (
+                <a
+                  key={asset.id}
+                  href={asset.url}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex max-w-full items-center gap-1.5 rounded-md border border-slate-700 bg-slate-900/60 px-2 py-1 text-[11px] text-slate-300 hover:border-indigo-500/60 hover:text-white"
+                  title={asset.originalName}
+                >
+                  <IconFile className="h-3.5 w-3.5 shrink-0 text-slate-500" />
+                  <span className="max-w-[10rem] truncate">{asset.originalName}</span>
+                </a>
+              ))}
+              {docAssets.length > 3 ? (
+                <button
+                  type="button"
+                  onClick={onOpenAssets}
+                  className="rounded-md border border-slate-700 bg-slate-900/60 px-2 py-1 text-[11px] font-medium text-slate-300 hover:border-indigo-500/60 hover:text-white"
+                >
+                  +{docAssets.length - 3} document{docAssets.length - 3 > 1 ? 's' : ''}
+                </button>
+              ) : null}
+            </div>
+          ) : null}
+          {assets.length > 1 ? (
+            <button
+              type="button"
+              onClick={onOpenAssets}
+              className="inline-flex items-center gap-1 text-[11px] text-slate-500 hover:text-indigo-300"
+            >
+              <IconImage className="h-3 w-3" />
+              Voir toutes les pièces ({assets.length})
+            </button>
+          ) : null}
+        </div>
+      ) : null}
 
       {/* Footer */}
       <div className="mt-2 space-y-1">

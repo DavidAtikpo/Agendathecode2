@@ -365,6 +365,59 @@ function DetailPanel({
           </div>
         )}
 
+        {/* Pièces jointes (note) */}
+        {note && note.assets && note.assets.length > 0 && (
+          <div>
+            <p className="mb-1.5 text-[10px] font-medium uppercase tracking-wide text-slate-500">
+              Pièce{note.assets.length > 1 ? 's' : ''} jointe{note.assets.length > 1 ? 's' : ''} ({note.assets.length})
+            </p>
+            {/* Vignettes images */}
+            {note.assets.some(a => a.mediaType.startsWith('image/')) ? (
+              <div className="mb-2 grid grid-cols-3 gap-1.5">
+                {note.assets
+                  .filter(a => a.mediaType.startsWith('image/'))
+                  .slice(0, 6)
+                  .map(a => (
+                    <a
+                      key={a.id}
+                      href={a.url}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="aspect-square overflow-hidden rounded border border-slate-700 bg-slate-900 transition-colors hover:border-indigo-500/60"
+                      title={a.originalName}
+                    >
+                      <img
+                        src={a.url}
+                        alt={a.originalName}
+                        className="h-full w-full object-cover"
+                        loading="lazy"
+                      />
+                    </a>
+                  ))}
+              </div>
+            ) : null}
+            <div className="space-y-1">
+              {note.assets
+                .filter(a => !a.mediaType.startsWith('image/'))
+                .map(a => (
+                  <a
+                    key={a.id}
+                    href={a.url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="flex items-center gap-2 rounded bg-slate-800/60 px-2 py-1.5 text-[11px] text-slate-300 hover:bg-slate-700/60 hover:text-slate-100 transition-colors"
+                  >
+                    <svg className="h-3 w-3 shrink-0 text-slate-500" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6">
+                      <path d="M4 2h6l4 4v8a1 1 0 01-1 1H3a1 1 0 01-1-1V3a1 1 0 011-1z" />
+                      <path d="M10 2v4h4" strokeLinejoin="round" />
+                    </svg>
+                    <span className="truncate">{a.originalName}</span>
+                  </a>
+                ))}
+            </div>
+          </div>
+        )}
+
         {/* Métadonnées bas */}
         <div className="border-t border-slate-700/60 pt-3 space-y-1">
           {task && (

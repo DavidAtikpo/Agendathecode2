@@ -39,6 +39,18 @@ export interface Note {
   ownerColor?: string | null;
   /** Collaborateurs avec accès lecture (seul le propriétaire modifie). */
   sharedWith?: string[];
+  /** Photos / documents joints (Cloudinary). */
+  assets?: NoteAsset[];
+}
+
+export interface NoteAsset {
+  id: string;
+  mediaType: string;
+  originalName: string;
+  bytes?: number | null;
+  url: string;
+  createdAt: string;
+  uploaderId: string;
 }
 
 export interface Task {

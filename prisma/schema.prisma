@@ -8,19 +8,19 @@ datasource db {
 }
 
 model User {
-  id                   String        @id @default(cuid())
-  email                String        @unique
+  id                   String           @id @default(cuid())
+  email                String           @unique
   /// Null si le compte est uniquement « Connexion Google »
   passwordHash         String?
   name                 String
   color                String
   initials             String
-  createdAt            DateTime      @default(now())
+  createdAt            DateTime         @default(now())
   /// Identifiant unique Google (sub)
-  googleId             String?       @unique
-  plan                 Plan          @default(free)
-  stripeCustomerId     String?       @unique
-  stripeSubscriptionId String?       @unique
+  googleId             String?          @unique
+  plan                 Plan             @default(free)
+  stripeCustomerId     String?          @unique
+  stripeSubscriptionId String?          @unique
   /// Fin de période payée (affichage / grâce)
   subscriptionEndsAt   DateTime?
   /// Préférences UI / produit (JSON — voir `user-preferences.ts` côté app)
@@ -28,10 +28,11 @@ model User {
   notes                Note[]
   taskAssignments      TaskAssignment[]
   taskAssetsUploaded   TaskAsset[]
-  tasksCreated         Task[]        @relation("CreatedBy")
-  teamContactsAsMember TeamContact[] @relation("TeamContactMember")
-  teamContactsAdded    TeamContact[] @relation("TeamContactOwner")
-  noteSharesReceived   NoteShare[]   @relation("NoteShareWith")
+  tasksCreated         Task[]           @relation("CreatedBy")
+  teamContactsAsMember TeamContact[]    @relation("TeamContactMember")
+  teamContactsAdded    TeamContact[]    @relation("TeamContactOwner")
+  noteSharesReceived   NoteShare[]      @relation("NoteShareWith")
+  noteAssetsUploaded   NoteAsset[]
 
   @@schema("agenda")
 }
@@ -51,24 +52,43 @@ model TeamContact {
 }
 
 model Note {
-  id                  String    @id @default(cuid())
+  id                  String      @id @default(cuid())
   title               String
-  content             String    @default("")
-  pinned              Boolean   @default(false)
-  createdAt           DateTime  @default(now())
-  updatedAt           DateTime  @updatedAt
+  content             String      @default("")
+  pinned              Boolean     @default(false)
+  createdAt           DateTime    @default(now())
+  updatedAt           DateTime    @updatedAt
   /// Date/heure du rappel (optionnel)
   remindAt            DateTime?
   /// Envoyer un e-mail automatique à l’heure du rappel (compte connecté uniquement)
-  reminderByEmail     Boolean   @default(true)
+  reminderByEmail     Boolean     @default(true)
   /// Horodatage d’envoi réussi (évite les doublons)
   reminderEmailSentAt DateTime?
   userId              String?
   user                User?       @relation(fields: [userId], references: [id], onDelete: Cascade)
   shares              NoteShare[]
+  assets              NoteAsset[]
 
   @@index([userId])
   @@index([remindAt])
+  @@schema("agenda")
+}
+
+/// Photos, captures et documents joints à une note (stockés sur Cloudinary).
+model NoteAsset {
+  id           String   @id @default(cuid())
+  noteId       String
+  uploaderId   String
+  mediaType    String
+  originalName String
+  bytes        Int?
+  url          String
+  publicId     String
+  createdAt    DateTime @default(now())
+  note         Note     @relation(fields: [noteId], references: [id], onDelete: Cascade)
+  uploader     User     @relation(fields: [uploaderId], references: [id], onDelete: Cascade)
+
+  @@index([noteId, createdAt])
   @@schema("agenda")
 }
 
@@ -88,15 +108,15 @@ model NoteShare {
 }
 
 model Task {
-  id           String       @id @default(cuid())
-  title        String
-  description  String       @default("")
-  status       TaskStatus   @default(todo)
-  priority     TaskPriority @default(medium)
-  dueDate      DateTime?
-  createdAt    DateTime     @default(now())
-  updatedAt    DateTime     @updatedAt
-  createdById  String
+  id                 String           @id @default(cuid())
+  title              String
+  description        String           @default("")
+  status             TaskStatus       @default(todo)
+  priority           TaskPriority     @default(medium)
+  dueDate            DateTime?
+  createdAt          DateTime         @default(now())
+  updatedAt          DateTime         @updatedAt
+  createdById        String
   /// Horodatage « ping » assignation : l’assigné voit un badge jusqu’à ouverture de la vue Tâches.
   assigneeNotifiedAt DateTime?
   assignees          TaskAssignment[]
@@ -132,11 +152,11 @@ enum TaskAssetKind {
 }
 
 model TaskAssignment {
-  taskId      String
-  userId      String
-  assignedAt  DateTime @default(now())
-  task        Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
-  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  taskId     String
+  userId     String
+  assignedAt DateTime @default(now())
+  task       Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@id([taskId, userId])
   @@index([userId])

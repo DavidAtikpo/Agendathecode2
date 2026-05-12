@@ -254,6 +254,46 @@ export function IconPlus(props: IconProps) {
   );
 }
 
+export function IconCamera(props: IconProps) {
+  return strokeIcon(
+    <>
+      <path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3Z" />
+      <circle cx="12" cy="13" r="4" />
+    </>,
+    props,
+  );
+}
+
+export function IconPaperclip(props: IconProps) {
+  return strokeIcon(
+    <>
+      <path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57a4 4 0 0 1 5.66 5.66l-8.58 8.57a2 2 0 0 1-2.83-2.83l7.93-7.93" />
+    </>,
+    props,
+  );
+}
+
+export function IconImage(props: IconProps) {
+  return strokeIcon(
+    <>
+      <rect width="18" height="18" x="3" y="3" rx="2" ry="2" />
+      <circle cx="9" cy="9" r="2" />
+      <path d="m21 15-3.5-3.5a2 2 0 0 0-2.83 0L5 21" />
+    </>,
+    props,
+  );
+}
+
+export function IconFile(props: IconProps) {
+  return strokeIcon(
+    <>
+      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z" />
+      <path d="M14 2v6h6" />
+    </>,
+    props,
+  );
+}
+
 export function IconSettings(props: IconProps) {
   return strokeIcon(
     <>

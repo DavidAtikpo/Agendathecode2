@@ -2,42 +2,7 @@ import { NextResponse } from 'next/server';
 import { prisma } from '@/app/lib/prisma';
 import { getSessionUserId } from '@/app/lib/auth';
 import { replaceNoteShares } from '@/app/lib/note-share';
-
-const ownerSelect = { id: true, name: true, initials: true, color: true } as const;
-
-type NoteRow = {
-  id: string;
-  title: string;
-  content: string;
-  pinned: boolean;
-  remindAt: Date | null;
-  reminderByEmail: boolean;
-  reminderEmailSentAt: Date | null;
-  createdAt: Date;
-  updatedAt: Date;
-  userId: string | null;
-  user: { id: string; name: string; initials: string; color: string } | null;
-  shares: { userId: string }[];
-};
-
-function serialize(note: NoteRow) {
-  return {
-    id: note.id,
-    title: note.title,
-    content: note.content,
-    pinned: note.pinned,
-    remindAt: note.remindAt?.toISOString() ?? null,
-    reminderByEmail: note.reminderByEmail,
-    reminderEmailSentAt: note.reminderEmailSentAt?.toISOString() ?? null,
-    createdAt: note.createdAt.toISOString(),
-    updatedAt: note.updatedAt.toISOString(),
-    ownerId: note.userId,
-    ownerName: note.user?.name ?? null,
-    ownerInitials: note.user?.initials ?? null,
-    ownerColor: note.user?.color ?? null,
-    sharedWith: note.shares.map(s => s.userId),
-  };
-}
+import { NOTE_WITH_RELATIONS_INCLUDE, serializeNote } from '@/app/lib/note-serialize';
 
 export async function GET() {
   const sessionId = await getSessionUserId();
@@ -50,12 +15,9 @@ export async function GET() {
       OR: [{ userId: sessionId }, { shares: { some: { userId: sessionId } } }],
     },
     orderBy: { updatedAt: 'desc' },
-    include: {
-      user: { select: ownerSelect },
-      shares: { select: { userId: true } },
-    },
+    include: NOTE_WITH_RELATIONS_INCLUDE,
   });
-  return NextResponse.json(notes.map(serialize));
+  return NextResponse.json(notes.map(serializeNote));
 }
 
 export async function POST(request: Request) {
@@ -105,11 +67,8 @@ export async function POST(request: Request) {
 
   const full = await prisma.note.findUniqueOrThrow({
     where: { id: note.id },
-    include: {
-      user: { select: ownerSelect },
-      shares: { select: { userId: true } },
-    },
+    include: NOTE_WITH_RELATIONS_INCLUDE,
   });
 
-  return NextResponse.json(serialize(full), { status: 201 });
+  return NextResponse.json(serializeNote(full), { status: 201 });
 }
