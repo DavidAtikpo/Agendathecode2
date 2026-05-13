@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo, useRef, type ComponentType } from 'react';
+import { useState, useMemo, useRef, useEffect, useCallback, type ComponentType } from 'react';
 import { Task, TaskAsset, User, TaskStatus, TaskPriority } from '../types';
 import { uploadWithProgress } from '../lib/upload-with-progress';
 import {
@@ -9,6 +9,9 @@ import {
   IconCalendar,
   IconCheckCircle,
   IconClipboardList,
+  IconFile,
+  IconImage,
+  IconPaperclip,
   IconPencil,
   IconPlus,
   IconSearch,
@@ -141,6 +144,14 @@ function formatBytes(bytes: number | null | undefined) {
   return `${value.toFixed(fixed)} ${units[idx]}`;
 }
 
+function isPdfAsset(asset: TaskAsset) {
+  return asset.mediaType === 'application/pdf' || asset.originalName.toLowerCase().endsWith('.pdf');
+}
+
+function getPdfViewerUrl(url: string) {
+  return `https://docs.google.com/gview?url=${encodeURIComponent(url)}&embedded=true`;
+}
+
 type AssigneeFilter = 'all' | 'unassigned' | string;
 
 function normalizeAssigneeIds(value: unknown): string[] {
@@ -207,10 +218,12 @@ function AssetList({
   title,
   emptyLabel,
   assets,
+  onOpenPdf,
 }: {
   title: string;
   emptyLabel: string;
   assets: TaskAsset[];
+  onOpenPdf?: (url: string, name: string) => void;
 }) {
   return (
     <div>
@@ -221,23 +234,34 @@ function AssetList({
         <div className="space-y-1.5">
           {assets.map(asset => {
             const isVideo = asset.mediaType.startsWith('video/');
+            const isPdf = isPdfAsset(asset);
             return (
               <div key={asset.id} className="rounded-lg border border-slate-700 bg-slate-900/40 px-2.5 py-2">
                 <div className="flex items-start gap-2">
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-xs font-medium text-slate-200">{asset.originalName}</p>
                     <p className="text-[11px] text-slate-500">
-                      {isVideo ? 'Vidéo' : 'Fichier'} · {formatBytes(asset.bytes)} · {formatDate(asset.createdAt)}
+                      {isVideo ? 'Vidéo' : isPdf ? 'PDF' : 'Fichier'} · {formatBytes(asset.bytes)} · {formatDate(asset.createdAt)}
                     </p>
                   </div>
-                  <a
-                    href={asset.url}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="rounded-md border border-slate-600 px-2 py-1 text-[11px] text-slate-300 hover:border-slate-500 hover:text-slate-100"
-                  >
-                    {isVideo ? 'Regarder' : 'Télécharger'}
-                  </a>
+                  {isPdf ? (
+                    <button
+                      type="button"
+                      onClick={() => onOpenPdf?.(asset.url, asset.originalName)}
+                      className="rounded-md border border-slate-600 px-2 py-1 text-[11px] text-slate-300 hover:border-indigo-500/60 hover:text-indigo-200"
+                    >
+                      Voir PDF
+                    </button>
+                  ) : (
+                    <a
+                      href={asset.url}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="rounded-md border border-slate-600 px-2 py-1 text-[11px] text-slate-300 hover:border-slate-500 hover:text-slate-100"
+                    >
+                      {isVideo ? 'Regarder' : 'Télécharger'}
+                    </a>
+                  )}
                 </div>
               </div>
             );
@@ -263,6 +287,19 @@ function KanbanTaskCard({
   const prio = PRIORITY_CONFIG[task.priority] ?? PRIORITY_CONFIG.medium;
   const overdue = isOverdue(task.dueDate, task.status);
 
+  const assets = task.assets ?? [];
+  const imageAssets = assets.filter(a => a.mediaType.startsWith('image/'));
+  const videoAssets = assets.filter(a => a.mediaType.startsWith('video/'));
+  const pdfAssets  = assets.filter(a => isPdfAsset(a));
+  const otherCount = assets.length - imageAssets.length - videoAssets.length - pdfAssets.length;
+  const hasOutput  = assets.some(a => a.kind === 'output');
+
+  /* Vignettes visibles : 3 images + 2 vidéos max, le reste dans "+N" */
+  const visibleImages = imageAssets.slice(0, 3);
+  const hiddenImages  = imageAssets.length - visibleImages.length;
+  const visibleVideos = videoAssets.slice(0, 2);
+  const hiddenVideos  = videoAssets.length - visibleVideos.length;
+
   return (
     <div
       role="button"
@@ -286,6 +323,82 @@ function KanbanTaskCard({
       </div>
 
       {task.description ? <p className="mb-3 line-clamp-2 pl-4 text-xs text-slate-500">{task.description}</p> : null}
+
+      {/* Vignettes photos + vidéos */}
+      {(visibleImages.length > 0 || visibleVideos.length > 0) ? (
+        <div className="mb-2.5 flex flex-wrap gap-1.5 pl-4">
+          {visibleImages.map(asset => (
+            <div
+              key={asset.id}
+              className="relative h-16 w-16 overflow-hidden rounded-lg border border-slate-700 bg-slate-900"
+              title={asset.originalName}
+            >
+              <img
+                src={asset.url}
+                alt={asset.originalName}
+                className="h-full w-full object-cover"
+                loading="lazy"
+              />
+            </div>
+          ))}
+          {hiddenImages > 0 ? (
+            <div className="flex h-16 w-16 flex-col items-center justify-center rounded-lg border border-slate-700 bg-slate-900 text-[11px] font-semibold text-slate-300">
+              +{hiddenImages}
+              <span className="text-[9px] font-normal text-slate-500">photos</span>
+            </div>
+          ) : null}
+          {visibleVideos.map(asset => (
+            <div
+              key={asset.id}
+              className="relative h-16 w-16 overflow-hidden rounded-lg border border-slate-700 bg-slate-900"
+              title={asset.originalName}
+            >
+              <video
+                src={asset.url}
+                className="h-full w-full object-cover"
+                preload="metadata"
+                muted
+                playsInline
+              />
+              {/* Play overlay */}
+              <div className="absolute inset-0 flex items-center justify-center bg-black/40">
+                <svg className="h-6 w-6 text-white drop-shadow" viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M8 5.14v14l11-7-11-7z" />
+                </svg>
+              </div>
+            </div>
+          ))}
+          {hiddenVideos > 0 ? (
+            <div className="flex h-16 w-16 flex-col items-center justify-center rounded-lg border border-slate-700 bg-slate-900 text-[11px] font-semibold text-slate-300">
+              +{hiddenVideos}
+              <span className="text-[9px] font-normal text-slate-500">vidéos</span>
+            </div>
+          ) : null}
+        </div>
+      ) : null}
+
+      {/* Badges PDF / autres fichiers / livré */}
+      {(pdfAssets.length > 0 || otherCount > 0 || hasOutput) ? (
+        <div className="mb-2.5 flex flex-wrap items-center gap-1.5 pl-4">
+          {pdfAssets.length > 0 ? (
+            <span className="inline-flex items-center gap-1 rounded-md border border-red-500/25 bg-red-500/10 px-1.5 py-0.5 text-[10px] font-medium text-red-300">
+              <IconFile className="h-3 w-3 shrink-0" />
+              {pdfAssets.length} PDF
+            </span>
+          ) : null}
+          {otherCount > 0 ? (
+            <span className="inline-flex items-center gap-1 rounded-md border border-slate-600/60 bg-slate-700/50 px-1.5 py-0.5 text-[10px] font-medium text-slate-400">
+              <IconPaperclip className="h-3 w-3 shrink-0" />
+              {otherCount} fichier{otherCount > 1 ? 's' : ''}
+            </span>
+          ) : null}
+          {hasOutput ? (
+            <span className="inline-flex items-center gap-1 rounded-md border border-emerald-500/30 bg-emerald-500/10 px-1.5 py-0.5 text-[10px] font-medium text-emerald-300">
+              ✓ Livré
+            </span>
+          ) : null}
+        </div>
+      ) : null}
 
       <div className="flex flex-wrap items-center gap-2 pl-4">
         <span className={`rounded-full px-1.5 py-0.5 text-xs font-medium ${prio.cls}`}>{prio.label}</span>
@@ -351,6 +464,7 @@ export default function TaskBoard({
   const [assigneeFilter, setAssigneeFilter] = useState<AssigneeFilter>('all');
   /** Mobile (viewport < md) : une seule colonne à la fois, pas de scroll horizontal Kanban */
   const [mobileStatusTab, setMobileStatusTab] = useState<TaskStatus>('todo');
+  const [pdfViewer, setPdfViewer] = useState<{ url: string; name: string } | null>(null);
   const [assetBusy, setAssetBusy] = useState<'input' | 'output' | null>(null);
   const [assetError, setAssetError] = useState<string | null>(null);
   const [assetProgress, setAssetProgress] = useState<{
@@ -358,9 +472,46 @@ export default function TaskBoard({
     percent: number | null;
     phase: 'uploading' | 'processing';
   } | null>(null);
-  const [draftInputVideo, setDraftInputVideo] = useState<File | null>(null);
-  const [draftInputFile, setDraftInputFile] = useState<File | null>(null);
-  const [draftOutputFile, setDraftOutputFile] = useState<File | null>(null);
+  type DraftUploadStatus =
+    | { kind: 'pending' }
+    | { kind: 'uploading'; percent: number | null; phase: 'uploading' | 'processing' }
+    | { kind: 'done' }
+    | { kind: 'error'; message: string };
+  interface DraftFile { file: File; assetKind: 'input' | 'output' }
+
+  const [draftFiles, setDraftFiles] = useState<DraftFile[]>([]);
+  const [draftStatuses, setDraftStatuses] = useState<DraftUploadStatus[]>([]);
+
+  const draftPreviews = useMemo(() => {
+    return draftFiles.map(df => ({
+      ...df,
+      url: URL.createObjectURL(df.file),
+      isImage: df.file.type.startsWith('image/'),
+      isVideo: df.file.type.startsWith('video/'),
+      isPdf: df.file.type === 'application/pdf' || df.file.name.toLowerCase().endsWith('.pdf'),
+    }));
+  }, [draftFiles]);
+
+  useEffect(() => {
+    return () => { draftPreviews.forEach(p => URL.revokeObjectURL(p.url)); };
+  }, [draftPreviews]);
+
+  const addDraft = useCallback((file: File | null, kind: 'input' | 'output') => {
+    if (!file) return;
+    setDraftFiles(prev => [...prev, { file, assetKind: kind }]);
+    setDraftStatuses(prev => [...prev, { kind: 'pending' }]);
+  }, []);
+
+  const removeDraft = useCallback((index: number) => {
+    setDraftFiles(prev => prev.filter((_, i) => i !== index));
+    setDraftStatuses(prev => prev.filter((_, i) => i !== index));
+  }, []);
+
+  const resetDrafts = useCallback(() => {
+    setDraftFiles([]);
+    setDraftStatuses([]);
+  }, []);
+
   const inputFileRef = useRef<HTMLInputElement | null>(null);
   const inputVideoRef = useRef<HTMLInputElement | null>(null);
   const outputFileRef = useRef<HTMLInputElement | null>(null);
@@ -410,9 +561,7 @@ export default function TaskBoard({
       status,
       dueDate: '',
     });
-    setDraftInputVideo(null);
-    setDraftInputFile(null);
-    setDraftOutputFile(null);
+    resetDrafts();
     setShowModal(true);
   };
 
@@ -454,18 +603,52 @@ export default function TaskBoard({
           status: form.status,
           dueDate: form.dueDate || undefined,
         });
-        if (created?.id) {
-          if (draftInputVideo) {
-            await uploadAsset(created.id, 'input', draftInputVideo);
+        if (created?.id && draftFiles.length > 0) {
+          setDraftStatuses(draftFiles.map(() => ({ kind: 'pending' as const })));
+          let firstError: string | null = null;
+          for (let i = 0; i < draftFiles.length; i++) {
+            const df = draftFiles[i];
+            setDraftStatuses(prev => {
+              const next = [...prev];
+              next[i] = { kind: 'uploading', percent: 0, phase: 'uploading' };
+              return next;
+            });
+            try {
+              const result = await uploadWithProgress<Task>(
+                `/api/tasks/${created.id}/assets`,
+                df.file,
+                {
+                  fields: { kind: df.assetKind },
+                  onProgress: p => {
+                    setDraftStatuses(prev => {
+                      const next = [...prev];
+                      next[i] = { kind: 'uploading', percent: p.percent, phase: p.phase };
+                      return next;
+                    });
+                  },
+                },
+              );
+              if (!result.ok) throw new Error(result.error ?? 'Upload impossible');
+              setDraftStatuses(prev => {
+                const next = [...prev];
+                next[i] = { kind: 'done' };
+                return next;
+              });
+            } catch (e: unknown) {
+              const msg = e instanceof Error ? e.message : 'Upload impossible';
+              if (!firstError) firstError = msg;
+              setDraftStatuses(prev => {
+                const next = [...prev];
+                next[i] = { kind: 'error', message: msg };
+                return next;
+              });
+            }
           }
-          if (draftInputFile) {
-            await uploadAsset(created.id, 'input', draftInputFile);
-          }
-          if (draftOutputFile) {
-            await uploadAsset(created.id, 'output', draftOutputFile);
-          }
-          if (draftInputVideo || draftInputFile || draftOutputFile) {
-            await onUpdate(created.id, {});
+          await onUpdate(created.id, {});
+          if (firstError) {
+            setSubmitError(`Tâche créée, mais une pièce jointe a échoué : ${firstError}`);
+            setSubmitting(false);
+            return;
           }
         }
       }
@@ -877,11 +1060,13 @@ export default function TaskBoard({
                   title="Brief / pièces de référence"
                   emptyLabel="Aucun fichier de référence"
                   assets={inputAssets}
+                  onOpenPdf={(url, name) => setPdfViewer({ url, name })}
                 />
                 <AssetList
                   title="Travail livré (tâche terminée)"
                   emptyLabel="Aucun livrable pour le moment"
                   assets={outputAssets}
+                  onOpenPdf={(url, name) => setPdfViewer({ url, name })}
                 />
 
                 <input
@@ -1027,11 +1212,52 @@ export default function TaskBoard({
         </div>
       )}
 
+      {/* Visionneuse PDF */}
+      {pdfViewer ? (
+        <div className="fixed inset-0 z-[70] flex flex-col bg-black/95 backdrop-blur-sm">
+          <div className="flex shrink-0 items-center justify-between border-b border-slate-700 bg-slate-900 px-4 py-3">
+            <p className="max-w-[60%] truncate text-sm font-medium text-slate-200" title={pdfViewer.name}>
+              {pdfViewer.name}
+            </p>
+            <div className="flex items-center gap-2">
+              <a
+                href={pdfViewer.url}
+                download={pdfViewer.name}
+                className="rounded-lg border border-slate-600 px-3 py-1.5 text-xs text-slate-300 transition-colors hover:border-slate-500 hover:text-slate-100"
+              >
+                Télécharger
+              </a>
+              <a
+                href={pdfViewer.url}
+                target="_blank"
+                rel="noreferrer"
+                className="rounded-lg border border-slate-600 px-3 py-1.5 text-xs text-slate-300 transition-colors hover:border-slate-500 hover:text-slate-100"
+              >
+                Ouvrir onglet
+              </a>
+              <button
+                type="button"
+                onClick={() => setPdfViewer(null)}
+                className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-700 hover:text-slate-300"
+                aria-label="Fermer"
+              >
+                <IconX className="h-5 w-5" />
+              </button>
+            </div>
+          </div>
+          <iframe
+            src={getPdfViewerUrl(pdfViewer.url)}
+            className="min-h-0 flex-1 w-full border-0"
+            title={pdfViewer.name}
+          />
+        </div>
+      ) : null}
+
       {/* Add / Edit Modal */}
       {showModal && (
         <div
           className="fixed inset-0 z-50 flex items-end justify-center bg-black/70 p-0 backdrop-blur-sm sm:items-center sm:p-4"
-          onClick={() => setShowModal(false)}
+          onClick={() => { if (!submitting) setShowModal(false); }}
         >
           <div
             className="max-h-[min(100dvh,100%)] w-full max-w-lg overflow-y-auto rounded-t-2xl border border-slate-700 border-b-0 bg-slate-800 shadow-2xl sm:rounded-2xl sm:border-b"
@@ -1052,8 +1278,9 @@ export default function TaskBoard({
                 )}
               </h3>
               <button
-                onClick={() => setShowModal(false)}
-                className="text-slate-500 hover:text-slate-300 transition-colors w-7 h-7 flex items-center justify-center rounded-lg hover:bg-slate-700"
+                onClick={() => { if (!submitting) setShowModal(false); }}
+                disabled={submitting}
+                className="text-slate-500 hover:text-slate-300 transition-colors w-7 h-7 flex items-center justify-center rounded-lg hover:bg-slate-700 disabled:opacity-40"
                 aria-label="Fermer"
               >
                 <IconX className="h-5 w-5" />
@@ -1163,15 +1390,16 @@ export default function TaskBoard({
                           accept="video/*"
                           capture="environment"
                           className="hidden"
-                          onChange={e => setDraftInputVideo(e.target.files?.[0] ?? null)}
+                          onChange={e => { addDraft(e.target.files?.[0] ?? null, 'input'); e.currentTarget.value = ''; }}
                         />
                       </label>
                       <label className="cursor-pointer rounded-lg border border-slate-700 bg-slate-900/60 px-3 py-2 text-center text-xs font-medium text-slate-200 hover:border-slate-600">
                         Ajouter pièce jointe
                         <input
                           type="file"
+                          accept="image/*,application/pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv,.zip"
                           className="hidden"
-                          onChange={e => setDraftInputFile(e.target.files?.[0] ?? null)}
+                          onChange={e => { addDraft(e.target.files?.[0] ?? null, 'input'); e.currentTarget.value = ''; }}
                         />
                       </label>
                       <label className="cursor-pointer rounded-lg border border-emerald-700/50 bg-emerald-900/20 px-3 py-2 text-center text-xs font-medium text-emerald-200 hover:border-emerald-500/60">
@@ -1179,18 +1407,90 @@ export default function TaskBoard({
                         <input
                           type="file"
                           className="hidden"
-                          onChange={e => setDraftOutputFile(e.target.files?.[0] ?? null)}
+                          onChange={e => { addDraft(e.target.files?.[0] ?? null, 'output'); e.currentTarget.value = ''; }}
                         />
                       </label>
                     </div>
-                    <div className="space-y-1 text-[11px] text-slate-500">
-                      {draftInputVideo ? <p>Vidéo : {draftInputVideo.name}</p> : null}
-                      {draftInputFile ? <p>Pièce jointe : {draftInputFile.name}</p> : null}
-                      {draftOutputFile ? <p>Livrable : {draftOutputFile.name}</p> : null}
-                      {!draftInputVideo && !draftInputFile && !draftOutputFile ? (
-                        <p>Optionnel : les fichiers seront uploadés automatiquement après création.</p>
-                      ) : null}
-                    </div>
+
+                    {/* Vignettes des brouillons en attente */}
+                    {draftPreviews.length > 0 ? (
+                      <ul className="space-y-1.5">
+                        {draftPreviews.map((p, i) => {
+                          const status: DraftUploadStatus = draftStatuses[i] ?? { kind: 'pending' };
+                          const showRemove = status.kind === 'pending';
+                          const borderCls =
+                            status.kind === 'done'
+                              ? 'border-emerald-500/40 bg-emerald-500/5'
+                              : status.kind === 'error'
+                                ? 'border-red-500/40 bg-red-500/5'
+                                : status.kind === 'uploading'
+                                  ? 'border-indigo-500/40 bg-indigo-500/5'
+                                  : 'border-dashed border-slate-600 bg-slate-900/40';
+                          return (
+                            <li key={`${p.file.name}-${i}`} className={`rounded-lg border px-2 py-1.5 ${borderCls}`}>
+                              <div className="flex items-center gap-2">
+                                {p.isImage ? (
+                                  <span className="h-10 w-10 shrink-0 overflow-hidden rounded border border-slate-700 bg-slate-800">
+                                    <img src={p.url} alt={p.file.name} className="h-full w-full object-cover" />
+                                  </span>
+                                ) : p.isVideo ? (
+                                  <span className="relative h-10 w-10 shrink-0 overflow-hidden rounded border border-slate-700 bg-slate-800">
+                                    <video src={p.url} className="h-full w-full object-cover" preload="metadata" muted playsInline />
+                                    <span className="absolute inset-0 flex items-center justify-center bg-black/40">
+                                      <svg className="h-4 w-4 text-white" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5.14v14l11-7-11-7z" /></svg>
+                                    </span>
+                                  </span>
+                                ) : p.isPdf ? (
+                                  <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded border border-red-500/30 bg-red-500/10 text-red-400">
+                                    <IconFile className="h-4 w-4" />
+                                  </span>
+                                ) : (
+                                  <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded border border-slate-700 bg-slate-800 text-slate-400">
+                                    <IconPaperclip className="h-4 w-4" />
+                                  </span>
+                                )}
+                                <div className="min-w-0 flex-1">
+                                  <p className="truncate text-xs font-medium text-slate-200">{p.file.name}</p>
+                                  <p className="text-[10px] text-slate-500">
+                                    {p.isImage ? 'Image' : p.isVideo ? 'Vidéo' : p.isPdf ? 'PDF' : 'Fichier'} · {formatBytes(p.file.size)}
+                                    {p.assetKind === 'output' ? ' · Livrable' : ''}
+                                    {status.kind === 'pending' ? ' · en attente' : ''}
+                                    {status.kind === 'done' ? ' · ✓ envoyé' : ''}
+                                  </p>
+                                </div>
+                                {showRemove ? (
+                                  <button
+                                    type="button"
+                                    onClick={() => removeDraft(i)}
+                                    className="rounded-md p-1 text-slate-500 hover:bg-red-500/15 hover:text-red-300"
+                                    title="Retirer"
+                                  >
+                                    <IconX className="h-3.5 w-3.5" />
+                                  </button>
+                                ) : null}
+                              </div>
+                              {status.kind === 'uploading' ? (
+                                <div className="mt-2">
+                                  <UploadProgressInline name={p.file.name} percent={status.percent} phase={status.phase} />
+                                </div>
+                              ) : null}
+                              {status.kind === 'error' ? (
+                                <p className="mt-1.5 text-[11px] text-red-300">✕ {status.message}</p>
+                              ) : null}
+                            </li>
+                          );
+                        })}
+                        {draftStatuses.every(s => s.kind === 'pending') ? (
+                          <p className="text-[10px] text-slate-500">
+                            Les pièces seront téléversées automatiquement après création de la tâche.
+                          </p>
+                        ) : null}
+                      </ul>
+                    ) : (
+                      <p className="text-[11px] leading-snug text-slate-500">
+                        Optionnel : ajoutez des photos, vidéos ou documents. Maximum 50 Mo par fichier.
+                      </p>
+                    )}
                   </div>
                 )}
                 {assetProgress ? (
@@ -1317,7 +1617,15 @@ export default function TaskBoard({
                 disabled={!form.title.trim() || submitting}
                 className="w-full bg-indigo-500 hover:bg-indigo-400 disabled:opacity-50 disabled:cursor-not-allowed text-white px-5 py-2 rounded-xl text-sm font-medium transition-all shadow-lg shadow-indigo-500/20 sm:w-auto"
               >
-                {submitting ? 'Enregistrement…' : editingTask ? 'Enregistrer' : 'Créer la tâche'}
+                {submitting
+                  ? draftFiles.length > 0 && !editingTask
+                    ? 'Téléversement…'
+                    : 'Enregistrement…'
+                  : editingTask
+                    ? 'Enregistrer'
+                    : draftFiles.length > 0
+                      ? `Créer (+${draftFiles.length})`
+                      : 'Créer la tâche'}
               </button>
             </div>
           </div>

@@ -180,6 +180,15 @@ function isImageAsset(asset: NoteAsset) {
   return asset.mediaType.startsWith('image/');
 }
 
+function isPdfAsset(asset: NoteAsset) {
+  return asset.mediaType === 'application/pdf' || asset.originalName.toLowerCase().endsWith('.pdf');
+}
+
+/** Ouvre le PDF dans Google Docs Viewer (iframe) pour éviter le téléchargement forcé. */
+function getPdfViewerUrl(url: string) {
+  return `https://docs.google.com/gview?url=${encodeURIComponent(url)}&embedded=true`;
+}
+
 function UploadProgressRow({
   percent,
   phase,
@@ -263,6 +272,7 @@ export default function NotesSection({
   const [assetError, setAssetError] = useState<string | null>(null);
   const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
   const [previewNote, setPreviewNote] = useState<Note | null>(null);
+  const [pdfViewer, setPdfViewer] = useState<{ url: string; name: string } | null>(null);
   const cameraInputRef = useRef<HTMLInputElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
@@ -664,6 +674,7 @@ export default function NotesSection({
                       onDelete={() => onDelete(note.id)}
                       onTogglePin={() => onUpdate(note.id, { pinned: !note.pinned })}
                       onOpenImage={url => setLightboxUrl(url)}
+                      onOpenPdf={(url, name) => setPdfViewer({ url, name })}
                       onOpenAssets={() => setPreviewNote(note)}
                       onConvertToTask={onConvertToTask}
                     />
@@ -691,6 +702,7 @@ export default function NotesSection({
                       onDelete={() => onDelete(note.id)}
                       onTogglePin={() => onUpdate(note.id, { pinned: !note.pinned })}
                       onOpenImage={url => setLightboxUrl(url)}
+                      onOpenPdf={(url, name) => setPdfViewer({ url, name })}
                       onOpenAssets={() => setPreviewNote(note)}
                       onConvertToTask={onConvertToTask}
                     />
@@ -963,14 +975,24 @@ export default function NotesSection({
                                 {isImageAsset(asset) ? 'Image' : 'Document'} · {formatBytes(asset.bytes)}
                               </p>
                             </div>
-                            <a
-                              href={asset.url}
-                              target="_blank"
-                              rel="noreferrer"
-                              className="rounded-md border border-slate-600 px-2 py-1 text-[10px] text-slate-300 hover:border-slate-500 hover:text-slate-100"
-                            >
-                              Ouvrir
-                            </a>
+                            {isPdfAsset(asset) ? (
+                              <button
+                                type="button"
+                                onClick={() => setPdfViewer({ url: asset.url, name: asset.originalName })}
+                                className="rounded-md border border-slate-600 px-2 py-1 text-[10px] text-slate-300 hover:border-slate-500 hover:text-slate-100"
+                              >
+                                Ouvrir
+                              </button>
+                            ) : (
+                              <a
+                                href={asset.url}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="rounded-md border border-slate-600 px-2 py-1 text-[10px] text-slate-300 hover:border-slate-500 hover:text-slate-100"
+                              >
+                                Ouvrir
+                              </a>
+                            )}
                             {onDeleteAsset && isNoteOwner(editingNote, currentUser.id) ? (
                               <button
                                 type="button"
@@ -1225,6 +1247,47 @@ export default function NotesSection({
         </div>
       ) : null}
 
+      {/* Visionneuse PDF */}
+      {pdfViewer ? (
+        <div className="fixed inset-0 z-[65] flex flex-col bg-black/95 backdrop-blur-sm">
+          <div className="flex shrink-0 items-center justify-between border-b border-slate-700 bg-slate-900 px-4 py-3">
+            <p className="max-w-[60%] truncate text-sm font-medium text-slate-200" title={pdfViewer.name}>
+              {pdfViewer.name}
+            </p>
+            <div className="flex items-center gap-2">
+              <a
+                href={pdfViewer.url}
+                download={pdfViewer.name}
+                className="rounded-lg border border-slate-600 px-3 py-1.5 text-xs text-slate-300 transition-colors hover:border-slate-500 hover:text-slate-100"
+              >
+                Télécharger
+              </a>
+              <a
+                href={pdfViewer.url}
+                target="_blank"
+                rel="noreferrer"
+                className="rounded-lg border border-slate-600 px-3 py-1.5 text-xs text-slate-300 transition-colors hover:border-slate-500 hover:text-slate-100"
+              >
+                Ouvrir onglet
+              </a>
+              <button
+                type="button"
+                onClick={() => setPdfViewer(null)}
+                className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-700 hover:text-slate-300"
+                aria-label="Fermer"
+              >
+                <IconX className="h-5 w-5" />
+              </button>
+            </div>
+          </div>
+          <iframe
+            src={getPdfViewerUrl(pdfViewer.url)}
+            className="min-h-0 flex-1 w-full border-0"
+            title={pdfViewer.name}
+          />
+        </div>
+      ) : null}
+
       {/* Aperçu pièces jointes (click depuis une carte note) */}
       {previewNote ? (
         <div
@@ -1274,14 +1337,24 @@ export default function NotesSection({
                       {isImageAsset(asset) ? 'Image' : 'Document'} · {formatBytes(asset.bytes)}
                     </p>
                   </div>
-                  <a
-                    href={asset.url}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="rounded-md border border-slate-600 px-2 py-1 text-[11px] text-slate-300 hover:border-slate-500 hover:text-slate-100"
-                  >
-                    Ouvrir
-                  </a>
+                  {isPdfAsset(asset) ? (
+                    <button
+                      type="button"
+                      onClick={() => setPdfViewer({ url: asset.url, name: asset.originalName })}
+                      className="rounded-md border border-slate-600 px-2 py-1 text-[11px] text-slate-300 hover:border-slate-500 hover:text-slate-100"
+                    >
+                      Ouvrir
+                    </button>
+                  ) : (
+                    <a
+                      href={asset.url}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="rounded-md border border-slate-600 px-2 py-1 text-[11px] text-slate-300 hover:border-slate-500 hover:text-slate-100"
+                    >
+                      Ouvrir
+                    </a>
+                  )}
                 </li>
               ))}
             </ul>
@@ -1303,6 +1376,7 @@ interface NoteCardProps {
   onDelete: () => void;
   onTogglePin: () => void;
   onOpenImage?: (url: string) => void;
+  onOpenPdf?: (url: string, name: string) => void;
   onOpenAssets?: () => void;
   onConvertToTask?: (
     noteId: string,
@@ -1320,6 +1394,7 @@ function NoteCard({
   onDelete,
   onTogglePin,
   onOpenImage,
+  onOpenPdf,
   onOpenAssets,
   onConvertToTask,
 }: NoteCardProps) {
@@ -1541,19 +1616,32 @@ function NoteCard({
           ) : null}
           {docAssets.length > 0 ? (
             <div className="flex flex-wrap gap-1.5">
-              {docAssets.slice(0, 3).map(asset => (
-                <a
-                  key={asset.id}
-                  href={asset.url}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="inline-flex max-w-full items-center gap-1.5 rounded-md border border-slate-700 bg-slate-900/60 px-2 py-1 text-[11px] text-slate-300 hover:border-indigo-500/60 hover:text-white"
-                  title={asset.originalName}
-                >
-                  <IconFile className="h-3.5 w-3.5 shrink-0 text-slate-500" />
-                  <span className="max-w-[10rem] truncate">{asset.originalName}</span>
-                </a>
-              ))}
+              {docAssets.slice(0, 3).map(asset =>
+                isPdfAsset(asset) ? (
+                  <button
+                    key={asset.id}
+                    type="button"
+                    onClick={() => onOpenPdf?.(asset.url, asset.originalName)}
+                    className="inline-flex max-w-full items-center gap-1.5 rounded-md border border-slate-700 bg-slate-900/60 px-2 py-1 text-[11px] text-slate-300 hover:border-indigo-500/60 hover:text-white"
+                    title={asset.originalName}
+                  >
+                    <IconFile className="h-3.5 w-3.5 shrink-0 text-red-400" />
+                    <span className="max-w-[10rem] truncate">{asset.originalName}</span>
+                  </button>
+                ) : (
+                  <a
+                    key={asset.id}
+                    href={asset.url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-flex max-w-full items-center gap-1.5 rounded-md border border-slate-700 bg-slate-900/60 px-2 py-1 text-[11px] text-slate-300 hover:border-indigo-500/60 hover:text-white"
+                    title={asset.originalName}
+                  >
+                    <IconFile className="h-3.5 w-3.5 shrink-0 text-slate-500" />
+                    <span className="max-w-[10rem] truncate">{asset.originalName}</span>
+                  </a>
+                )
+              )}
               {docAssets.length > 3 ? (
                 <button
                   type="button"

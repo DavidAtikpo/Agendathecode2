@@ -32,7 +32,7 @@ import SettingsModal from './components/SettingsModal';
 import { PRO_SUBSCRIPTION_SALES_ENABLED } from './lib/feature-flags';
 import { countUnreadAssignedTasks } from './lib/assigned-task-badge';
 
-const fetchOpts: RequestInit = { credentials: 'include' };
+const fetchOpts: RequestInit = { credentials: 'include', cache: 'no-store' };
 
 /** Logo dans `public/` (fichier avec espace dans le nom) */
 const BRAND_LOGO = '/logo (1).png';
@@ -637,6 +637,43 @@ export default function HomePage() {
       cancelled = true;
     };
   }, [hydrateFromSession]);
+
+  /* ── Auto-refresh : synchronisation collaborateurs ── */
+  const POLL_MS = 30_000;
+
+  const refreshData = useCallback(async () => {
+    if (!currentUser) return;
+    try {
+      const data = await loadAppData();
+      setNotes(prev => {
+        const json = JSON.stringify(data.notes);
+        return JSON.stringify(prev) === json ? prev : data.notes;
+      });
+      setTasks(prev => {
+        const json = JSON.stringify(data.tasks);
+        return JSON.stringify(prev) === json ? prev : data.tasks;
+      });
+      setContacts(prev => {
+        const json = JSON.stringify(data.contacts);
+        return JSON.stringify(prev) === json ? prev : data.contacts;
+      });
+    } catch {
+      /* silently ignore — next poll will retry */
+    }
+  }, [currentUser]);
+
+  useEffect(() => {
+    if (!currentUser) return;
+    const id = setInterval(refreshData, POLL_MS);
+    const onVisibility = () => {
+      if (document.visibilityState === 'visible') void refreshData();
+    };
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => {
+      clearInterval(id);
+      document.removeEventListener('visibilitychange', onVisibility);
+    };
+  }, [currentUser, refreshData]);
 
   useEffect(() => {
     try {
