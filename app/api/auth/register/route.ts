@@ -33,6 +33,9 @@ export async function POST(request: Request) {
     const count = await prisma.user.count();
     const passwordHash = await hashPassword(password);
 
+    const welcomeCreditsExpiry = new Date();
+    welcomeCreditsExpiry.setFullYear(welcomeCreditsExpiry.getFullYear() + 1);
+
     const user = await prisma.user.create({
       data: {
         email,
@@ -40,6 +43,8 @@ export async function POST(request: Request) {
         name,
         color: USER_AVATAR_COLORS[count % USER_AVATAR_COLORS.length],
         initials: initialsFromName(name),
+        aiCredits: 200,
+        aiCreditsExpiresAt: welcomeCreditsExpiry,
       },
     });
 

@@ -25,6 +25,10 @@ model User {
   subscriptionEndsAt   DateTime?
   /// Préférences UI / produit (JSON — voir `user-preferences.ts` côté app)
   preferences          Json             @default("{}")
+  /// Crédits IA restants (1 crédit = 1 message Claude)
+  aiCredits            Int              @default(0)
+  /// Date d'expiration des crédits (1 an après l'achat)
+  aiCreditsExpiresAt   DateTime?
   notes                Note[]
   taskAssignments      TaskAssignment[]
   taskAssetsUploaded   TaskAsset[]

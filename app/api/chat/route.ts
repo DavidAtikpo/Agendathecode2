@@ -1,42 +1,75 @@
 import { NextRequest, NextResponse } from 'next/server';
-import OpenAI from 'openai';
+import Anthropic from '@anthropic-ai/sdk';
 import { prisma } from '@/app/lib/prisma';
 import { getSessionUserId } from '@/app/lib/auth';
 
-const client = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-});
+export const runtime = 'nodejs';
+
+const AI_CREDITS_PER_MESSAGE = 1;
 
 type ChatTier = 'guest' | 'free' | 'pro';
 
-async function resolveChatTier(): Promise<ChatTier> {
+interface UserCreditInfo {
+  tier: ChatTier;
+  userId: string | null;
+  aiCredits: number;
+  aiCreditsExpiresAt: Date | null;
+}
+
+async function resolveUserInfo(): Promise<UserCreditInfo> {
   const userId = await getSessionUserId();
-  if (!userId) return 'guest';
+  if (!userId) return { tier: 'guest', userId: null, aiCredits: 0, aiCreditsExpiresAt: null };
+
   const user = await prisma.user.findUnique({
     where: { id: userId },
-    select: { plan: true },
+    select: { plan: true, aiCredits: true, aiCreditsExpiresAt: true },
   });
-  if (!user) return 'guest';
-  return user.plan === 'pro' ? 'pro' : 'free';
+  if (!user) return { tier: 'guest', userId: null, aiCredits: 0, aiCreditsExpiresAt: null };
+
+  const tier: ChatTier = user.plan === 'pro' ? 'pro' : 'free';
+
+  // Expire credits lazily if past expiration date
+  let aiCredits = user.aiCredits;
+  if (user.aiCreditsExpiresAt && user.aiCreditsExpiresAt < new Date() && aiCredits > 0) {
+    await prisma.user.update({ where: { id: userId }, data: { aiCredits: 0 } });
+    aiCredits = 0;
+  }
+
+  return { tier, userId, aiCredits, aiCreditsExpiresAt: user.aiCreditsExpiresAt };
 }
 
 export async function POST(request: NextRequest) {
+  const apiKey = process.env.ANTHROPIC_API_KEY?.trim();
+  if (!apiKey) {
+    return NextResponse.json({ error: 'Clé Anthropic manquante côté serveur.' }, { status: 503 });
+  }
+
   try {
     const { messages, context } = await request.json();
-    const tier = await resolveChatTier();
+    const { tier, userId, aiCredits } = await resolveUserInfo();
 
-    const defaultModel = process.env.OPENAI_MODEL?.trim() || 'gpt-4o-mini';
-    const proModel = process.env.OPENAI_MODEL_PRO?.trim();
-    const model = tier === 'pro' && proModel ? proModel : defaultModel;
+    // Guests and logged-in users without credits cannot chat
+    if (!userId) {
+      return NextResponse.json(
+        { error: 'Connectez-vous pour utiliser l\'assistant IA.', code: 'NOT_AUTHENTICATED' },
+        { status: 401 },
+      );
+    }
 
-    const maxTokens = tier === 'pro' ? 2500 : tier === 'free' ? 1200 : 800;
+    if (aiCredits < AI_CREDITS_PER_MESSAGE) {
+      return NextResponse.json(
+        { error: 'Crédits insuffisants. Achetez des crédits pour continuer.', code: 'NO_CREDITS', creditsRemaining: 0 },
+        { status: 402 },
+      );
+    }
+
+    const client = new Anthropic({ apiKey });
+    const maxTokens = tier === 'pro' ? 2500 : 1500;
 
     const tierHint =
       tier === 'pro'
         ? `L'utilisateur a un abonnement Neurix Pro : réponses plus complètes et structurées lorsque c'est pertinent ; tu peux proposer des listes à puces et des étapes concrètes.`
-        : tier === 'free'
-          ? `L'utilisateur est en version gratuite : reste utile mais plutôt concis par défaut.`
-          : `Visiteur non connecté (session locale) : réponses courtes et directes.`;
+        : `L'utilisateur est en version standard : reste utile et concis.`;
 
     const systemPrompt = `Tu es l'assistant IA de Neurix (idées, notes et tâches en équipe).
 
@@ -53,18 +86,30 @@ ${context}
 
 Réponds en français.`;
 
-    const completion = await client.chat.completions.create({
-      model,
-      messages: [
-        { role: 'system', content: systemPrompt },
-        ...messages,
-      ],
-      max_tokens: maxTokens,
+    // Deduct credit before calling Claude (prevents abuse on error retry)
+    const updatedUser = await prisma.user.update({
+      where: { id: userId },
+      data: { aiCredits: { decrement: AI_CREDITS_PER_MESSAGE } },
+      select: { aiCredits: true },
     });
 
+    const response = await client.messages.create({
+      model: 'claude-haiku-4-5',
+      max_tokens: maxTokens,
+      system: systemPrompt,
+      messages: messages.map((m: { role: string; content: string }) => ({
+        role: m.role === 'user' ? 'user' : 'assistant',
+        content: m.content,
+      })),
+    });
+
+    const content = response.content[0];
+    const text = content.type === 'text' ? content.text : '';
+
     return NextResponse.json({
-      message: completion.choices[0].message.content,
+      message: text,
       tier,
+      creditsRemaining: updatedUser.aiCredits,
     });
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : 'Erreur interne';

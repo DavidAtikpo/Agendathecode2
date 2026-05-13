@@ -39,12 +39,52 @@ export async function POST(request: Request) {
         const userId = session.metadata?.userId ?? session.client_reference_id;
         const customerId =
           typeof session.customer === 'string' ? session.customer : session.customer?.id;
+
+        if (!userId) break;
+
+        // Credits purchase (one-time payment)
+        if (session.metadata?.purpose === 'ai_credits') {
+          const creditsToAdd = parseInt(session.metadata.credits ?? '2500', 10);
+          const expiresAt = new Date();
+          expiresAt.setFullYear(expiresAt.getFullYear() + 1);
+
+          const current = await prisma.user.findUnique({
+            where: { id: userId },
+            select: { aiCredits: true, aiCreditsExpiresAt: true, stripeCustomerId: true },
+          });
+
+          // If existing credits not yet expired, stack on top; otherwise reset expiry
+          const now = new Date();
+          const existingValid =
+            current &&
+            current.aiCreditsExpiresAt &&
+            current.aiCreditsExpiresAt > now &&
+            current.aiCredits > 0;
+
+          await prisma.user.update({
+            where: { id: userId },
+            data: {
+              aiCredits: existingValid
+                ? { increment: creditsToAdd }
+                : creditsToAdd,
+              aiCreditsExpiresAt: existingValid
+                ? current!.aiCreditsExpiresAt
+                : expiresAt,
+              ...(customerId && !current?.stripeCustomerId
+                ? { stripeCustomerId: customerId }
+                : {}),
+            },
+          });
+          break;
+        }
+
+        // Pro subscription purchase
         const subId =
           typeof session.subscription === 'string'
             ? session.subscription
             : session.subscription?.id;
 
-        if (userId && customerId) {
+        if (customerId) {
           await prisma.user.update({
             where: { id: userId },
             data: {

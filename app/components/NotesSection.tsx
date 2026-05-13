@@ -27,9 +27,24 @@ import {
   IconPin,
   IconPlus,
   IconSearch,
+  IconSparkles,
   IconTrash,
   IconX,
 } from './icons';
+
+/* ── Meeting Analysis types ── */
+interface MeetingActionItem { who: string; what: string; deadline?: string | null }
+interface MeetingAnalysis {
+  title: string;
+  summary: string;
+  duration_estimate?: string | null;
+  participants: string[];
+  keyPoints: string[];
+  decisions: string[];
+  actionItems: MeetingActionItem[];
+  nextMeeting?: string | null;
+  notes?: string | null;
+}
 
 interface NotesSectionProps {
   notes: Note[];
@@ -65,6 +80,10 @@ interface NotesSectionProps {
     noteId: string,
     opts: { deleteOriginal: boolean },
   ) => Promise<unknown>;
+  /** Callback pour mettre à jour le solde de crédits IA après une opération Claude */
+  onCreditsUpdate?: (remaining: number) => void;
+  /** Ouvre la modale d'achat de crédits IA */
+  onBuyCredits?: () => void;
 }
 
 interface FormData {
@@ -80,6 +99,8 @@ interface FormData {
 /* ── Speech Recognition types ── */
 interface SpeechRecognitionEvent extends Event {
   results: SpeechRecognitionResultList;
+  /** Index of the first result that has changed since the last onresult event */
+  resultIndex: number;
 }
 interface SpeechRecognitionInstance extends EventTarget {
   lang: string;
@@ -110,6 +131,8 @@ function timeAgo(iso: string) {
 
 function useSpeechRecognition(onTranscript: (text: string, isFinal: boolean) => void) {
   const recognitionRef = useRef<SpeechRecognitionInstance | null>(null);
+  /** Mots définitivement finalisés pendant la session en cours */
+  const confirmedRef = useRef('');
   const [recording, setRecording] = useState(false);
   const [supported, setSupported] = useState(false);
 
@@ -118,9 +141,11 @@ function useSpeechRecognition(onTranscript: (text: string, isFinal: boolean) => 
     setSupported(!!Ctor);
   }, []);
 
-  const start = useCallback(() => {
+  const start = useCallback((baseText = '') => {
     const Ctor = window.SpeechRecognition ?? window.webkitSpeechRecognition;
     if (!Ctor) return;
+
+    confirmedRef.current = baseText;
 
     const rec = new Ctor();
     rec.lang = 'fr-FR';
@@ -128,14 +153,21 @@ function useSpeechRecognition(onTranscript: (text: string, isFinal: boolean) => 
     rec.interimResults = true;
 
     rec.onresult = (e: SpeechRecognitionEvent) => {
+      let newFinals = '';
       let interim = '';
-      let final = '';
-      for (let i = 0; i < e.results.length; i++) {
-        const r = e.results[i];
-        if (r.isFinal) final += r[0].transcript;
-        else interim += r[0].transcript;
+      // Start from resultIndex to avoid re-processing already-handled results
+      for (let i = e.resultIndex; i < e.results.length; i++) {
+        if (e.results[i].isFinal) newFinals += e.results[i][0].transcript;
+        else interim += e.results[i][0].transcript;
       }
-      onTranscript(final || interim, !!final);
+      if (newFinals) {
+        const sep = confirmedRef.current && !confirmedRef.current.endsWith(' ') ? ' ' : '';
+        confirmedRef.current += sep + newFinals;
+      }
+      const preview = interim
+        ? confirmedRef.current + (confirmedRef.current && !confirmedRef.current.endsWith(' ') ? ' ' : '') + interim
+        : confirmedRef.current;
+      onTranscript(preview, !interim);
     };
 
     rec.onend = () => setRecording(false);
@@ -151,9 +183,9 @@ function useSpeechRecognition(onTranscript: (text: string, isFinal: boolean) => 
     setRecording(false);
   }, []);
 
-  const toggle = useCallback(() => {
+  const toggle = useCallback((currentText?: string) => {
     if (recording) stop();
-    else start();
+    else start(currentText ?? '');
   }, [recording, start, stop]);
 
   return { recording, supported, toggle };
@@ -187,6 +219,75 @@ function isPdfAsset(asset: NoteAsset) {
 /** Ouvre le PDF dans Google Docs Viewer (iframe) pour éviter le téléchargement forcé. */
 function getPdfViewerUrl(url: string) {
   return `https://docs.google.com/gview?url=${encodeURIComponent(url)}&embedded=true`;
+}
+
+/** Ouvre une fenêtre d'impression formatée pour le compte-rendu de réunion. */
+function printMeetingPdf(analysis: MeetingAnalysis, transcript: string, meetingDate: string) {
+  const rows = analysis.actionItems.map(a =>
+    `<tr><td>${a.who}</td><td>${a.what}</td><td>${a.deadline ?? '—'}</td></tr>`
+  ).join('');
+  const html = `<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<title>${analysis.title}</title>
+<style>
+  *{box-sizing:border-box}
+  body{font-family:'Segoe UI',Arial,sans-serif;max-width:820px;margin:0 auto;padding:32px;color:#1f2937;font-size:13px;line-height:1.6}
+  h1{font-size:22px;color:#4f46e5;margin:0 0 6px;border-bottom:2px solid #4f46e5;padding-bottom:8px}
+  .meta{color:#6b7280;font-size:12px;margin-bottom:24px}
+  h2{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#6b7280;margin:20px 0 8px;border-bottom:1px solid #e5e7eb;padding-bottom:4px}
+  ul{margin:0;padding-left:18px}li{margin-bottom:4px}
+  .chip-row{display:flex;flex-wrap:wrap;gap:6px;margin-top:4px}
+  .chip{background:#ede9fe;color:#5b21b6;border-radius:12px;padding:2px 10px;font-size:11px;font-weight:600}
+  table{width:100%;border-collapse:collapse;margin-top:6px}
+  th{background:#f3f4f6;padding:7px 10px;text-align:left;font-size:11px;font-weight:700;text-transform:uppercase}
+  td{padding:7px 10px;border-bottom:1px solid #e5e7eb;vertical-align:top}
+  .transcript-box{background:#f9fafb;border-left:3px solid #e5e7eb;padding:12px;font-size:11px;white-space:pre-wrap;margin-top:6px;border-radius:4px;color:#4b5563;max-height:300px;overflow:auto}
+  .footer{margin-top:32px;font-size:10px;color:#9ca3af;text-align:center;border-top:1px solid #e5e7eb;padding-top:10px}
+  @media print{body{padding:16px}.transcript-box{max-height:none}}
+</style>
+</head>
+<body>
+<h1>${analysis.title}</h1>
+<div class="meta">📅 ${meetingDate}${analysis.duration_estimate ? ` &nbsp;·&nbsp; ⏱ ${analysis.duration_estimate}` : ''}</div>
+
+<h2>Résumé</h2>
+<p style="margin:0">${analysis.summary}</p>
+
+${analysis.participants.length > 0 ? `
+<h2>Participants</h2>
+<div class="chip-row">${analysis.participants.map(p => `<span class="chip">${p}</span>`).join('')}</div>` : ''}
+
+${analysis.keyPoints.length > 0 ? `
+<h2>Points clés</h2>
+<ul>${analysis.keyPoints.map(k => `<li>${k}</li>`).join('')}</ul>` : ''}
+
+${analysis.decisions.length > 0 ? `
+<h2>Décisions prises</h2>
+<ul>${analysis.decisions.map(d => `<li>${d}</li>`).join('')}</ul>` : ''}
+
+${analysis.actionItems.length > 0 ? `
+<h2>Actions à réaliser</h2>
+<table><thead><tr><th>Responsable</th><th>Action</th><th>Échéance</th></tr></thead>
+<tbody>${rows}</tbody></table>` : ''}
+
+${analysis.nextMeeting ? `<h2>Prochaine réunion</h2><p style="margin:0">${analysis.nextMeeting}</p>` : ''}
+${analysis.notes ? `<h2>Notes complémentaires</h2><p style="margin:0">${analysis.notes}</p>` : ''}
+
+${transcript.trim() ? `
+<h2>Transcription complète</h2>
+<div class="transcript-box">${transcript.trim()}</div>` : ''}
+
+<div class="footer">Compte-rendu généré par Neurix IA · ${meetingDate}</div>
+</body></html>`;
+
+  const win = window.open('', '_blank', 'width=900,height=700');
+  if (!win) return;
+  win.document.write(html);
+  win.document.close();
+  win.focus();
+  setTimeout(() => win.print(), 600);
 }
 
 function UploadProgressRow({
@@ -240,6 +341,8 @@ export default function NotesSection({
   onUploadAsset,
   onDeleteAsset,
   onConvertToTask,
+  onCreditsUpdate,
+  onBuyCredits,
 }: NotesSectionProps) {
   const padHeader = compactLayout ? 'px-3 py-2 sm:px-4' : 'px-3 py-2.5 sm:px-5';
   const padContent = compactLayout ? 'p-3 sm:p-4' : 'p-4 sm:p-6';
@@ -275,6 +378,187 @@ export default function NotesSection({
   const [pdfViewer, setPdfViewer] = useState<{ url: string; name: string } | null>(null);
   const cameraInputRef = useRef<HTMLInputElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+
+  /* ── Meeting Recorder ── */
+  const [meetingOpen, setMeetingOpen] = useState(false);
+  const [meetingDate, setMeetingDate] = useState('');
+  const [meetingTitle, setMeetingTitle] = useState('');
+  const [meetingTranscript, setMeetingTranscript] = useState('');
+  const [meetingRecording, setMeetingRecording] = useState(false);
+  const [meetingAnalysis, setMeetingAnalysis] = useState<MeetingAnalysis | null>(null);
+  const [meetingAnalyzing, setMeetingAnalyzing] = useState(false);
+  const [meetingError, setMeetingError] = useState<string | null>(null);
+  const [meetingNoCredits, setMeetingNoCredits] = useState(false);
+  const meetingRecRef = useRef<SpeechRecognitionInstance | null>(null);
+  const meetingBaseRef = useRef('');   // finalized text from all recognition sessions
+  const meetingActiveRef = useRef(false);
+
+  const openMeetingModal = useCallback(() => {
+    const now = new Date();
+    const pad = (n: number) => String(n).padStart(2, '0');
+    const local = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}T${pad(now.getHours())}:${pad(now.getMinutes())}`;
+    setMeetingDate(local);
+    setMeetingTitle('');
+    setMeetingTranscript('');
+    meetingBaseRef.current = '';
+    setMeetingAnalysis(null);
+    setMeetingError(null);
+    setMeetingNoCredits(false);
+    setMeetingRecording(false);
+    meetingActiveRef.current = false;
+    setMeetingOpen(true);
+  }, []);
+
+  const closeMeetingModal = useCallback(() => {
+    meetingActiveRef.current = false;
+    meetingRecRef.current?.stop();
+    setMeetingRecording(false);
+    setMeetingOpen(false);
+  }, []);
+
+  const startMeetingSegment = useCallback(() => {
+    const Ctor = window.SpeechRecognition ?? window.webkitSpeechRecognition;
+    if (!Ctor) return;
+    const rec = new Ctor();
+    rec.lang = 'fr-FR';
+    rec.continuous = true;
+    rec.interimResults = true;
+
+    rec.onresult = (e: SpeechRecognitionEvent) => {
+      let newFinals = '';
+      let interim = '';
+      // Start from resultIndex to only process NEW results — avoids word repetition
+      for (let i = e.resultIndex; i < e.results.length; i++) {
+        if (e.results[i].isFinal) newFinals += e.results[i][0].transcript + ' ';
+        else interim += e.results[i][0].transcript;
+      }
+      if (newFinals) meetingBaseRef.current += newFinals;
+      setMeetingTranscript(meetingBaseRef.current + interim);
+    };
+
+    rec.onend = () => {
+      if (meetingActiveRef.current) {
+        /* Auto-restart to handle browser time limits */
+        const Ctor2 = window.SpeechRecognition ?? window.webkitSpeechRecognition;
+        if (Ctor2) {
+          const next = new Ctor2();
+          // Reassign handlers recursively via startMeetingSegment is tricky;
+          // instead just set a flag and let useEffect handle restart
+        }
+        startMeetingSegment();
+      } else {
+        setMeetingRecording(false);
+      }
+    };
+
+    rec.onerror = () => {};
+    meetingRecRef.current = rec;
+    try { rec.start(); } catch { /* already started */ }
+  }, []);
+
+  const toggleMeetingRecording = useCallback(() => {
+    if (meetingRecording) {
+      meetingActiveRef.current = false;
+      meetingRecRef.current?.stop();
+      setMeetingRecording(false);
+    } else {
+      meetingActiveRef.current = true;
+      setMeetingRecording(true);
+      startMeetingSegment();
+    }
+  }, [meetingRecording, startMeetingSegment]);
+
+  const analyzeMeeting = useCallback(async () => {
+    if (!meetingTranscript.trim()) return;
+    setMeetingAnalyzing(true);
+    setMeetingError(null);
+    setMeetingNoCredits(false);
+    try {
+      const dateLabel = meetingDate
+        ? new Date(meetingDate).toLocaleString('fr-FR', {
+            day: 'numeric', month: 'long', year: 'numeric',
+            hour: '2-digit', minute: '2-digit',
+          })
+        : new Date().toLocaleString('fr-FR');
+      const res = await fetch('/api/meeting/analyze', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ transcript: meetingTranscript, meetingDate: dateLabel, meetingTitle }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        if (data.code === 'NO_CREDITS') {
+          setMeetingNoCredits(true);
+          if (typeof data.creditsRemaining === 'number') onCreditsUpdate?.(data.creditsRemaining);
+        }
+        throw new Error(data.error ?? 'Erreur serveur');
+      }
+      if (!data.analysis) throw new Error('Réponse IA invalide');
+      setMeetingAnalysis(data.analysis as MeetingAnalysis);
+      if (typeof data.creditsRemaining === 'number') {
+        onCreditsUpdate?.(data.creditsRemaining);
+      }
+    } catch (e: unknown) {
+      setMeetingError(e instanceof Error ? e.message : 'Analyse impossible');
+    } finally {
+      setMeetingAnalyzing(false);
+    }
+  }, [meetingTranscript, meetingDate, meetingTitle, onCreditsUpdate]);
+
+  const saveMeetingAsNote = useCallback(async () => {
+    if (!meetingTranscript.trim() && !meetingAnalysis) return;
+    const dateLabel = meetingDate
+      ? new Date(meetingDate).toLocaleString('fr-FR', {
+          day: 'numeric', month: 'long', year: 'numeric',
+          hour: '2-digit', minute: '2-digit',
+        })
+      : new Date().toLocaleString('fr-FR');
+
+    if (meetingAnalysis) {
+      const lines: string[] = [];
+      lines.push(`📅 ${dateLabel}`);
+      lines.push('');
+      lines.push(`📝 ${meetingAnalysis.summary}`);
+      if (meetingAnalysis.participants.length > 0)
+        lines.push(`\n👥 Participants : ${meetingAnalysis.participants.join(', ')}`);
+      if (meetingAnalysis.keyPoints.length > 0) {
+        lines.push('\n🔑 Points clés :');
+        meetingAnalysis.keyPoints.forEach(k => lines.push(`  • ${k}`));
+      }
+      if (meetingAnalysis.decisions.length > 0) {
+        lines.push('\n✅ Décisions :');
+        meetingAnalysis.decisions.forEach(d => lines.push(`  • ${d}`));
+      }
+      if (meetingAnalysis.actionItems.length > 0) {
+        lines.push('\n🎯 Actions :');
+        meetingAnalysis.actionItems.forEach(a =>
+          lines.push(`  • [${a.who}] ${a.what}${a.deadline ? ` → ${a.deadline}` : ''}`)
+        );
+      }
+      if (meetingAnalysis.nextMeeting) lines.push(`\n📆 Prochaine réunion : ${meetingAnalysis.nextMeeting}`);
+      if (meetingTranscript.trim()) lines.push(`\n📄 Transcription :\n${meetingTranscript.trim()}`);
+
+      await onAdd({
+        title: meetingAnalysis.title,
+        content: lines.join('\n'),
+        pinned: false,
+        remindAt: null,
+        reminderByEmail: false,
+      });
+    } else {
+      const title = meetingTitle?.trim() || `Réunion du ${dateLabel}`;
+      const content = `📅 ${dateLabel}\n\n📄 Transcription :\n${meetingTranscript.trim()}`;
+      await onAdd({
+        title,
+        content,
+        pinned: false,
+        remindAt: null,
+        reminderByEmail: false,
+      });
+    }
+    closeMeetingModal();
+  }, [meetingAnalysis, meetingDate, meetingTitle, meetingTranscript, onAdd, closeMeetingModal]);
 
   const uploadsSupported = !!onUploadAsset && !isGuest;
 
@@ -620,6 +904,16 @@ export default function NotesSection({
 
         <button
           type="button"
+          onClick={openMeetingModal}
+          title="Enregistrer une réunion avec IA"
+          className="flex shrink-0 touch-manipulation items-center justify-center gap-1.5 rounded-xl border border-violet-500/40 bg-violet-500/15 px-3 py-1.5 text-xs font-medium text-violet-200 transition-all hover:bg-violet-500/25 sm:gap-2 sm:px-3 sm:text-sm"
+        >
+          <IconSparkles className="h-4 w-4 shrink-0" />
+          <span className="hidden sm:inline">Réunion IA</span>
+        </button>
+
+        <button
+          type="button"
           onClick={openAdd}
           className="flex shrink-0 touch-manipulation items-center justify-center gap-1.5 rounded-xl bg-indigo-500 px-3 py-1.5 text-xs font-medium text-white shadow-md shadow-indigo-500/20 transition-all hover:bg-indigo-400 sm:gap-2 sm:px-4 sm:text-sm"
         >
@@ -788,7 +1082,7 @@ export default function NotesSection({
                   {supported && (
                     <button
                       type="button"
-                      onClick={toggleMic}
+                      onClick={() => toggleMic(form.content)}
                       className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium transition-all ${
                         recording
                           ? 'bg-red-500 hover:bg-red-400 text-white shadow-lg shadow-red-500/30 animate-pulse'
@@ -1223,6 +1517,266 @@ export default function NotesSection({
           </div>
         </div>
       )}
+
+      {/* ── Meeting Recorder Modal ── */}
+      {meetingOpen ? (
+        <div
+          className="fixed inset-0 z-[60] flex items-end justify-center bg-black/75 p-0 backdrop-blur-sm sm:items-center sm:p-4"
+          onClick={closeMeetingModal}
+        >
+          <div
+            className="max-h-[min(96dvh,100%)] w-full max-w-2xl overflow-y-auto rounded-t-2xl border border-slate-700 border-b-0 bg-slate-800 shadow-2xl sm:rounded-2xl sm:border-b"
+            onClick={e => e.stopPropagation()}
+          >
+            {/* Header */}
+            <div className="flex items-center justify-between border-b border-slate-700 px-5 py-4">
+              <h3 className="flex items-center gap-2 font-semibold text-white">
+                <IconSparkles className="h-5 w-5 text-violet-400" />
+                Réunion IA — Enregistrement &amp; Analyse
+              </h3>
+              <button
+                type="button"
+                onClick={closeMeetingModal}
+                disabled={meetingAnalyzing}
+                className="flex h-7 w-7 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-700 hover:text-slate-300 disabled:opacity-40"
+                aria-label="Fermer"
+              >
+                <IconX className="h-5 w-5" />
+              </button>
+            </div>
+
+            <div className="space-y-4 p-5">
+              {/* Date + Titre */}
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <div>
+                  <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-slate-400">
+                    Date &amp; heure de la réunion
+                  </label>
+                  <input
+                    type="datetime-local"
+                    value={meetingDate}
+                    onChange={e => setMeetingDate(e.target.value)}
+                    className="w-full rounded-xl border border-slate-600 bg-slate-700 px-3 py-2.5 text-sm text-slate-200 focus:border-violet-500 focus:outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-slate-400">
+                    Titre (optionnel)
+                  </label>
+                  <input
+                    type="text"
+                    value={meetingTitle}
+                    onChange={e => setMeetingTitle(e.target.value)}
+                    placeholder="Ex. : Réunion hebdomadaire équipe…"
+                    className="w-full rounded-xl border border-slate-600 bg-slate-700 px-3 py-2.5 text-sm text-slate-200 placeholder-slate-500 focus:border-violet-500 focus:outline-none"
+                  />
+                </div>
+              </div>
+
+              {/* Enregistrement */}
+              <div>
+                <div className="mb-2 flex items-center justify-between">
+                  <label className="text-xs font-semibold uppercase tracking-wider text-slate-400">
+                    Transcription en direct
+                  </label>
+                  <button
+                    type="button"
+                    onClick={toggleMeetingRecording}
+                    disabled={meetingAnalyzing}
+                    className={`flex items-center gap-1.5 rounded-full px-4 py-1.5 text-xs font-semibold transition-all disabled:opacity-50 ${
+                      meetingRecording
+                        ? 'animate-pulse bg-red-500 text-white shadow-lg shadow-red-500/30'
+                        : 'border border-slate-600 bg-slate-700 text-slate-200 hover:border-violet-500/60 hover:text-violet-200'
+                    }`}
+                  >
+                    <IconMicrophone className="h-3.5 w-3.5 shrink-0" />
+                    {meetingRecording ? 'Arrêter' : 'Démarrer l\'enregistrement'}
+                  </button>
+                </div>
+
+                {meetingRecording && (
+                  <p className="mb-1.5 flex items-center gap-1.5 text-[11px] text-red-400">
+                    <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-red-400" />
+                    Enregistrement en cours — parlez clairement
+                  </p>
+                )}
+
+                <textarea
+                  value={meetingTranscript}
+                  onChange={e => {
+                    meetingBaseRef.current = e.target.value;
+                    setMeetingTranscript(e.target.value);
+                  }}
+                  placeholder="La transcription apparaît ici automatiquement… Vous pouvez aussi la corriger ou la coller manuellement."
+                  rows={8}
+                  className={`w-full resize-none rounded-xl border px-4 py-3 text-sm text-slate-200 placeholder-slate-500 focus:outline-none ${
+                    meetingRecording
+                      ? 'border-red-500/50 bg-slate-700 focus:border-red-500'
+                      : 'border-slate-600 bg-slate-700 focus:border-violet-500'
+                  }`}
+                />
+                <p className="mt-1 text-right text-[10px] text-slate-600">
+                  {meetingTranscript.split(/\s+/).filter(Boolean).length} mots
+                </p>
+              </div>
+
+              {/* Erreur analyse */}
+              {meetingError && (
+                <div className="rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2.5">
+                  <p className="text-sm text-red-300">{meetingError}</p>
+                  {meetingNoCredits && onBuyCredits && (
+                    <button
+                      type="button"
+                      onClick={onBuyCredits}
+                      className="mt-2 inline-flex items-center gap-1.5 rounded-lg bg-violet-600 px-3 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-violet-500"
+                    >
+                      <IconSparkles className="h-3.5 w-3.5" />
+                      Acheter des crédits
+                    </button>
+                  )}
+                </div>
+              )}
+
+              {/* Résultat analyse */}
+              {meetingAnalysis && (
+                <div className="space-y-3 rounded-xl border border-violet-500/30 bg-violet-500/5 p-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <h4 className="font-semibold text-violet-200">{meetingAnalysis.title}</h4>
+                    {meetingAnalysis.duration_estimate && (
+                      <span className="shrink-0 rounded-full border border-violet-500/30 bg-violet-500/10 px-2 py-0.5 text-[10px] text-violet-300">
+                        ⏱ {meetingAnalysis.duration_estimate}
+                      </span>
+                    )}
+                  </div>
+
+                  <p className="text-sm leading-relaxed text-slate-300">{meetingAnalysis.summary}</p>
+
+                  {meetingAnalysis.participants.length > 0 && (
+                    <div>
+                      <p className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-slate-500">Participants</p>
+                      <div className="flex flex-wrap gap-1.5">
+                        {meetingAnalysis.participants.map((p, i) => (
+                          <span key={i} className="rounded-full border border-violet-500/25 bg-violet-500/15 px-2.5 py-0.5 text-[11px] font-medium text-violet-200">
+                            {p}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {meetingAnalysis.keyPoints.length > 0 && (
+                    <div>
+                      <p className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-slate-500">Points clés</p>
+                      <ul className="space-y-1">
+                        {meetingAnalysis.keyPoints.map((k, i) => (
+                          <li key={i} className="flex gap-2 text-xs text-slate-300">
+                            <span className="mt-0.5 shrink-0 text-violet-400">•</span>{k}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+
+                  {meetingAnalysis.decisions.length > 0 && (
+                    <div>
+                      <p className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-slate-500">Décisions</p>
+                      <ul className="space-y-1">
+                        {meetingAnalysis.decisions.map((d, i) => (
+                          <li key={i} className="flex gap-2 text-xs text-slate-300">
+                            <span className="mt-0.5 shrink-0 text-emerald-400">✓</span>{d}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+
+                  {meetingAnalysis.actionItems.length > 0 && (
+                    <div>
+                      <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-slate-500">Actions à réaliser</p>
+                      <div className="space-y-1.5">
+                        {meetingAnalysis.actionItems.map((a, i) => (
+                          <div key={i} className="flex flex-wrap items-start gap-x-2 rounded-lg border border-slate-700 bg-slate-900/50 px-3 py-1.5 text-xs">
+                            <span className="shrink-0 font-semibold text-amber-300">{a.who}</span>
+                            <span className="text-slate-300">{a.what}</span>
+                            {a.deadline && (
+                              <span className="ml-auto shrink-0 text-slate-500">→ {a.deadline}</span>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {meetingAnalysis.nextMeeting && (
+                    <p className="text-xs text-slate-400">
+                      <span className="font-semibold text-slate-300">Prochaine réunion :</span> {meetingAnalysis.nextMeeting}
+                    </p>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* Footer actions */}
+            <div className="flex flex-wrap items-center justify-between gap-2 border-t border-slate-700 px-5 py-4 pb-[max(1rem,env(safe-area-inset-bottom))] sm:pb-4">
+              <button
+                type="button"
+                onClick={closeMeetingModal}
+                disabled={meetingAnalyzing}
+                className="text-sm text-slate-400 hover:text-slate-200 disabled:opacity-50"
+              >
+                Fermer
+              </button>
+              <div className="flex flex-wrap items-center gap-2">
+                {/* PDF export — only when analysis exists */}
+                {meetingAnalysis && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const dateLabel = meetingDate
+                        ? new Date(meetingDate).toLocaleString('fr-FR', {
+                            day: 'numeric', month: 'long', year: 'numeric',
+                            hour: '2-digit', minute: '2-digit',
+                          })
+                        : new Date().toLocaleString('fr-FR');
+                      printMeetingPdf(meetingAnalysis, meetingTranscript, dateLabel);
+                    }}
+                    className="flex items-center gap-1.5 rounded-xl border border-slate-600 px-4 py-2 text-sm font-medium text-slate-300 hover:border-slate-500 hover:text-slate-100"
+                  >
+                    <IconFile className="h-4 w-4 text-slate-400" />
+                    Exporter PDF
+                  </button>
+                )}
+
+                {/* Save as note — always available when there is transcript or analysis */}
+                {(meetingTranscript.trim() || meetingAnalysis) && (
+                  <button
+                    type="button"
+                    onClick={() => void saveMeetingAsNote()}
+                    disabled={meetingRecording}
+                    className="flex items-center gap-1.5 rounded-xl bg-emerald-600 px-4 py-2 text-sm font-semibold text-white transition-all hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    <IconLightBulb className="h-4 w-4" />
+                    {meetingAnalysis ? 'Sauvegarder comme note' : 'Sauvegarder la transcription'}
+                  </button>
+                )}
+
+                {/* AI Analyze button — only when no analysis yet */}
+                {!meetingAnalysis && (
+                  <button
+                    type="button"
+                    onClick={() => void analyzeMeeting()}
+                    disabled={!meetingTranscript.trim() || meetingAnalyzing || meetingRecording}
+                    className="flex items-center gap-1.5 rounded-xl bg-violet-600 px-4 py-2 text-sm font-semibold text-white transition-all hover:bg-violet-500 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    <IconSparkles className="h-4 w-4" />
+                    {meetingAnalyzing ? 'Analyse en cours…' : 'Analyser avec Claude IA (5 cr.)'}
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       {/* Lightbox image */}
       {lightboxUrl ? (

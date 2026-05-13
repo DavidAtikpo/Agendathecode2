@@ -14,6 +14,10 @@ export interface User {
   preferences?: UserPreferences;
   /** Présent après `/api/auth/me` ou login : compte avec mot de passe (pas Google-only). */
   hasPasswordLogin?: boolean;
+  /** Crédits IA restants (1 = 1 message Claude) */
+  aiCredits?: number;
+  /** ISO string d'expiration, ou null */
+  aiCreditsExpiresAt?: string | null;
 }
 
 export type TaskStatus = 'todo' | 'urgent' | 'doing' | 'testing' | 'done' | 'review';

@@ -1,6 +1,6 @@
 import { normalizePreferences, type UserPreferences } from '@/app/lib/user-preferences';
 
-/** Sous-ensemble User DB — évite d’importer des types depuis `@prisma/client` (résolution fragile en build Next). */
+/** Sous-ensemble User DB — évite d'importer des types depuis `@prisma/client` (résolution fragile en build Next). */
 export type ToPublicUserInput = {
   id: string;
   email: string;
@@ -14,6 +14,10 @@ export type ToPublicUserInput = {
   preferences?: unknown;
   /** Présent sur le modèle Prisma User — ne jamais renvoyer au client */
   passwordHash?: string | null;
+  /** Crédits IA restants */
+  aiCredits?: number;
+  /** Date d'expiration des crédits */
+  aiCreditsExpiresAt?: Date | null;
 };
 
 export type PublicUser = {
@@ -27,6 +31,10 @@ export type PublicUser = {
   preferences: UserPreferences;
   /** Indique si le compte peut se connecter par mot de passe (exclut OAuth-only). Renseigné seulement quand demandé. */
   hasPasswordLogin?: boolean;
+  /** Crédits IA restants (null = compte invité) */
+  aiCredits: number;
+  /** ISO string ou null si pas de crédits achetés */
+  aiCreditsExpiresAt: string | null;
 };
 
 type ToPublicUserOptions = {
@@ -44,6 +52,8 @@ export function toPublicUser(u: ToPublicUserInput, opts?: ToPublicUserOptions): 
     createdAt: u.createdAt.toISOString(),
     plan: u.plan === 'pro' ? 'pro' : 'free',
     preferences: normalizePreferences(u.preferences ?? {}),
+    aiCredits: u.aiCredits ?? 0,
+    aiCreditsExpiresAt: u.aiCreditsExpiresAt ? u.aiCreditsExpiresAt.toISOString() : null,
   };
   if (opts?.includePasswordLoginHint) {
     base.hasPasswordLogin = Boolean(u.passwordHash);

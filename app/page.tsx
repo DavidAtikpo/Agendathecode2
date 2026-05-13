@@ -29,6 +29,7 @@ import {
   type UserPreferences,
 } from './lib/user-preferences';
 import SettingsModal from './components/SettingsModal';
+import BuyCreditsModal from './components/BuyCreditsModal';
 import { PRO_SUBSCRIPTION_SALES_ENABLED } from './lib/feature-flags';
 import { countUnreadAssignedTasks } from './lib/assigned-task-badge';
 
@@ -462,6 +463,7 @@ export default function HomePage() {
   const [proFeaturesModalOpen, setProFeaturesModalOpen] = useState(false);
   const [settingsModalOpen, setSettingsModalOpen] = useState(false);
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
+  const [buyCreditsModalOpen, setBuyCreditsModalOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [dbError, setDbError] = useState<string | null>(null);
   const [assignedInAppNotice, setAssignedInAppNotice] = useState<string | null>(null);
@@ -568,6 +570,16 @@ export default function HomePage() {
     if (isGuest) return 'guest' as const;
     return currentUser?.plan === 'pro' ? ('pro' as const) : ('free' as const);
   }, [isGuest, currentUser?.plan]);
+
+  const chatCredits = useMemo<number | null>(() => {
+    if (isGuest) return null;
+    return currentUser?.aiCredits ?? 0;
+  }, [isGuest, currentUser?.aiCredits]);
+
+  const chatCreditsExpiresAt = useMemo<string | null>(() => {
+    if (isGuest) return null;
+    return currentUser?.aiCreditsExpiresAt ?? null;
+  }, [isGuest, currentUser?.aiCreditsExpiresAt]);
 
   const assignableUsers = useMemo(() => {
     if (isGuest) return [GUEST_USER];
@@ -837,6 +849,42 @@ export default function HomePage() {
     if (params.get('billing') !== 'cancel') return;
     setBillingFlash('Paiement annulé.');
     router.replace('/', { scroll: false });
+  }, [router]);
+
+  // Handle credits purchase success — poll until aiCredits > 0 (webhook may be slightly delayed)
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('billing') !== 'credits_success') return;
+    let cancelled = false;
+    let attempt = 0;
+    const maxAttempts = 20;
+    const delayMs = 700;
+
+    const trySyncCredits = async () => {
+      const r = await fetch('/api/auth/me', fetchOpts);
+      if (!r.ok || cancelled) return;
+      const me: User = await r.json();
+      if ((me.aiCredits ?? 0) > 0) {
+        setCurrentUser(prev => prev ? { ...prev, aiCredits: me.aiCredits, aiCreditsExpiresAt: me.aiCreditsExpiresAt } : me);
+        if (!cancelled) {
+          setBillingFlash('Merci ! Vos 2 500 crédits IA ont été ajoutés à votre compte.');
+          setChatOpen(true);
+        }
+        router.replace('/', { scroll: false });
+        return;
+      }
+      attempt += 1;
+      if (attempt < maxAttempts && !cancelled) {
+        setTimeout(() => void trySyncCredits(), delayMs);
+      } else if (!cancelled) {
+        setCurrentUser(prev => prev ? { ...prev, aiCredits: me.aiCredits, aiCreditsExpiresAt: me.aiCreditsExpiresAt } : me);
+        setBillingFlash('Paiement enregistré. Vos crédits apparaîtront d\'ici quelques instants.');
+        router.replace('/', { scroll: false });
+      }
+    };
+
+    void trySyncCredits();
+    return () => { cancelled = true; };
   }, [router]);
 
   const addNote = useCallback(
@@ -1171,7 +1219,16 @@ export default function HomePage() {
           }),
         });
         const data = await res.json();
-        if (data.error) throw new Error(data.error);
+        if (data.error) {
+          if (data.code === 'NO_CREDITS') {
+            setCurrentUser(prev => prev ? { ...prev, aiCredits: 0 } : prev);
+          }
+          throw new Error(data.error);
+        }
+
+        if (typeof data.creditsRemaining === 'number') {
+          setCurrentUser(prev => prev ? { ...prev, aiCredits: data.creditsRemaining } : prev);
+        }
 
         setChatMessages(prev => [
           ...prev,
@@ -1189,6 +1246,27 @@ export default function HomePage() {
   );
 
   const clearChat = useCallback(() => setChatMessages([]), []);
+
+  const buyAiCredits = useCallback(async (quantity = 1) => {
+    try {
+      const res = await fetch('/api/billing/credits/checkout', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        ...fetchOpts,
+        body: JSON.stringify({ quantity }),
+      });
+      const data = await res.json();
+      if (data.url) {
+        window.location.href = data.url;
+      } else {
+        alert(data.error ?? 'Erreur lors du paiement.');
+      }
+    } catch {
+      alert('Erreur de connexion au service de paiement.');
+    }
+  }, []);
+
+  const openBuyCreditsModal = useCallback(() => setBuyCreditsModalOpen(true), []);
 
   const { inAppReminder, dismissInApp, openWhatsAppForNote } = useNoteReminders(notes, {
     whatsappPhoneRaw: whatsappPhone,
@@ -1348,26 +1426,49 @@ export default function HomePage() {
                   ? 'Planning'
                   : 'Tableau des tâches'}
             </h2>
-            <button
-              type="button"
-              onClick={openCollaboratorsPanel}
-              className="inline-flex items-center gap-2 rounded-xl border border-slate-600 bg-slate-800 px-3 py-2 text-xs font-medium text-slate-200 hover:bg-slate-700 touch-manipulation"
-            >
-              <svg className="h-4 w-4 shrink-0 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"
-                />
-              </svg>
-              Collaborateurs
-              {!isGuest && assignableUsers.length > 1 ? (
-                <span className="rounded-full bg-indigo-500/25 px-1.5 py-0.5 text-[10px] font-semibold tabular-nums text-indigo-200">
-                  {assignableUsers.length}
-                </span>
-              ) : null}
-            </button>
+            <div className="flex items-center gap-2">
+              {/* Credit widget — desktop */}
+              {!isGuest && (
+                <button
+                  type="button"
+                  onClick={openBuyCreditsModal}
+                  className={`inline-flex items-center gap-1.5 rounded-xl border px-2.5 py-1.5 text-xs font-semibold transition-all hover:opacity-80 touch-manipulation ${
+                    (chatCredits ?? 0) <= 0
+                      ? 'border-red-500/40 bg-red-500/10 text-red-400'
+                      : (chatCredits ?? 0) < 100
+                      ? 'border-amber-500/40 bg-amber-500/10 text-amber-400'
+                      : 'border-violet-500/30 bg-violet-500/10 text-violet-300'
+                  }`}
+                  title="Crédits IA · Cliquez pour en acheter"
+                >
+                  <span className={`h-1.5 w-1.5 rounded-full ${
+                    (chatCredits ?? 0) <= 0 ? 'bg-red-400' : (chatCredits ?? 0) < 100 ? 'bg-amber-400' : 'bg-violet-400'
+                  }`} />
+                  {(chatCredits ?? 0).toLocaleString('fr-FR')} crédits
+                  <span className="opacity-60">+</span>
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={openCollaboratorsPanel}
+                className="inline-flex items-center gap-2 rounded-xl border border-slate-600 bg-slate-800 px-3 py-2 text-xs font-medium text-slate-200 hover:bg-slate-700 touch-manipulation"
+              >
+                <svg className="h-4 w-4 shrink-0 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"
+                  />
+                </svg>
+                Collaborateurs
+                {!isGuest && assignableUsers.length > 1 ? (
+                  <span className="rounded-full bg-indigo-500/25 px-1.5 py-0.5 text-[10px] font-semibold tabular-nums text-indigo-200">
+                    {assignableUsers.length}
+                  </span>
+                ) : null}
+              </button>
+            </div>
           </header>
 
           <header className="flex shrink-0 items-center gap-2 border-b border-slate-800 bg-slate-900/95 px-3 py-3 pt-[max(0.75rem,env(safe-area-inset-top))] md:hidden">
@@ -1382,6 +1483,29 @@ export default function HomePage() {
               </svg>
             </button>
             <span className="min-w-0 flex-1 truncate font-semibold text-white">{BRAND_NAME}</span>
+
+            {/* Credit widget — mobile */}
+            {!isGuest && (
+              <button
+                type="button"
+                onClick={openBuyCreditsModal}
+                className={`inline-flex items-center gap-1 rounded-xl border px-2 py-1.5 text-[11px] font-semibold transition-all touch-manipulation ${
+                  (chatCredits ?? 0) <= 0
+                    ? 'border-red-500/40 bg-red-500/10 text-red-400'
+                    : (chatCredits ?? 0) < 100
+                    ? 'border-amber-500/40 bg-amber-500/10 text-amber-400'
+                    : 'border-violet-500/30 bg-violet-500/10 text-violet-300'
+                }`}
+                aria-label="Crédits IA"
+              >
+                <span className={`h-1.5 w-1.5 rounded-full shrink-0 ${
+                  (chatCredits ?? 0) <= 0 ? 'bg-red-400' : (chatCredits ?? 0) < 100 ? 'bg-amber-400' : 'bg-violet-400'
+                }`} />
+                {(chatCredits ?? 0).toLocaleString('fr-FR')}
+                <span className="opacity-60">+</span>
+              </button>
+            )}
+
             <button
               type="button"
               onClick={openCollaboratorsPanel}
@@ -1430,6 +1554,8 @@ export default function HomePage() {
                   currentUser={displayUser}
                   collaborators={assignableUsers}
                   isGuest={isGuest}
+                  onCreditsUpdate={(n) => setCurrentUser(prev => prev ? { ...prev, aiCredits: n } : prev)}
+                  onBuyCredits={openBuyCreditsModal}
                   whatsappPhone={whatsappPhone}
                   onWhatsappPhoneChange={setWhatsappPhone}
                   whatsappAutoOpen={whatsappAutoOpen}
@@ -1522,6 +1648,9 @@ export default function HomePage() {
             onClose={() => setChatOpen(false)}
             onClear={clearChat}
             chatTier={chatTier}
+            chatCredits={chatCredits}
+            chatCreditsExpiresAt={chatCreditsExpiresAt}
+            onBuyCredits={openBuyCreditsModal}
           />
         )}
       </div>
@@ -1564,6 +1693,17 @@ export default function HomePage() {
         onAuthenticated={onAuthenticated}
         oauthError={authOauthError}
       />
+
+      {buyCreditsModalOpen && !isGuest && (
+        <BuyCreditsModal
+          currentCredits={chatCredits ?? 0}
+          onClose={() => setBuyCreditsModalOpen(false)}
+          onBuy={async (qty) => {
+            setBuyCreditsModalOpen(false);
+            await buyAiCredits(qty);
+          }}
+        />
+      )}
     </>
   );
 }

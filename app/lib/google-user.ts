@@ -22,6 +22,9 @@ export async function findOrCreateGoogleUser(profile: GoogleProfile) {
   const count = await prisma.user.count();
   const name = profile.name?.trim() || email.split('@')[0] || 'Utilisateur';
 
+  const welcomeCreditsExpiry = new Date();
+  welcomeCreditsExpiry.setFullYear(welcomeCreditsExpiry.getFullYear() + 1);
+
   return prisma.user.create({
     data: {
       email,
@@ -30,6 +33,8 @@ export async function findOrCreateGoogleUser(profile: GoogleProfile) {
       name,
       color: USER_AVATAR_COLORS[count % USER_AVATAR_COLORS.length],
       initials: initialsFromName(name),
+      aiCredits: 200,
+      aiCreditsExpiresAt: welcomeCreditsExpiry,
     },
   });
 }

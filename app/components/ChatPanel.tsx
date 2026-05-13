@@ -25,8 +25,14 @@ interface ChatPanelProps {
   onSendMessage: (content: string) => Promise<void>;
   onClose: () => void;
   onClear: () => void;
-  /** Différencie l’affichage et la limite côté API (gratuit vs Pro). */
+  /** Différencie l'affichage et la limite côté API (gratuit vs Pro). */
   chatTier: ChatTier;
+  /** Crédits IA restants (null = invité) */
+  chatCredits: number | null;
+  /** ISO string d'expiration des crédits, ou null */
+  chatCreditsExpiresAt: string | null;
+  /** Ouvre la modale d'achat de crédits */
+  onBuyCredits: () => void;
 }
 
 const SUGGESTIONS = [
@@ -41,29 +47,57 @@ function formatTime(iso: string) {
   return new Date(iso).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
 }
 
-function tierSubtitle(tier: ChatTier) {
-  switch (tier) {
-    case 'pro':
-      return 'Neurix Pro · réponses IA étendues';
-    case 'free':
-      return 'Gratuit · réponses standard';
-    default:
-      return 'Mode essai · connectez-vous pour tout sauvegarder';
+function CreditBadge({ credits, expiresAt }: { credits: number; expiresAt: string | null }) {
+  const low = credits < 100;
+  const empty = credits <= 0;
+
+  let label = `${credits.toLocaleString('fr-FR')} crédit${credits !== 1 ? 's' : ''}`;
+  if (expiresAt) {
+    const d = new Date(expiresAt);
+    label += ` · exp. ${d.toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', year: '2-digit' })}`;
   }
+
+  return (
+    <span
+      className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold ring-1 ${
+        empty
+          ? 'bg-red-500/15 text-red-400 ring-red-500/30'
+          : low
+          ? 'bg-amber-500/15 text-amber-400 ring-amber-500/30'
+          : 'bg-emerald-500/10 text-emerald-400 ring-emerald-500/20'
+      }`}
+    >
+      <span className={`h-1.5 w-1.5 rounded-full ${empty ? 'bg-red-400' : low ? 'bg-amber-400' : 'bg-emerald-400'}`} />
+      {label}
+    </span>
+  );
 }
 
-export default function ChatPanel({ messages, onSendMessage, onClose, onClear, chatTier }: ChatPanelProps) {
+export default function ChatPanel({
+  messages,
+  onSendMessage,
+  onClose,
+  onClear,
+  chatTier,
+  chatCredits,
+  chatCreditsExpiresAt,
+  onBuyCredits,
+}: ChatPanelProps) {
   const [input, setInput] = useState('');
   const [sending, setSending] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  const hasCredits = chatCredits !== null && chatCredits > 0;
+  const isGuest = chatTier === 'guest';
+  const canChat = !isGuest && hasCredits;
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, sending]);
 
   const handleSend = async () => {
-    if (!input.trim() || sending) return;
+    if (!input.trim() || sending || !canChat) return;
     const msg = input.trim();
     setInput('');
     setSending(true);
@@ -76,7 +110,7 @@ export default function ChatPanel({ messages, onSendMessage, onClose, onClear, c
   };
 
   const handleSuggestion = async (suggestion: string) => {
-    if (sending) return;
+    if (sending || !canChat) return;
     setSending(true);
     try {
       await onSendMessage(suggestion);
@@ -92,6 +126,8 @@ export default function ChatPanel({ messages, onSendMessage, onClose, onClear, c
     }
   };
 
+  const handleBuyCredits = () => onBuyCredits();
+
   return (
     <div
       className="fixed inset-0 z-[60] flex min-h-0 flex-col bg-slate-800 pt-[env(safe-area-inset-top)] md:static md:inset-auto md:z-auto md:h-full md:w-80 md:flex-shrink-0 md:border-l md:border-slate-700 md:pt-0"
@@ -101,14 +137,22 @@ export default function ChatPanel({ messages, onSendMessage, onClose, onClear, c
     >
       {/* Header */}
       <div className="flex flex-shrink-0 items-center justify-between border-b border-slate-700 px-4 py-3.5">
-        <div className="flex items-center gap-2.5">
+        <div className="flex items-center gap-2.5 min-w-0">
           <AssistantLogoMark size="md" />
-          <div>
+          <div className="min-w-0">
             <p className="font-semibold text-sm text-white">Neurix IA</p>
-            <p className="text-xs text-slate-500">{tierSubtitle(chatTier)}</p>
+            <div className="flex items-center gap-1.5 flex-wrap">
+              {!isGuest && chatCredits !== null ? (
+                <CreditBadge credits={chatCredits} expiresAt={chatCreditsExpiresAt} />
+              ) : (
+                <p className="text-xs text-slate-500">
+                  {isGuest ? 'Connectez-vous pour utiliser l\'IA' : 'Powered by Claude'}
+                </p>
+              )}
+            </div>
           </div>
         </div>
-        <div className="flex items-center gap-1">
+        <div className="flex items-center gap-1 flex-shrink-0">
           {messages.length > 0 && (
             <button
               onClick={onClear}
@@ -123,12 +167,56 @@ export default function ChatPanel({ messages, onSendMessage, onClose, onClear, c
             type="button"
             onClick={onClose}
             className="flex h-10 w-10 min-h-[44px] min-w-[44px] touch-manipulation items-center justify-center rounded-xl text-slate-500 transition-colors hover:bg-slate-700 hover:text-slate-300 md:h-7 md:w-7 md:min-h-0 md:min-w-0"
-            aria-label="Fermer l’assistant"
+            aria-label="Fermer l'assistant"
           >
             <IconX className="h-5 w-5 md:h-4 md:w-4" />
           </button>
         </div>
       </div>
+
+      {/* No credits / guest banner */}
+      {!isGuest && !hasCredits && (
+        <div className="flex-shrink-0 mx-4 mt-4 rounded-2xl border border-amber-500/30 bg-amber-500/10 p-4">
+          <p className="text-sm font-semibold text-amber-300 mb-1 flex items-center gap-2">
+            <IconSparkles className="h-4 w-4 shrink-0" />
+            Crédits épuisés
+          </p>
+          <p className="text-xs text-slate-400 leading-relaxed mb-3">
+            Achetez des crédits pour continuer à discuter avec l'assistant IA Claude.
+          </p>
+          <div className="rounded-xl bg-slate-700/50 p-3 mb-3 text-xs text-slate-300 space-y-1">
+            <div className="flex items-center justify-between">
+              <span>Pack crédits</span>
+              <span className="font-semibold text-white">5 $</span>
+            </div>
+            <div className="flex items-center justify-between text-slate-400">
+              <span>2 500 messages</span>
+              <span>Validité 1 an</span>
+            </div>
+          </div>
+          <button
+            onClick={handleBuyCredits}
+            className="w-full rounded-xl bg-violet-500 hover:bg-violet-400 text-white text-sm font-semibold py-2.5 transition-colors"
+          >
+            Acheter des crédits — à partir de 5 $
+          </button>
+        </div>
+      )}
+
+      {/* Low credits warning */}
+      {!isGuest && hasCredits && chatCredits! < 100 && (
+        <div className="flex-shrink-0 mx-4 mt-4 rounded-xl border border-amber-500/20 bg-amber-500/8 px-3 py-2 flex items-center justify-between gap-2">
+          <p className="text-xs text-amber-400">
+            Il ne vous reste que <strong>{chatCredits}</strong> crédit{chatCredits !== 1 ? 's' : ''}.
+          </p>
+          <button
+            onClick={handleBuyCredits}
+            className="flex-shrink-0 text-xs bg-amber-500 hover:bg-amber-400 text-slate-900 font-semibold rounded-lg px-2.5 py-1 transition-colors"
+          >
+            Recharger
+          </button>
+        </div>
+      )}
 
       {/* Messages */}
       <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-4">
@@ -158,23 +246,25 @@ export default function ChatPanel({ messages, onSendMessage, onClose, onClear, c
             </div>
 
             {/* Suggestions */}
-            <div>
-              <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">
-                Questions suggérées
-              </p>
-              <div className="space-y-1.5">
-                {SUGGESTIONS.map((s, i) => (
-                  <button
-                    key={i}
-                    onClick={() => handleSuggestion(s)}
-                    disabled={sending}
-                    className="w-full text-left text-xs bg-slate-700/70 hover:bg-slate-700 border border-slate-600/50 hover:border-slate-500 rounded-xl px-3 py-2.5 text-slate-300 transition-all disabled:opacity-50"
-                  >
-                    {s}
-                  </button>
-                ))}
+            {canChat && (
+              <div>
+                <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">
+                  Questions suggérées
+                </p>
+                <div className="space-y-1.5">
+                  {SUGGESTIONS.map((s, i) => (
+                    <button
+                      key={i}
+                      onClick={() => handleSuggestion(s)}
+                      disabled={sending}
+                      className="w-full text-left text-xs bg-slate-700/70 hover:bg-slate-700 border border-slate-600/50 hover:border-slate-500 rounded-xl px-3 py-2.5 text-slate-300 transition-all disabled:opacity-50"
+                    >
+                      {s}
+                    </button>
+                  ))}
+                </div>
               </div>
-            </div>
+            )}
           </div>
         ) : (
           <>
@@ -229,7 +319,7 @@ export default function ChatPanel({ messages, onSendMessage, onClose, onClear, c
       </div>
 
       {/* Quick suggestions when there are messages */}
-      {messages.length > 0 && (
+      {messages.length > 0 && canChat && (
         <div className="px-4 pb-2 flex gap-1.5 overflow-x-auto flex-shrink-0">
           {SUGGESTIONS.slice(0, 3).map((s, i) => (
             <button
@@ -246,29 +336,46 @@ export default function ChatPanel({ messages, onSendMessage, onClose, onClear, c
 
       {/* Input */}
       <div className="flex-shrink-0 border-t border-slate-700 p-4 pb-[max(1rem,env(safe-area-inset-bottom))] md:pb-4">
-        <div className="flex gap-2 items-end">
-          <textarea
-            ref={textareaRef}
-            value={input}
-            onChange={e => setInput(e.target.value)}
-            onKeyDown={handleKeyDown}
-            placeholder="Posez une question..."
-            rows={2}
-            disabled={sending}
-            className="flex-1 bg-slate-700 border border-slate-600 rounded-xl px-3 py-2.5 text-sm text-slate-200 placeholder-slate-500 focus:outline-none focus:border-violet-500 transition-colors resize-none disabled:opacity-50 min-h-0"
-          />
-          <button
-            onClick={handleSend}
-            disabled={!input.trim() || sending}
-            className="bg-violet-500 hover:bg-violet-400 disabled:opacity-40 disabled:cursor-not-allowed text-white w-9 h-9 flex items-center justify-center rounded-xl text-sm transition-all flex-shrink-0 shadow-lg shadow-violet-500/20"
-            aria-label="Envoyer"
-          >
-            <IconArrowRight className="h-5 w-5" />
-          </button>
-        </div>
-        <p className="text-xs text-slate-600 mt-1.5 text-center">
-          Entrée pour envoyer · Maj+Entrée pour une nouvelle ligne
-        </p>
+        {canChat ? (
+          <>
+            <div className="flex gap-2 items-end">
+              <textarea
+                ref={textareaRef}
+                value={input}
+                onChange={e => setInput(e.target.value)}
+                onKeyDown={handleKeyDown}
+                placeholder="Posez une question…"
+                rows={2}
+                disabled={sending}
+                className="flex-1 bg-slate-700 border border-slate-600 rounded-xl px-3 py-2.5 text-sm text-slate-200 placeholder-slate-500 focus:outline-none focus:border-violet-500 transition-colors resize-none disabled:opacity-50 min-h-0"
+              />
+              <button
+                onClick={handleSend}
+                disabled={!input.trim() || sending}
+                className="bg-violet-500 hover:bg-violet-400 disabled:opacity-40 disabled:cursor-not-allowed text-white w-9 h-9 flex items-center justify-center rounded-xl text-sm transition-all flex-shrink-0 shadow-lg shadow-violet-500/20"
+                aria-label="Envoyer"
+              >
+                <IconArrowRight className="h-5 w-5" />
+              </button>
+            </div>
+            <p className="text-xs text-slate-600 mt-1.5 text-center">
+              Entrée pour envoyer · Maj+Entrée pour une nouvelle ligne
+            </p>
+          </>
+        ) : (
+          <div className="text-center">
+            {isGuest ? (
+              <p className="text-xs text-slate-500">Connectez-vous pour utiliser l'assistant IA.</p>
+            ) : (
+              <button
+                onClick={handleBuyCredits}
+                className="w-full rounded-xl bg-violet-500 hover:bg-violet-400 text-white text-sm font-semibold py-2.5 transition-colors"
+              >
+                Acheter des crédits — à partir de 5 $
+              </button>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );
