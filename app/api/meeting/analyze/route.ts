@@ -5,8 +5,7 @@ import { getSessionUserId } from '@/app/lib/auth';
 
 export const runtime = 'nodejs';
 
-/** Coût en crédits pour une analyse de réunion (plus intensive qu'un message de chat) */
-const MEETING_CREDITS_COST = 5;
+const MEETING_CREDITS_COST = 3;
 
 export async function POST(request: NextRequest) {
   const userId = await getSessionUserId();
@@ -22,17 +21,14 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  // Check and deduct credits
   const user = await prisma.user.findUnique({
     where: { id: userId },
     select: { aiCredits: true, aiCreditsExpiresAt: true },
   });
-
   if (!user) {
     return NextResponse.json({ error: 'Utilisateur introuvable' }, { status: 404 });
   }
 
-  // Lazy expiry
   let credits = user.aiCredits;
   if (user.aiCreditsExpiresAt && user.aiCreditsExpiresAt < new Date() && credits > 0) {
     await prisma.user.update({ where: { id: userId }, data: { aiCredits: 0 } });
@@ -42,7 +38,7 @@ export async function POST(request: NextRequest) {
   if (credits < MEETING_CREDITS_COST) {
     return NextResponse.json(
       {
-        error: `Crédits insuffisants. Cette analyse coûte ${MEETING_CREDITS_COST} crédits (vous en avez ${credits}).`,
+        error: `Crédits insuffisants. Cette opération coûte ${MEETING_CREDITS_COST} crédits (vous en avez ${credits}).`,
         code: 'NO_CREDITS',
         creditsRemaining: credits,
         creditsRequired: MEETING_CREDITS_COST,
@@ -63,7 +59,6 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Transcription vide' }, { status: 400 });
   }
 
-  // Deduct credits before the API call
   const updated = await prisma.user.update({
     where: { id: userId },
     data: { aiCredits: { decrement: MEETING_CREDITS_COST } },
@@ -72,52 +67,37 @@ export async function POST(request: NextRequest) {
 
   const client = new Anthropic({ apiKey });
 
-  const prompt = `Tu es un assistant expert en analyse de réunions professionnelles.
-Analyse cette transcription et retourne UNIQUEMENT un objet JSON valide, sans texte avant ni après.
+  const prompt = `Tu es un assistant expert en rédaction de compte-rendus professionnels.
 
-Date et heure : ${meetingDate ?? 'non précisée'}
-${meetingTitle ? `Titre fourni : ${meetingTitle}` : ''}
+Ta tâche est de mettre en forme la transcription ci-dessous. Règles strictes :
+1. Supprime les répétitions, les hésitations ("euh", "donc", "ben", "voilà"), les phrases inachevées.
+2. Écris UN GRAND TITRE sur la première ligne (sans # ni préfixe).
+3. Divise le contenu en sections logiques avec des sous-titres précédés de ## (exemple : ## Présentation des participants).
+4. Garde TOUT le contenu important, ne résume pas.
+5. Corrige l'orthographe et la grammaire.
+6. Retourne UNIQUEMENT le texte mis en forme — aucun commentaire, aucune explication avant ou après.
+7. Langue : français.
 
-Transcription :
+Date : ${meetingDate ?? 'non précisée'}
+${meetingTitle ? `Titre suggéré : ${meetingTitle}` : ''}
+
+Transcription brute :
 """
 ${transcript.trim()}
-"""
-
-Retourne ce JSON exact (toutes les clés sont requises, utilise [] si vide) :
-{
-  "title": "Titre concis de la réunion (déduit du contenu)",
-  "summary": "Résumé global en 3 à 5 phrases claires",
-  "duration_estimate": "Durée estimée ou mentionnée, ou null",
-  "participants": ["Noms ou rôles des participants mentionnés"],
-  "keyPoints": ["Point clé 1", "Point clé 2"],
-  "decisions": ["Décision prise 1", "Décision prise 2"],
-  "actionItems": [
-    { "who": "Personne responsable", "what": "Action à réaliser", "deadline": "Échéance ou null" }
-  ],
-  "nextMeeting": "Date ou description de la prochaine réunion, ou null",
-  "notes": "Autres observations importantes, ou null"
-}`;
+"""`;
 
   try {
     const message = await client.messages.create({
       model: 'claude-opus-4-5',
-      max_tokens: 2048,
+      max_tokens: 4096,
       messages: [{ role: 'user', content: prompt }],
     });
 
-    const raw = message.content[0].type === 'text' ? message.content[0].text.trim() : '';
+    const text =
+      message.content[0].type === 'text' ? message.content[0].text.trim() : '';
 
-    // Strip markdown code fences if present
-    const cleaned = raw.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '').trim();
-
-    try {
-      const analysis = JSON.parse(cleaned);
-      return NextResponse.json({ analysis, creditsRemaining: updated.aiCredits });
-    } catch {
-      return NextResponse.json({ analysis: null, rawText: raw, creditsRemaining: updated.aiCredits });
-    }
+    return NextResponse.json({ text, creditsRemaining: updated.aiCredits });
   } catch (e: unknown) {
-    // Refund credits on Claude API failure
     await prisma.user.update({
       where: { id: userId },
       data: { aiCredits: { increment: MEETING_CREDITS_COST } },

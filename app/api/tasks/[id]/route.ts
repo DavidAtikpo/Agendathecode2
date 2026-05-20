@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/app/lib/prisma';
 import { getSessionUserId } from '@/app/lib/auth';
-import { resolveAssignees } from '@/app/lib/task-assign';
+import { assigneeIdsEqual, parseAssigneeIdsFromBody, resolveAssignees } from '@/app/lib/task-assign';
 import { tasksVisibleToUser } from '@/app/lib/task-access';
 import { sendTaskNotificationEmail } from '@/app/lib/email';
 import { TASK_WITH_RELATIONS_INCLUDE, serializeTask } from '@/app/lib/task-serialize';
@@ -26,15 +26,40 @@ export async function PATCH(request: Request, ctx: Ctx) {
     return NextResponse.json({ error: 'Tâche introuvable' }, { status: 404 });
   }
 
-  let assignedToIds: string[] | undefined;
-  let assigneeNotifiedAt: Date | null | undefined;
-  if (data.assignedTo !== undefined) {
-    if (existing.createdById !== sessionId) {
+  const isCreator = existing.createdById === sessionId;
+  const existingAssigneeIds = existing.assignees.map(a => a.userId);
+
+  if (!isCreator) {
+    if (data.assignedTo !== undefined) {
+      const incoming = parseAssigneeIdsFromBody(data.assignedTo);
+      if (!assigneeIdsEqual(incoming, existingAssigneeIds)) {
+        return NextResponse.json(
+          { error: 'Seul le créateur peut modifier l’assignation.' },
+          { status: 403 }
+        );
+      }
+    }
+    if (data.priority !== undefined && data.priority !== existing.priority) {
       return NextResponse.json(
-        { error: 'Seul le créateur peut modifier l’assignation.' },
+        { error: 'Seul le créateur peut modifier la priorité.' },
         { status: 403 }
       );
     }
+    if (data.dueDate !== undefined) {
+      const nextDue = data.dueDate ? new Date(data.dueDate).getTime() : null;
+      const existingDue = existing.dueDate?.getTime() ?? null;
+      if (nextDue !== existingDue) {
+        return NextResponse.json(
+          { error: 'Seul le créateur peut modifier la date limite.' },
+          { status: 403 }
+        );
+      }
+    }
+  }
+
+  let assignedToIds: string[] | undefined;
+  let assigneeNotifiedAt: Date | null | undefined;
+  if (data.assignedTo !== undefined && isCreator) {
     try {
       assignedToIds = await resolveAssignees(sessionId, data.assignedTo);
     } catch (e: unknown) {
@@ -52,9 +77,8 @@ export async function PATCH(request: Request, ctx: Ctx) {
       }
       throw e;
     }
-    const existingAssigneeIds = existing.assignees.map(a => a.userId).sort();
     const nextAssigneeIds = [...assignedToIds].sort();
-    if (JSON.stringify(existingAssigneeIds) !== JSON.stringify(nextAssigneeIds)) {
+    if (!assigneeIdsEqual(existingAssigneeIds, nextAssigneeIds)) {
       assigneeNotifiedAt = assignedToIds.length > 0 ? new Date() : null;
     }
   }

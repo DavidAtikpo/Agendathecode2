@@ -2,6 +2,13 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { Note, Task, TaskStatus } from '../types';
+import {
+  PLANNING_DAY_MS,
+  addPlanningDays,
+  barGeometryPx,
+  parsePlanningDateMs,
+  startOfPlanningDay,
+} from '../lib/planning-dates';
 import { IconCalendar } from './icons';
 
 type PlanningKind = 'task' | 'note';
@@ -19,10 +26,10 @@ interface PlanningRow {
 }
 
 function addDays(ms: number, days: number) {
-  return ms + days * 86400000;
+  return addPlanningDays(ms, days);
 }
 
-const DAY_MS = 86400000;
+const DAY_MS = PLANNING_DAY_MS;
 
 function clampDateOrder(startMs: number, endMs: number) {
   if (endMs >= startMs) return { startMs, endMs };
@@ -72,17 +79,17 @@ function formatMonthYear(d: Date) {
 }
 
 function startOfDay(ms: number) {
-  const d = new Date(ms);
-  d.setHours(0, 0, 0, 0);
-  return d.getTime();
+  return startOfPlanningDay(ms);
 }
 
 function buildRows(notes: Note[], tasks: Task[]): PlanningRow[] {
   const out: PlanningRow[] = [];
 
   for (const t of tasks) {
-    const startMs = new Date(t.createdAt).getTime();
-    const endMs = t.dueDate ? new Date(t.dueDate).getTime() : addDays(startMs, 14);
+    const created = parsePlanningDateMs(t.createdAt) ?? Date.now();
+    const startMs = startOfDay(created);
+    const due = parsePlanningDateMs(t.dueDate);
+    const endMs = due != null ? startOfDay(due) : addDays(startMs, 14);
     const { startMs: s, endMs: e } = clampDateOrder(startMs, endMs);
     const meta = taskStatusMeta(t.status);
     out.push({
@@ -99,10 +106,12 @@ function buildRows(notes: Note[], tasks: Task[]): PlanningRow[] {
   }
 
   for (const n of notes) {
-    const startMs = new Date(n.createdAt).getTime();
-    const remindMs = n.remindAt ? new Date(n.remindAt).getTime() : null;
-    const updatedMs = new Date(n.updatedAt).getTime();
-    const endMs = remindMs ?? Math.max(updatedMs, startMs + DAY_MS);
+    const created = parsePlanningDateMs(n.createdAt) ?? Date.now();
+    const startMs = startOfDay(created);
+    const remindRaw = parsePlanningDateMs(n.remindAt);
+    const remindMs = remindRaw != null ? startOfDay(remindRaw) : null;
+    const updatedMs = parsePlanningDateMs(n.updatedAt) ?? startMs;
+    const endMs = remindMs ?? startOfDay(Math.max(updatedMs, startMs + DAY_MS));
     const { startMs: s, endMs: e } = clampDateOrder(startMs, endMs);
     let statusLabel = 'Idée / note';
     let progressPct: number | null = null;
@@ -145,7 +154,9 @@ function buildRows(notes: Note[], tasks: Task[]): PlanningRow[] {
 }
 
 function durationDays(startMs: number, endMs: number) {
-  return Math.max(1, Math.ceil((endMs - startMs) / DAY_MS));
+  const start = startOfDay(startMs);
+  const endInclusive = startOfDay(endMs);
+  return Math.max(1, Math.round((endInclusive - start) / DAY_MS) + 1);
 }
 
 function barPalette(r: PlanningRow): { track: string; fillStrong: string } {
@@ -525,18 +536,16 @@ export default function PlanningView({ notes, tasks, users = [], compactLayout }
     return { rangeMin, rangeMax, spanMs: Math.max(DAY_MS, rangeMax - rangeMin) };
   }, [rows]);
 
-  const spanDays = Math.max(1, Math.ceil(spanMs / DAY_MS));
+  const totalDays = Math.max(1, spanMs / DAY_MS);
   const pxPerDay = useMemo(() => {
     const ideal = narrowViewport ? 12 : 14;
     const minW = narrowViewport ? 320 : 640;
     const maxW = 4200;
-    const w = spanDays * ideal;
-    if (w < minW) return minW / spanDays;
-    if (w > maxW) return maxW / spanDays;
+    const w = totalDays * ideal;
+    if (w < minW) return minW / totalDays;
+    if (w > maxW) return maxW / totalDays;
     return ideal;
-  }, [spanDays, narrowViewport]);
-
-  const timelineWidthPx = Math.round(spanDays * pxPerDay);
+  }, [totalDays, narrowViewport]);
 
   const monthSegments = useMemo((): MonthSegment[] => {
     const segs: MonthSegment[] = [];
@@ -559,6 +568,11 @@ export default function PlanningView({ notes, tasks, users = [], compactLayout }
     }
     return segs;
   }, [rangeMin, rangeMax, pxPerDay]);
+
+  const timelineWidthPx = useMemo(
+    () => Math.round(monthSegments.reduce((sum, seg) => sum + seg.widthPx, 0)),
+    [monthSegments],
+  );
 
   const syncVerticalFrom = useCallback((source: 'left' | 'right') => {
     if (syncingVertical.current) return;
@@ -608,7 +622,7 @@ export default function PlanningView({ notes, tasks, users = [], compactLayout }
   }, []);
 
   const rowH = compactLayout ? 44 : 52;
-  const todayX = ((Date.now() - rangeMin) / spanMs) * timelineWidthPx;
+  const todayX = ((startOfDay(Date.now()) - rangeMin) / DAY_MS) * pxPerDay;
 
   const cell = compactLayout ? 'text-[11px]' : 'text-xs';
   const th = compactLayout ? 'text-[9px]' : 'text-[10px]';
@@ -691,12 +705,12 @@ export default function PlanningView({ notes, tasks, users = [], compactLayout }
         <div className="relative flex min-h-0 min-w-0 flex-1 border-t border-slate-800/80">
           {taskGridVisible ? (
             <div
-              className={`flex w-[min(9.75rem,36vw)] shrink-0 flex-col border-r border-slate-700/80 bg-slate-900/95 shadow-[4px_0_12px_-4px_rgba(0,0,0,0.4)] sm:max-w-[min(100%,380px)] ${
+              className={`flex w-[min(9.75rem,36vw)] shrink-0 flex-col border-r border-slate-300 bg-white shadow-[4px_0_12px_-4px_rgba(0,0,0,0.08)] sm:max-w-[min(100%,380px)] ${
                 compactLayout ? 'sm:w-[min(100%,280px)]' : 'sm:w-[min(100%,340px)]'
               }`}
             >
               <div
-                className={`flex shrink-0 items-stretch gap-0 border-b border-slate-700/90 bg-slate-800/95 text-slate-500 ${th} font-semibold uppercase tracking-wider`}
+                className={`flex shrink-0 items-stretch gap-0 border-b border-slate-200 bg-slate-50 text-black ${th} font-semibold uppercase tracking-wider`}
                 style={{ minHeight: compactLayout ? 52 : 56 }}
               >
                 <div
@@ -714,7 +728,7 @@ export default function PlanningView({ notes, tasks, users = [], compactLayout }
                 <button
                   type="button"
                   onClick={() => setTaskGridVisible(false)}
-                  className="flex w-8 shrink-0 items-center justify-center border-l border-slate-700/60 text-slate-500 hover:bg-slate-700/40 hover:text-slate-200 touch-manipulation"
+                  className="flex w-8 shrink-0 items-center justify-center border-l border-slate-200 text-black hover:bg-slate-100 touch-manipulation"
                   title="Masquer le tableau"
                   aria-label="Masquer le tableau des tâches"
                 >
@@ -733,12 +747,12 @@ export default function PlanningView({ notes, tasks, users = [], compactLayout }
                     key={r.id}
                     type="button"
                     onClick={() => setSelectedId(prev => (prev === r.id ? null : r.id))}
-                    className={`grid min-w-[272px] w-full grid-cols-[minmax(0,1fr)_46px_46px_26px_28px_minmax(0,72px)] items-center gap-x-0.5 border-b border-slate-800/90 px-1.5 text-left ${cell} transition-colors ${
+                    className={`grid min-w-[272px] w-full grid-cols-[minmax(0,1fr)_46px_46px_26px_28px_minmax(0,72px)] items-center gap-x-0.5 border-b border-slate-200 px-1.5 text-left text-black ${cell} transition-colors ${
                       selectedId === r.id
-                        ? 'bg-indigo-500/15 ring-inset ring-1 ring-indigo-500/30'
+                        ? 'bg-indigo-50 ring-inset ring-1 ring-indigo-300'
                         : i % 2 === 1
-                          ? 'bg-slate-800/25 hover:bg-slate-700/30'
-                          : 'bg-transparent hover:bg-slate-700/20'
+                          ? 'bg-slate-50 hover:bg-slate-100'
+                          : 'bg-white hover:bg-slate-50'
                     }`}
                     style={{ height: rowH }}
                   >
@@ -746,26 +760,26 @@ export default function PlanningView({ notes, tasks, users = [], compactLayout }
                       <div className="flex min-h-0 items-center gap-1.5">
                         <span
                           className={`shrink-0 rounded px-1 py-0.5 text-[9px] font-bold uppercase leading-none ${
-                            r.kind === 'task' ? 'bg-indigo-500/25 text-indigo-200' : 'bg-sky-500/20 text-sky-200'
+                            r.kind === 'task' ? 'bg-indigo-100 text-indigo-900' : 'bg-sky-100 text-sky-900'
                           }`}
                         >
                           {r.kind === 'task' ? 'T' : 'N'}
                         </span>
-                        <span className="truncate font-medium leading-tight text-slate-100" title={r.title}>
+                        <span className="truncate font-medium leading-tight text-black" title={r.title}>
                           {r.title}
                           {r.priorityLabel && !compactLayout ? (
-                            <span className="font-normal text-slate-500"> · {r.priorityLabel}</span>
+                            <span className="font-normal text-black/60"> · {r.priorityLabel}</span>
                           ) : null}
                         </span>
                       </div>
                     </div>
-                    <span className="text-center tabular-nums text-slate-400">{formatShort(new Date(r.startMs).toISOString())}</span>
-                    <span className="text-center tabular-nums text-slate-400">{formatShort(new Date(r.endMs).toISOString())}</span>
-                    <span className="text-center tabular-nums text-slate-500">{durationDays(r.startMs, r.endMs)}</span>
-                    <span className="text-center tabular-nums text-slate-200">
+                    <span className="text-center tabular-nums text-black">{formatShort(new Date(r.startMs).toISOString())}</span>
+                    <span className="text-center tabular-nums text-black">{formatShort(new Date(r.endMs).toISOString())}</span>
+                    <span className="text-center tabular-nums text-black/80">{durationDays(r.startMs, r.endMs)}</span>
+                    <span className="text-center tabular-nums text-black">
                       {r.progressPct != null ? `${r.progressPct}` : '—'}
                     </span>
-                    <span className="truncate text-center text-[10px] leading-tight text-slate-400" title={r.statusLabel}>
+                    <span className="truncate text-center text-[10px] leading-tight text-black/80" title={r.statusLabel}>
                       {r.statusLabel}
                     </span>
                   </button>
@@ -835,11 +849,13 @@ export default function PlanningView({ notes, tasks, users = [], compactLayout }
                 ) : null}
 
                 {rows.map((r, i) => {
-                  const rawLeft = ((r.startMs - rangeMin) / spanMs) * timelineWidthPx;
-                  const rawRight = ((r.endMs - rangeMin) / spanMs) * timelineWidthPx;
-                  const leftPx = Math.max(0, rawLeft);
-                  const rightPx = Math.min(timelineWidthPx, rawRight);
-                  const barW = Math.max(8, rightPx - leftPx);
+                  const { leftPx, widthPx: barW } = barGeometryPx(
+                    r.startMs,
+                    r.endMs,
+                    rangeMin,
+                    pxPerDay,
+                    timelineWidthPx,
+                  );
                   const pal = barPalette(r);
                   const pct = r.progressPct ?? 0;
 

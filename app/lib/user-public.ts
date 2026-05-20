@@ -10,6 +10,7 @@ export type ToPublicUserInput = {
   createdAt: Date;
   /** Absent sur certains résultats Prisma inférés ; défaut : free */
   plan?: 'free' | 'pro';
+  role?: 'admin' | 'user';
   /** JSON Prisma ou objet déjà parsé */
   preferences?: unknown;
   /** Présent sur le modèle Prisma User — ne jamais renvoyer au client */
@@ -28,6 +29,7 @@ export type PublicUser = {
   initials: string;
   createdAt: string;
   plan: 'free' | 'pro';
+  role: 'admin' | 'user';
   preferences: UserPreferences;
   /** Indique si le compte peut se connecter par mot de passe (exclut OAuth-only). Renseigné seulement quand demandé. */
   hasPasswordLogin?: boolean;
@@ -51,6 +53,7 @@ export function toPublicUser(u: ToPublicUserInput, opts?: ToPublicUserOptions): 
     initials: u.initials,
     createdAt: u.createdAt.toISOString(),
     plan: u.plan === 'pro' ? 'pro' : 'free',
+    role: u.role === 'admin' ? 'admin' : 'user',
     preferences: normalizePreferences(u.preferences ?? {}),
     aiCredits: u.aiCredits ?? 0,
     aiCreditsExpiresAt: u.aiCreditsExpiresAt ? u.aiCreditsExpiresAt.toISOString() : null,

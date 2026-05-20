@@ -451,6 +451,7 @@ export default function TaskBoard({
   const [editingTask, setEditingTask] = useState<Task | null>(null);
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
   const [submitError, setSubmitError] = useState<string | null>(null);
+  const [detailError, setDetailError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [defaultStatus, setDefaultStatus] = useState<TaskStatus>('todo');
   const [form, setForm] = useState<FormData>({
@@ -567,6 +568,7 @@ export default function TaskBoard({
 
   const openEdit = (task: Task) => {
     setSubmitError(null);
+    setDetailError(null);
     setEditingTask(task);
     setForm({
       title: task.title,
@@ -580,20 +582,31 @@ export default function TaskBoard({
     setSelectedTask(null);
   };
 
+  const isTaskCreator = (task: Task | null) =>
+    !!task && currentUser.id === task.createdBy;
+
   const handleSubmit = async () => {
     if (!form.title.trim() || submitting) return;
     setSubmitError(null);
     setSubmitting(true);
     try {
       if (editingTask) {
-        await onUpdate(editingTask.id, {
-          title: form.title,
-          description: form.description,
-          assignedTo: form.assignedTo,
-          priority: form.priority,
-          status: form.status,
-          dueDate: form.dueDate || undefined,
-        });
+        if (isTaskCreator(editingTask)) {
+          await onUpdate(editingTask.id, {
+            title: form.title,
+            description: form.description,
+            assignedTo: form.assignedTo,
+            priority: form.priority,
+            status: form.status,
+            dueDate: form.dueDate || undefined,
+          });
+        } else {
+          await onUpdate(editingTask.id, {
+            title: form.title,
+            description: form.description,
+            status: form.status,
+          });
+        }
       } else {
         const created = await onAdd({
           title: form.title,
@@ -660,10 +673,18 @@ export default function TaskBoard({
     }
   };
 
-  const moveSelected = (status: TaskStatus) => {
-    if (!selectedTask) return;
-    onMove(selectedTask.id, status);
+  const moveSelected = async (status: TaskStatus) => {
+    if (!selectedTask || selectedTask.status === status) return;
+    const prevStatus = selectedTask.status;
+    const taskId = selectedTask.id;
+    setDetailError(null);
     setSelectedTask(t => (t ? { ...t, status } : null));
+    try {
+      await onMove(taskId, status);
+    } catch (e: unknown) {
+      setSelectedTask(t => (t && t.id === taskId ? { ...t, status: prevStatus } : t));
+      setDetailError(e instanceof Error ? e.message : 'Impossible de déplacer la tâche');
+    }
   };
   const uploadAsset = async (taskId: string, kind: 'input' | 'output', file: File | null) => {
     if (!taskId || !file || assetBusy) return;
@@ -1103,6 +1124,12 @@ export default function TaskBoard({
                 />
               </div>
 
+              {detailError ? (
+                <p className="rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-300">
+                  {detailError}
+                </p>
+              ) : null}
+
               {/* Move between columns */}
               <div>
                 <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">Déplacer vers</p>
@@ -1110,7 +1137,7 @@ export default function TaskBoard({
                   {COLUMNS.map(col => (
                     <button
                       key={col.id}
-                      onClick={() => moveSelected(col.id)}
+                      onClick={() => void moveSelected(col.id)}
                       className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all border ${
                         selectedTask.status === col.id
                           ? `${col.bg} ${col.color} ${col.border}`
@@ -1514,7 +1541,8 @@ export default function TaskBoard({
                   <div className="space-y-2 rounded-xl border border-slate-700 bg-slate-900/40 p-2.5">
                     {users.map(u => {
                       const selected = form.assignedTo.includes(u.id);
-                      const disabled = !selected && form.assignedTo.length >= 2;
+                      const assignLocked = !!editingTask && !isTaskCreator(editingTask);
+                      const disabled = assignLocked || (!selected && form.assignedTo.length >= 2);
                       return (
                         <button
                           key={u.id}
@@ -1544,7 +1572,8 @@ export default function TaskBoard({
                     <button
                       type="button"
                       onClick={() => setForm(f => ({ ...f, assignedTo: [] }))}
-                      className="rounded-md px-2 py-1 text-slate-400 hover:bg-slate-700 hover:text-slate-200"
+                      disabled={!!editingTask && !isTaskCreator(editingTask)}
+                      className="rounded-md px-2 py-1 text-slate-400 hover:bg-slate-700 hover:text-slate-200 disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       Vider
                     </button>
@@ -1557,7 +1586,8 @@ export default function TaskBoard({
                   <select
                     value={form.priority}
                     onChange={e => setForm(f => ({ ...f, priority: e.target.value as TaskPriority }))}
-                    className="w-full bg-slate-700 border border-slate-600 rounded-xl px-3 py-2.5 text-sm text-slate-200 focus:outline-none focus:border-indigo-500 transition-colors"
+                    disabled={!!editingTask && !isTaskCreator(editingTask)}
+                    className="w-full bg-slate-700 border border-slate-600 rounded-xl px-3 py-2.5 text-sm text-slate-200 focus:outline-none focus:border-indigo-500 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
                   >
                     <option value="low">Basse</option>
                     <option value="medium">Moyenne</option>
@@ -1592,7 +1622,8 @@ export default function TaskBoard({
                     type="date"
                     value={form.dueDate}
                     onChange={e => setForm(f => ({ ...f, dueDate: e.target.value }))}
-                    className="w-full bg-slate-700 border border-slate-600 rounded-xl px-3 py-2.5 text-sm text-slate-200 focus:outline-none focus:border-indigo-500 transition-colors"
+                    disabled={!!editingTask && !isTaskCreator(editingTask)}
+                    className="w-full bg-slate-700 border border-slate-600 rounded-xl px-3 py-2.5 text-sm text-slate-200 focus:outline-none focus:border-indigo-500 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
                   />
                 </div>
               </div>

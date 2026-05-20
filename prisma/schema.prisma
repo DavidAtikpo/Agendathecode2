@@ -19,6 +19,7 @@ model User {
   /// Identifiant unique Google (sub)
   googleId             String?          @unique
   plan                 Plan             @default(free)
+  role                 Role             @default(user)
   stripeCustomerId     String?          @unique
   stripeSubscriptionId String?          @unique
   /// Fin de période payée (affichage / grâce)
@@ -191,6 +192,13 @@ enum TaskPriority {
 enum Plan {
   free
   pro
+
+  @@schema("agenda")
+}
+
+enum Role {
+  user
+  admin
 
   @@schema("agenda")
 }
