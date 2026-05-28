@@ -20,6 +20,10 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Email ou mot de passe incorrect' }, { status: 401 });
     }
 
+    if (user.active === false) {
+      return NextResponse.json({ error: 'Ce compte a été désactivé. Contactez un administrateur.' }, { status: 403 });
+    }
+
     if (!user.passwordHash) {
       return NextResponse.json(
         { error: 'Ce compte utilise la connexion Google. Cliquez sur « Continuer avec Google ».' },

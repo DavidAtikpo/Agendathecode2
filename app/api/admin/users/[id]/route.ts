@@ -4,7 +4,32 @@ import { requireAdmin } from '@/app/lib/admin';
 
 export const runtime = 'nodejs';
 
-/** PATCH — update user plan, role, or credits */
+/** GET — fetch notes of a specific user */
+export async function GET(
+  _request: NextRequest,
+  { params }: { params: Promise<{ id: string }> },
+) {
+  const auth = await requireAdmin();
+  if (!auth.ok) return auth.response;
+
+  const { id } = await params;
+
+  const notes = await prisma.note.findMany({
+    where: { userId: id },
+    orderBy: { updatedAt: 'desc' },
+    select: { id: true, title: true, content: true, createdAt: true, updatedAt: true, pinned: true },
+  });
+
+  return NextResponse.json(
+    notes.map(n => ({
+      ...n,
+      createdAt: n.createdAt.toISOString(),
+      updatedAt: n.updatedAt.toISOString(),
+    })),
+  );
+}
+
+/** PATCH — update user plan, role, credits, or active status */
 export async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> },
@@ -19,6 +44,8 @@ export async function PATCH(
 
   if (body.plan === 'free' || body.plan === 'pro') data.plan = body.plan;
   if (body.role === 'admin' || body.role === 'user') data.role = body.role;
+
+  if (typeof body.active === 'boolean') data.active = body.active;
 
   if (typeof body.aiCredits === 'number' && body.aiCredits >= 0) {
     data.aiCredits = Math.floor(body.aiCredits);
@@ -39,7 +66,7 @@ export async function PATCH(
       where: { id },
       data,
       select: {
-        id: true, name: true, email: true, plan: true, role: true,
+        id: true, name: true, email: true, plan: true, role: true, active: true,
         aiCredits: true, aiCreditsExpiresAt: true, createdAt: true, googleId: true,
         _count: { select: { notes: true, tasksCreated: true } },
       },
@@ -51,6 +78,7 @@ export async function PATCH(
       email: updated.email,
       plan: updated.plan,
       role: updated.role,
+      active: updated.active,
       aiCredits: updated.aiCredits,
       aiCreditsExpiresAt: updated.aiCreditsExpiresAt?.toISOString() ?? null,
       createdAt: updated.createdAt.toISOString(),
