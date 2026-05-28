@@ -238,6 +238,17 @@ export default function PrivacyPage() {
             <li>Introduction d&apos;une réclamation auprès de la CNIL (www.cnil.fr).</li>
           </ul>
           <p>
+            <strong className="text-slate-200">Suppression de compte :</strong> vous pouvez demander
+            la suppression de votre compte et des données associées via notre page dédiée :{' '}
+            <Link
+              href="/delete-account"
+              className="text-indigo-400 underline-offset-2 hover:text-indigo-300 hover:underline"
+            >
+              {SITE_URL}/delete-account
+            </Link>
+            .
+          </p>
+          <p>
             Pour exercer vos droits, contactez-nous à{' '}
             <a
               href={`mailto:${CONTACT_EMAIL}`}
@@ -301,9 +312,12 @@ export default function PrivacyPage() {
 
         <footer className="mt-12 border-t border-slate-700 pt-8 text-center text-xs text-slate-500">
           <p>© {new Date().getFullYear()} Neurix — Tous droits réservés.</p>
-          <p className="mt-2">
-            <Link href="/" className="text-indigo-400 hover:text-indigo-300">
+          <p className="mt-2 flex flex-wrap justify-center gap-x-4 gap-y-1">
+            <Link href="/privacy" className="text-indigo-400 hover:text-indigo-300">
               neurix.qrthecode2.com
+            </Link>
+            <Link href="/delete-account" className="text-indigo-400 hover:text-indigo-300">
+              Suppression de compte
             </Link>
           </p>
         </footer>
