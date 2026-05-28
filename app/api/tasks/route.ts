@@ -5,6 +5,7 @@ import { resolveAssignees } from '@/app/lib/task-assign';
 import { tasksVisibleToUser } from '@/app/lib/task-access';
 import { sendTaskNotificationEmail } from '@/app/lib/email';
 import { TASK_WITH_RELATIONS_INCLUDE, serializeTask } from '@/app/lib/task-serialize';
+import { sendPushToUser } from '@/app/lib/firebase-admin';
 import { TaskStatus, TaskPriority } from '@prisma/client';
 
 export async function GET() {
@@ -74,10 +75,8 @@ export async function POST(request: Request) {
       where: { id: sessionId },
       select: { name: true },
     });
-    const assigneeEmails = task.assignees
-      .filter(a => a.userId !== sessionId)
-      .map(a => a.user.email)
-      .filter(Boolean);
+    const otherAssignees = task.assignees.filter(a => a.userId !== sessionId);
+    const assigneeEmails = otherAssignees.map(a => a.user.email).filter(Boolean);
     for (const email of assigneeEmails) {
       const notify = await sendTaskNotificationEmail(email, {
           taskTitle: task.title,
@@ -88,6 +87,14 @@ export async function POST(request: Request) {
       if (!notify.ok) {
         console.warn('[tasks POST] task notification email failed:', notify.error);
       }
+    }
+    // Push notification to each new assignee
+    for (const a of otherAssignees) {
+      await sendPushToUser(a.userId, {
+        title: '📋 Nouvelle tâche assignée',
+        body: `${actor?.name ?? 'Quelqu\'un'} vous a assigné : ${task.title}`,
+        data: { type: 'task_assigned', taskId: task.id },
+      });
     }
 
     return NextResponse.json(serializeTask(task), { status: 201 });

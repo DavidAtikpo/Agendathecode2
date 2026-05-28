@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/app/lib/prisma';
 import { sendReminderEmail } from '@/app/lib/email';
+import { sendPushToUser } from '@/app/lib/firebase-admin';
 
 /**
  * À appeler par un cron (Vercel Hobby : au plus une fois par jour — ex. 08:00 UTC) avec :
@@ -51,6 +52,15 @@ export async function GET(request: Request) {
       sent += 1;
     } else {
       errors.push(`${note.id}: ${result.error}`);
+    }
+
+    // Push notification regardless of email success
+    if (note.userId) {
+      await sendPushToUser(note.userId, {
+        title: '⏰ Rappel de note',
+        body: note.title || 'Vous avez un rappel',
+        data: { type: 'note_reminder', noteId: note.id },
+      });
     }
   }
 

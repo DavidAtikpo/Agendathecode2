@@ -5,6 +5,7 @@ import { assigneeIdsEqual, parseAssigneeIdsFromBody, resolveAssignees } from '@/
 import { tasksVisibleToUser } from '@/app/lib/task-access';
 import { sendTaskNotificationEmail } from '@/app/lib/email';
 import { TASK_WITH_RELATIONS_INCLUDE, serializeTask } from '@/app/lib/task-serialize';
+import { sendPushToUser } from '@/app/lib/firebase-admin';
 import { TaskStatus, TaskPriority } from '@prisma/client';
 
 type Ctx = { params: Promise<{ id: string }> };
@@ -111,10 +112,8 @@ export async function PATCH(request: Request, ctx: Ctx) {
       where: { id: sessionId },
       select: { name: true },
     });
-    const assigneeEmails = task.assignees
-      .filter(a => a.userId !== sessionId)
-      .map(a => a.user.email)
-      .filter(Boolean);
+    const otherAssignees = task.assignees.filter(a => a.userId !== sessionId);
+    const assigneeEmails = otherAssignees.map(a => a.user.email).filter(Boolean);
     for (const email of assigneeEmails) {
       const notify = await sendTaskNotificationEmail(email, {
         taskTitle: task.title,
@@ -125,6 +124,30 @@ export async function PATCH(request: Request, ctx: Ctx) {
       if (!notify.ok) {
         console.warn('[tasks PATCH] task notification email failed:', notify.error);
       }
+    }
+    // Push notification
+    for (const a of otherAssignees) {
+      if (moved) {
+        await sendPushToUser(a.userId, {
+          title: '🔄 Statut de tâche modifié',
+          body: `${task.title} → ${task.status}`,
+          data: { type: 'task_status', taskId: task.id, status: task.status },
+        });
+      } else if (assigneeChanged) {
+        await sendPushToUser(a.userId, {
+          title: '📋 Tâche réassignée',
+          body: `${actor?.name ?? 'Quelqu\'un'} vous a assigné : ${task.title}`,
+          data: { type: 'task_assigned', taskId: task.id },
+        });
+      }
+    }
+    // Notify creator if status changed by an assignee (not the creator)
+    if (moved && existing.createdById !== sessionId) {
+      await sendPushToUser(existing.createdById, {
+        title: '🔄 Statut de tâche modifié',
+        body: `${actor?.name ?? 'Un assigné'} a changé le statut de "${task.title}" → ${task.status}`,
+        data: { type: 'task_status', taskId: task.id, status: task.status },
+      });
     }
   }
 

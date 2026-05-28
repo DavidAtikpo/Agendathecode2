@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { createSessionToken, sessionCookieOptions, getCookieName } from '@/app/lib/auth';
-import { verifyGoogleIdToken } from '@/app/lib/google-oauth';
+import { verifyGoogleIdToken, fetchGoogleProfile } from '@/app/lib/google-oauth';
 import { findOrCreateGoogleUser } from '@/app/lib/google-user';
 import { toPublicUser } from '@/app/lib/user-public';
 
@@ -14,11 +14,24 @@ export async function POST(request: Request) {
   try {
     const body = await request.json();
     const idToken = typeof body.idToken === 'string' ? body.idToken.trim() : '';
-    if (!idToken) {
-      return NextResponse.json({ error: 'idToken manquant' }, { status: 400 });
+    const accessToken = typeof body.accessToken === 'string' ? body.accessToken.trim() : '';
+
+    if (!idToken && !accessToken) {
+      return NextResponse.json({ error: 'idToken ou accessToken manquant' }, { status: 400 });
     }
 
-    const profile = await verifyGoogleIdToken(idToken);
+    let profile;
+    if (idToken) {
+      try {
+        profile = await verifyGoogleIdToken(idToken);
+      } catch (idErr) {
+        // Jeton Android (aud = client OAuth mobile) : repli sur accessToken si disponible.
+        if (!accessToken) throw idErr;
+        profile = await fetchGoogleProfile(accessToken);
+      }
+    } else {
+      profile = await fetchGoogleProfile(accessToken);
+    }
 
     if (!profile.email_verified) {
       return NextResponse.json({ error: 'E-mail Google non vérifié' }, { status: 403 });

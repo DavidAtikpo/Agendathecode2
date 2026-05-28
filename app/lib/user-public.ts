@@ -19,6 +19,8 @@ export type ToPublicUserInput = {
   aiCredits?: number;
   /** Date d'expiration des crédits */
   aiCreditsExpiresAt?: Date | null;
+  /** ID client Stripe — présent uniquement si abonnement souscrit via Stripe */
+  stripeCustomerId?: string | null;
 };
 
 export type PublicUser = {
@@ -37,6 +39,8 @@ export type PublicUser = {
   aiCredits: number;
   /** ISO string ou null si pas de crédits achetés */
   aiCreditsExpiresAt: string | null;
+  /** true si l'utilisateur a un abonnement Stripe actif (stripeCustomerId présent) */
+  hasStripeSubscription: boolean;
 };
 
 type ToPublicUserOptions = {
@@ -57,6 +61,7 @@ export function toPublicUser(u: ToPublicUserInput, opts?: ToPublicUserOptions): 
     preferences: normalizePreferences(u.preferences ?? {}),
     aiCredits: u.aiCredits ?? 0,
     aiCreditsExpiresAt: u.aiCreditsExpiresAt ? u.aiCreditsExpiresAt.toISOString() : null,
+    hasStripeSubscription: Boolean(u.stripeCustomerId),
   };
   if (opts?.includePasswordLoginHint) {
     base.hasPasswordLogin = Boolean(u.passwordHash);

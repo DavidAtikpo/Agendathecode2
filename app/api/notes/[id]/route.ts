@@ -3,6 +3,7 @@ import { prisma } from '@/app/lib/prisma';
 import { getSessionUserId } from '@/app/lib/auth';
 import { replaceNoteShares } from '@/app/lib/note-share';
 import { NOTE_WITH_RELATIONS_INCLUDE, serializeNote } from '@/app/lib/note-serialize';
+import { sendPushToUser } from '@/app/lib/firebase-admin';
 
 async function loadSerialized(id: string) {
   const note = await prisma.note.findUniqueOrThrow({
@@ -31,16 +32,41 @@ export async function PATCH(request: Request, ctx: Ctx) {
   }
 
   if (Array.isArray(data.sharedWith)) {
+    // Detect newly added recipients before replacing
+    const existingShares = await prisma.noteShare.findMany({
+      where: { noteId: id },
+      select: { userId: true },
+    });
+    const existingIds = new Set(existingShares.map((s) => s.userId));
+    const newRecipientIds = (data.sharedWith as string[]).filter(
+      (uid) => uid !== sessionId && !existingIds.has(uid)
+    );
+
     try {
       await replaceNoteShares(id, sessionId, data.sharedWith as string[]);
     } catch (e: unknown) {
       if (e instanceof Error && e.message === 'SHARE_FORBIDDEN') {
         return NextResponse.json(
-          { error: 'Vous ne pouvez partager qu’avec des collaborateurs ajoutés par e-mail.' },
+          { error: "Vous ne pouvez partager qu'avec des collaborateurs ajoutés par e-mail." },
           { status: 403 }
         );
       }
       throw e;
+    }
+
+    // Push notification to newly added recipients
+    if (newRecipientIds.length > 0) {
+      const owner = await prisma.user.findUnique({
+        where: { id: sessionId },
+        select: { name: true },
+      });
+      for (const recipientId of newRecipientIds) {
+        await sendPushToUser(recipientId, {
+          title: '📄 Note partagée avec vous',
+          body: `${owner?.name ?? 'Quelqu\'un'} a partagé : "${existing.title}"`,
+          data: { type: 'note_shared', noteId: id },
+        });
+      }
     }
   }
 
