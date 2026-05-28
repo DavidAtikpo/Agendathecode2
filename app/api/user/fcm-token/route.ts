@@ -13,7 +13,7 @@ export const runtime = 'nodejs';
  * doesn't create duplicates.
  */
 export async function POST(req: NextRequest) {
-  const userId = await getSessionUserId(req);
+  const userId = await getSessionUserId();
   if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
   const body = await req.json().catch(() => null);
@@ -38,7 +38,7 @@ export async function POST(req: NextRequest) {
  * Removes a device token (called on logout).
  */
 export async function DELETE(req: NextRequest) {
-  const userId = await getSessionUserId(req);
+  const userId = await getSessionUserId();
   if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
   const body = await req.json().catch(() => null);

@@ -1,25 +1,43 @@
 import * as admin from 'firebase-admin';
 import { prisma } from './prisma';
 
-// Singleton — initialize once
-if (!admin.apps.length) {
-  const privateKey = process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, '\n');
-  if (
-    process.env.FIREBASE_PROJECT_ID &&
-    process.env.FIREBASE_CLIENT_EMAIL &&
-    privateKey
-  ) {
-    admin.initializeApp({
-      credential: admin.credential.cert({
-        projectId: process.env.FIREBASE_PROJECT_ID,
-        clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
-        privateKey,
-      }),
-    });
+function isValidFirebasePrivateKey(key: string | undefined): boolean {
+  if (!key) return false;
+  const normalized = key.replace(/\\n/g, '\n').trim();
+  if (!normalized.includes('BEGIN PRIVATE KEY')) return false;
+  if (normalized.includes('VOTRE_CLE') || normalized.includes('YOUR_PRIVATE_KEY')) {
+    return false;
   }
+  return normalized.length > 80;
 }
 
-export const fcmMessaging = admin.apps.length ? admin.messaging() : null;
+function getMessaging(): admin.messaging.Messaging | null {
+  if (admin.apps.length) {
+    return admin.messaging();
+  }
+
+  const privateKey = process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, '\n');
+  const projectId = process.env.FIREBASE_PROJECT_ID?.trim();
+  const clientEmail = process.env.FIREBASE_CLIENT_EMAIL?.trim();
+
+  if (!projectId || !clientEmail || !isValidFirebasePrivateKey(privateKey)) {
+    return null;
+  }
+
+  try {
+    admin.initializeApp({
+      credential: admin.credential.cert({
+        projectId,
+        clientEmail,
+        privateKey: privateKey!,
+      }),
+    });
+    return admin.messaging();
+  } catch (e) {
+    console.warn('[FCM] firebase-admin init failed:', e);
+    return null;
+  }
+}
 
 /**
  * Send a push notification to all registered devices of a user.
@@ -33,6 +51,7 @@ export async function sendPushToUser(
     data?: Record<string, string>;
   }
 ) {
+  const fcmMessaging = getMessaging();
   if (!fcmMessaging) {
     console.warn('[FCM] firebase-admin not initialised – check env vars');
     return;
