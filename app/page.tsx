@@ -139,6 +139,10 @@ const AUTH_ERROR_MESSAGES: Record<string, string> = {
   google_unverified: 'Votre compte Google doit avoir un e-mail vérifié.',
   google_conflict: 'Ce compte e-mail est déjà lié à un autre compte Google.',
   google_failed: 'La connexion Google a échoué.',
+  google_secret:
+    'Client secret Google incorrect. Dans Google Cloud Console, copiez le secret du client Web Firebase (835035102273-...) dans GOOGLE_CLIENT_SECRET.',
+  google_redirect:
+    'URI de redirection non autorisée. Ajoutez {votre-domaine}/api/auth/google/callback dans Google Cloud Console > Credentials > client Web.',
   google_missing: 'Réponse Google incomplète.',
   google_oauth: 'Erreur OAuth Google.',
 };

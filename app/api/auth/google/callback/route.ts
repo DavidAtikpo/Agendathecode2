@@ -61,6 +61,13 @@ export async function GET(request: Request) {
     if (e instanceof Error && e.message === 'ACCOUNT_CONFLICT') {
       return fail('google_conflict');
     }
+    const msg = e instanceof Error ? e.message.toLowerCase() : '';
+    if (msg.includes('redirect_uri') || msg.includes('redirect uri')) {
+      return fail('google_redirect');
+    }
+    if (msg.includes('invalid_client') || msg.includes('client secret')) {
+      return fail('google_secret');
+    }
     return fail('google_failed');
   }
 }
