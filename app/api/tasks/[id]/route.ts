@@ -2,7 +2,9 @@ import { NextResponse } from 'next/server';
 import { prisma } from '@/app/lib/prisma';
 import { getSessionUserId } from '@/app/lib/auth';
 import { assigneeIdsEqual, parseAssigneeIdsFromBody, resolveAssignees } from '@/app/lib/task-assign';
-import { tasksVisibleToUser } from '@/app/lib/task-access';
+import { resolveGroupAssignees } from '@/app/lib/group-assign';
+import { notifyGroupAboutTask } from '@/app/lib/group-notify';
+import { isGroupTaskContentReadOnlyForUser, isTaskAssignee, tasksVisibleToUser } from '@/app/lib/task-access';
 import { sendTaskNotificationEmail } from '@/app/lib/email';
 import { TASK_WITH_RELATIONS_INCLUDE, serializeTask } from '@/app/lib/task-serialize';
 import { sendPushToUser } from '@/app/lib/firebase-admin';
@@ -28,7 +30,52 @@ export async function PATCH(request: Request, ctx: Ctx) {
   }
 
   const isCreator = existing.createdById === sessionId;
+  const isAssignee = isTaskAssignee(existing, sessionId);
+  const isGroupContentReadOnly = isGroupTaskContentReadOnlyForUser(existing, sessionId);
   const existingAssigneeIds = existing.assignees.map(a => a.userId);
+
+  if (existing.groupId && !isCreator && !isAssignee) {
+    return NextResponse.json(
+      { error: 'Seul le créateur ou un assigné peut modifier cette tâche de groupe.' },
+      { status: 403 },
+    );
+  }
+
+  if (isGroupContentReadOnly && isAssignee) {
+    if (data.status === undefined) {
+      return NextResponse.json(
+        { error: 'En tant qu’assigné, vous ne pouvez modifier que le statut.' },
+        { status: 403 },
+      );
+    }
+    if (data.title !== undefined && data.title !== existing.title) {
+      return NextResponse.json({ error: 'Seul le créateur peut modifier le titre.' }, { status: 403 });
+    }
+    if (data.description !== undefined && data.description !== existing.description) {
+      return NextResponse.json({ error: 'Seul le créateur peut modifier la description.' }, { status: 403 });
+    }
+    if (data.priority !== undefined && data.priority !== existing.priority) {
+      return NextResponse.json({ error: 'Seul le créateur peut modifier la priorité.' }, { status: 403 });
+    }
+    if (data.dueDate !== undefined) {
+      const nextDue = data.dueDate ? new Date(data.dueDate).getTime() : null;
+      const existingDue = existing.dueDate?.getTime() ?? null;
+      if (nextDue !== existingDue) {
+        return NextResponse.json({ error: 'Seul le créateur peut modifier la date limite.' }, { status: 403 });
+      }
+    }
+    if (data.assignedTo !== undefined) {
+      const incoming = parseAssigneeIdsFromBody(data.assignedTo);
+      if (!assigneeIdsEqual(incoming, existingAssigneeIds)) {
+        return NextResponse.json({ error: 'Seul le créateur peut modifier l’assignation.' }, { status: 403 });
+      }
+    }
+  } else if (isGroupContentReadOnly) {
+    return NextResponse.json(
+      { error: 'Les tâches de groupe ne peuvent être modifiées que par leur créateur ou leurs assignés.' },
+      { status: 403 },
+    );
+  }
 
   if (!isCreator) {
     if (data.assignedTo !== undefined) {
@@ -62,11 +109,19 @@ export async function PATCH(request: Request, ctx: Ctx) {
   let assigneeNotifiedAt: Date | null | undefined;
   if (data.assignedTo !== undefined && isCreator) {
     try {
-      assignedToIds = await resolveAssignees(sessionId, data.assignedTo);
+      if (existing.groupId) {
+        assignedToIds = await resolveGroupAssignees(existing.groupId, sessionId, data.assignedTo);
+      } else {
+        assignedToIds = await resolveAssignees(sessionId, data.assignedTo);
+      }
     } catch (e: unknown) {
       if (e instanceof Error && e.message === 'ASSIGN_FORBIDDEN') {
         return NextResponse.json(
-          { error: 'Vous ne pouvez assigner qu’à vous-même ou à un collaborateur ajouté par email.' },
+          {
+            error: existing.groupId
+              ? 'Vous ne pouvez assigner qu’à des membres du groupe.'
+              : 'Vous ne pouvez assigner qu’à vous-même ou à un collaborateur ajouté par email.',
+          },
           { status: 403 }
         );
       }
@@ -95,10 +150,10 @@ export async function PATCH(request: Request, ctx: Ctx) {
       ...(data.description !== undefined && { description: data.description }),
       ...(data.status !== undefined && { status: data.status as TaskStatus }),
       ...(data.priority !== undefined && { priority: data.priority as TaskPriority }),
-      ...(data.assignedTo !== undefined && {
+      ...(assignedToIds !== undefined && {
         assignees: {
           deleteMany: {},
-          create: assignedToIds!.map(userId => ({ userId })),
+          create: assignedToIds.map(userId => ({ userId })),
         },
       }),
       ...(assigneeNotifiedAt !== undefined && { assigneeNotifiedAt }),
@@ -107,11 +162,34 @@ export async function PATCH(request: Request, ctx: Ctx) {
     include: TASK_WITH_RELATIONS_INCLUDE,
   });
 
-  if (task.assignees.length > 0 && (moved || assigneeChanged)) {
-    const actor = await prisma.user.findUnique({
-      where: { id: sessionId },
-      select: { name: true },
-    });
+  const actor = await prisma.user.findUnique({
+    where: { id: sessionId },
+    select: { name: true },
+  });
+
+  if (existing.groupId && (moved || assigneeChanged || data.title !== undefined || data.description !== undefined)) {
+    if (assigneeChanged) {
+      await notifyGroupAboutTask({
+        groupId: existing.groupId,
+        excludeUserId: sessionId,
+        taskTitle: task.title,
+        event: 'assigned',
+        actorName: actor?.name ?? null,
+        taskId: task.id,
+      });
+    }
+    if (moved) {
+      await notifyGroupAboutTask({
+        groupId: existing.groupId,
+        excludeUserId: sessionId,
+        taskTitle: task.title,
+        event: 'moved',
+        actorName: actor?.name ?? null,
+        status: task.status,
+        taskId: task.id,
+      });
+    }
+  } else if (task.assignees.length > 0 && (moved || assigneeChanged)) {
     const otherAssignees = task.assignees.filter(a => a.userId !== sessionId);
     const assigneeEmails = otherAssignees.map(a => a.user.email).filter(Boolean);
     for (const email of assigneeEmails) {
@@ -125,7 +203,6 @@ export async function PATCH(request: Request, ctx: Ctx) {
         console.warn('[tasks PATCH] task notification email failed:', notify.error);
       }
     }
-    // Push notification
     for (const a of otherAssignees) {
       if (moved) {
         await sendPushToUser(a.userId, {
@@ -141,7 +218,6 @@ export async function PATCH(request: Request, ctx: Ctx) {
         });
       }
     }
-    // Notify creator if status changed by an assignee (not the creator)
     if (moved && existing.createdById !== sessionId) {
       await sendPushToUser(existing.createdById, {
         title: '🔄 Statut de tâche modifié',

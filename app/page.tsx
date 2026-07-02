@@ -2,8 +2,11 @@
 
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useRouter } from 'next/navigation';
-import Sidebar from './components/Sidebar';
+import Sidebar, { type AppView } from './components/Sidebar';
 import CollaboratorsModal from './components/CollaboratorsModal';
+import GroupsView from './components/GroupsView';
+import SessionsOrganizerView from './components/SessionsOrganizerView';
+import SessionsAssigneeView from './components/SessionsAssigneeView';
 import {
   IconAlertTriangle,
   IconArrowLeft,
@@ -19,7 +22,7 @@ import TaskBoard from './components/TaskBoard';
 import ChatPanel from './components/ChatPanel';
 import ProPlanBanner from './components/ProPlanBanner';
 import ProFeaturesModal from './components/ProFeaturesModal';
-import { Note, Task, User, ChatMessage, TaskStatus } from './types';
+import { Note, Task, User, ChatMessage, TaskStatus, Group, TrainingSession, SessionAssignmentRole } from './types';
 import { uploadWithProgress, type UploadProgress } from './lib/upload-with-progress';
 import { useNoteReminders, formatReminderLabel } from './lib/useNoteReminders';
 import { normalizeWhatsAppPhone } from './lib/whatsappReminder';
@@ -32,6 +35,7 @@ import SettingsModal from './components/SettingsModal';
 import BuyCreditsModal from './components/BuyCreditsModal';
 import { PRO_SUBSCRIPTION_SALES_ENABLED } from './lib/feature-flags';
 import { countUnreadAssignedTasks } from './lib/assigned-task-badge';
+import { myAssignment } from './lib/session-labels';
 
 const fetchOpts: RequestInit = { credentials: 'include', cache: 'no-store' };
 
@@ -432,8 +436,14 @@ function LoadingScreen() {
   );
 }
 
-async function loadAppData(): Promise<{ contacts: User[]; notes: Note[]; tasks: Task[] }> {
-  const [c, n, t] = await Promise.all([
+async function loadAppData(): Promise<{
+  contacts: User[];
+  notes: Note[];
+  tasks: Task[];
+  groups: Group[];
+  sessions: TrainingSession[];
+}> {
+  const [c, n, t, g, s] = await Promise.all([
     fetch('/api/contacts', fetchOpts).then(r => {
       if (!r.ok) throw new Error('Impossible de charger les collaborateurs');
       return r.json();
@@ -446,16 +456,36 @@ async function loadAppData(): Promise<{ contacts: User[]; notes: Note[]; tasks: 
       if (!r.ok) throw new Error('Impossible de charger les tâches');
       return r.json();
     }),
+    fetch('/api/groups', fetchOpts).then(r => {
+      if (!r.ok) throw new Error('Impossible de charger les groupes');
+      return r.json();
+    }),
+    fetch('/api/sessions', fetchOpts).then(r => {
+      if (!r.ok) throw new Error('Impossible de charger les sessions');
+      return r.json();
+    }),
   ]);
-  return { contacts: c, notes: n, tasks: (t as Task[]).map(migrateLegacyTaskStatus) };
+  return {
+    contacts: c,
+    notes: n,
+    tasks: (t as Task[]).map(migrateLegacyTaskStatus),
+    groups: g as Group[],
+    sessions: s as TrainingSession[],
+  };
 }
 
 export default function HomePage() {
   const router = useRouter();
-  const [activeView, setActiveView] = useState<'notes' | 'tasks' | 'planning'>('planning');
+  const [activeView, setActiveView] = useState<AppView>('planning');
   const [notes, setNotes] = useState<Note[]>([]);
   const [tasks, setTasks] = useState<Task[]>([]);
   const [contacts, setContacts] = useState<User[]>([]);
+  const [groups, setGroups] = useState<Group[]>([]);
+  const [tasksGroupIntent, setTasksGroupIntent] = useState<{
+    groupId: string;
+    openCreate?: boolean;
+  } | null>(null);
+  const [trainingSessions, setTrainingSessions] = useState<TrainingSession[]>([]);
   /** null = mode essai (données locales) */
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [authModalOpen, setAuthModalOpen] = useState(false);
@@ -598,6 +628,16 @@ export default function HomePage() {
     return out;
   }, [currentUser, contacts, isGuest]);
 
+  const sessionPendingCount = useMemo(() => {
+    if (isGuest) return 0;
+    let n = 0;
+    for (const s of trainingSessions) {
+      const mine = myAssignment(s, displayUser.id);
+      if (mine?.status === 'pending') n += 1;
+    }
+    return n;
+  }, [isGuest, trainingSessions, displayUser.id]);
+
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const code = params.get('auth_error');
@@ -612,6 +652,8 @@ export default function HomePage() {
     setCurrentUser(me);
     const data = await loadAppData();
     setContacts(data.contacts);
+    setGroups(data.groups);
+    setTrainingSessions(data.sessions);
     setNotes(data.notes);
     setTasks(data.tasks);
     try {
@@ -672,6 +714,14 @@ export default function HomePage() {
       setContacts(prev => {
         const json = JSON.stringify(data.contacts);
         return JSON.stringify(prev) === json ? prev : data.contacts;
+      });
+      setGroups(prev => {
+        const json = JSON.stringify(data.groups);
+        return JSON.stringify(prev) === json ? prev : data.groups;
+      });
+      setTrainingSessions(prev => {
+        const json = JSON.stringify(data.sessions);
+        return JSON.stringify(prev) === json ? prev : data.sessions;
       });
     } catch {
       /* silently ignore — next poll will retry */
@@ -752,10 +802,143 @@ export default function HomePage() {
     setContacts(prev => prev.filter(u => u.id !== memberId));
   }, []);
 
+  const createGroup = useCallback(async (name: string, memberIds: string[]) => {
+    const res = await fetch('/api/groups', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      ...fetchOpts,
+      body: JSON.stringify({ name, memberIds }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error ?? 'Impossible de créer le groupe');
+    setGroups(prev => [data as Group, ...prev.filter(g => g.id !== data.id)]);
+    return data as Group;
+  }, []);
+
+  const updateGroupName = useCallback(async (groupId: string, name: string) => {
+    const res = await fetch(`/api/groups/${groupId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      ...fetchOpts,
+      body: JSON.stringify({ name }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error ?? 'Erreur');
+    setGroups(prev => prev.map(g => (g.id === groupId ? (data as Group) : g)));
+  }, []);
+
+  const deleteGroup = useCallback(async (groupId: string) => {
+    const res = await fetch(`/api/groups/${groupId}`, { method: 'DELETE', ...fetchOpts });
+    if (!res.ok) {
+      const data = await res.json();
+      throw new Error(data.error ?? 'Erreur');
+    }
+    setGroups(prev => prev.filter(g => g.id !== groupId));
+    setTasks(prev => prev.map(t => (t.groupId === groupId ? { ...t, groupId: undefined, group: undefined } : t)));
+  }, []);
+
+  const addGroupMember = useCallback(async (groupId: string, userId: string) => {
+    const res = await fetch(`/api/groups/${groupId}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      ...fetchOpts,
+      body: JSON.stringify({ userId }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error ?? 'Erreur');
+    setGroups(prev => prev.map(g => (g.id === groupId ? (data as Group) : g)));
+  }, []);
+
+  const removeGroupMember = useCallback(async (groupId: string, userId: string) => {
+    const res = await fetch(`/api/groups/${groupId}/members/${userId}`, { method: 'DELETE', ...fetchOpts });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error ?? 'Erreur');
+    setGroups(prev => prev.map(g => (g.id === groupId ? (data as Group) : g)));
+  }, []);
+
+  const uploadGroupLogo = useCallback(async (groupId: string, file: File) => {
+    const result = await uploadWithProgress<Group>(`/api/groups/${groupId}/logo`, file);
+    if (!result.ok || !result.data) throw new Error(result.error ?? 'Upload impossible');
+    setGroups(prev => prev.map(g => (g.id === groupId ? result.data! : g)));
+    return result.data;
+  }, []);
+
+  const createSession = useCallback(
+    async (payload: {
+      startDate: string;
+      endDate: string;
+      examDate?: string | null;
+      formateurEmail?: string;
+      assessorEmail?: string;
+    }) => {
+      const res = await fetch('/api/sessions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        ...fetchOpts,
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? 'Impossible de créer la session');
+      setTrainingSessions(prev => [data as TrainingSession, ...prev.filter(s => s.id !== data.id)]);
+      return data as TrainingSession;
+    },
+    [],
+  );
+
+  const updateSession = useCallback(
+    async (
+      sessionId: string,
+      payload: {
+        startDate?: string;
+        endDate?: string;
+        examDate?: string | null;
+        formateurEmail?: string | null;
+        assessorEmail?: string | null;
+      },
+    ) => {
+      const res = await fetch(`/api/sessions/${sessionId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        ...fetchOpts,
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? 'Erreur');
+      setTrainingSessions(prev => prev.map(s => (s.id === sessionId ? (data as TrainingSession) : s)));
+    },
+    [],
+  );
+
+  const deleteSession = useCallback(async (sessionId: string) => {
+    const res = await fetch(`/api/sessions/${sessionId}`, { method: 'DELETE', ...fetchOpts });
+    if (!res.ok) {
+      const data = await res.json();
+      throw new Error(data.error ?? 'Erreur');
+    }
+    setTrainingSessions(prev => prev.filter(s => s.id !== sessionId));
+  }, []);
+
+  const respondSession = useCallback(
+    async (sessionId: string, role: SessionAssignmentRole, status: 'accepted' | 'declined') => {
+      const res = await fetch(`/api/sessions/${sessionId}/respond`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        ...fetchOpts,
+        body: JSON.stringify({ role, status }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? 'Erreur');
+      setTrainingSessions(prev => prev.map(s => (s.id === sessionId ? (data as TrainingSession) : s)));
+    },
+    [],
+  );
+
   const logout = useCallback(async () => {
     await fetch('/api/auth/logout', { method: 'POST', credentials: 'include' });
     setCurrentUser(null);
     setContacts([]);
+    setGroups([]);
+    setTrainingSessions([]);
     const g = loadGuestFromLocalStorage();
     setNotes(g.notes);
     setTasks(g.tasks);
@@ -1327,6 +1510,11 @@ export default function HomePage() {
     onOpenProFeatures: () => setProFeaturesModalOpen(true),
     onOpenSettings: () => setSettingsModalOpen(true),
     lastDataUpdatedAt,
+    showSessionsOrganizer: !isGuest && displayUser.plan === 'pro',
+    showSessionsAssignee: !isGuest,
+    sessionPendingCount,
+    showGroups: !isGuest,
+    groupCount: groups.length,
   };
 
   return (
@@ -1420,7 +1608,7 @@ export default function HomePage() {
         <div className="flex min-h-0 min-w-0 flex-1 flex-col">
           <header
             className={`shrink-0 items-center justify-between gap-3 border-b border-slate-800 bg-slate-900/95 px-4 py-2.5 ${
-              activeView === 'tasks' ? 'hidden' : 'hidden md:flex'
+              activeView === 'tasks' || activeView === 'groups' ? 'hidden' : 'hidden md:flex'
             }`}
           >
             <h2 className="text-sm font-medium text-slate-300">
@@ -1428,7 +1616,13 @@ export default function HomePage() {
                 ? 'Idées & notes'
                 : activeView === 'planning'
                   ? 'Planning'
-                  : 'Tableau des tâches'}
+                  : activeView === 'sessions-organizer'
+                    ? 'Gestion sessions'
+                    : activeView === 'sessions-assignee'
+                      ? 'Mes propositions'
+                      : activeView === 'groups'
+                        ? 'Groupes'
+                        : 'Tableau des tâches'}
             </h2>
             <div className="flex items-center gap-2">
               {/* Credit widget — desktop */}
@@ -1571,13 +1765,57 @@ export default function HomePage() {
                 <PlanningView
                   notes={notes}
                   tasks={tasks}
+                  sessions={isGuest ? [] : trainingSessions}
                   users={assignableUsers}
+                  currentUserId={isGuest ? undefined : displayUser.id}
                   compactLayout={layoutPreferences.density === 'compact'}
+                  onRespondSession={isGuest ? undefined : respondSession}
+                />
+              ) : activeView === 'sessions-organizer' ? (
+                <SessionsOrganizerView
+                  sessions={trainingSessions}
+                  currentUser={displayUser}
+                  compactLayout={layoutPreferences.density === 'compact'}
+                  onCreateSession={createSession}
+                  onUpdateSession={updateSession}
+                  onDeleteSession={deleteSession}
+                />
+              ) : activeView === 'sessions-assignee' ? (
+                <SessionsAssigneeView
+                  sessions={trainingSessions}
+                  currentUser={displayUser}
+                  compactLayout={layoutPreferences.density === 'compact'}
+                  onRespondSession={respondSession}
+                />
+              ) : activeView === 'groups' ? (
+                <GroupsView
+                  groups={groups}
+                  tasks={tasks}
+                  users={assignableUsers}
+                  contacts={contacts}
+                  currentUser={displayUser}
+                  isGuest={isGuest}
+                  compactLayout={layoutPreferences.density === 'compact'}
+                  chatCredits={chatCredits ?? 0}
+                  onBuyCredits={isGuest ? undefined : openBuyCreditsModal}
+                  onCreateGroup={createGroup}
+                  onUpdateGroupName={updateGroupName}
+                  onDeleteGroup={deleteGroup}
+                  onAddGroupMember={addGroupMember}
+                  onRemoveGroupMember={removeGroupMember}
+                  onUploadGroupLogo={uploadGroupLogo}
+                  onAdd={addTask}
+                  onUpdate={updateTask}
+                  onDelete={deleteTask}
+                  onMove={moveTask}
+                  onOpenCollaborators={isGuest ? undefined : openCollaboratorsPanel}
+                  collaboratorTeamSize={assignableUsers.length}
                 />
               ) : (
                 <TaskBoard
                   tasks={tasks}
                   users={assignableUsers}
+                  groups={groups}
                   currentUser={displayUser}
                   onAdd={addTask}
                   onUpdate={updateTask}
@@ -1585,7 +1823,11 @@ export default function HomePage() {
                   onMove={moveTask}
                   compactLayout={layoutPreferences.density === 'compact'}
                   onOpenCollaborators={isGuest ? undefined : openCollaboratorsPanel}
+                  onOpenGroups={isGuest ? undefined : () => setActiveView('groups')}
                   collaboratorTeamSize={assignableUsers.length}
+                  initialGroupFilter={tasksGroupIntent?.groupId ?? null}
+                  initialOpenCreate={tasksGroupIntent?.openCreate ?? false}
+                  onInitialConsumed={() => setTasksGroupIntent(null)}
                 />
               )}
             </div>

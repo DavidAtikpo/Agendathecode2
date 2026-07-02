@@ -45,6 +45,13 @@ export async function POST(request: Request, ctx: Ctx) {
   });
   if (!existing) return NextResponse.json({ error: 'Tâche introuvable' }, { status: 404 });
 
+  if (existing.groupId && existing.createdById !== sessionId) {
+    return NextResponse.json(
+      { error: 'Seul le créateur peut ajouter des fichiers à une tâche de groupe.' },
+      { status: 403 }
+    );
+  }
+
   const form = await request.formData();
   const file = form.get('file');
   const kind = toKind(form.get('kind'));

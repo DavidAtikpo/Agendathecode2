@@ -32,6 +32,8 @@ model User {
   aiCredits            Int              @default(0)
   /// Date d'expiration des crédits (1 an après l'achat)
   aiCreditsExpiresAt   DateTime?
+  /// Nombre de notifications push envoyées non vues — badge de l'icône app mobile.
+  unreadNotificationCount Int           @default(0)
   notes                Note[]
   taskAssignments      TaskAssignment[]
   taskAssetsUploaded   TaskAsset[]
@@ -42,6 +44,10 @@ model User {
   noteAssetsUploaded   NoteAsset[]
   taskComments         TaskComment[]
   deviceTokens         DeviceToken[]
+  groupsCreated        Group[]          @relation("GroupCreator")
+  groupMemberships     GroupMember[]
+  trainingSessionsCreated TrainingSession[] @relation("TrainingSessionCreator")
+  sessionAssignments   SessionAssignment[]
 
   @@schema("agenda")
 }
@@ -70,6 +76,35 @@ model TeamContact {
 
   @@unique([ownerId, memberId])
   @@index([ownerId])
+  @@schema("agenda")
+}
+
+/// Groupe de collaborateurs — tâches partagées visibles par tous les membres.
+model Group {
+  id           String        @id @default(cuid())
+  name         String
+  logoUrl      String?
+  logoPublicId String?
+  createdById  String
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+  createdBy    User          @relation("GroupCreator", fields: [createdById], references: [id], onDelete: Cascade)
+  members      GroupMember[]
+  tasks        Task[]
+
+  @@index([createdById])
+  @@schema("agenda")
+}
+
+model GroupMember {
+  groupId  String
+  userId   String
+  joinedAt DateTime @default(now())
+  group    Group    @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([groupId, userId])
+  @@index([userId])
   @@schema("agenda")
 }
 
@@ -141,11 +176,15 @@ model Task {
   createdById        String
   /// Horodatage « ping » assignation : l’assigné voit un badge jusqu’à ouverture de la vue Tâches.
   assigneeNotifiedAt DateTime?
+  /// Groupe partagé — tous les membres voient la tâche (lecture + commentaires).
+  groupId            String?
   assignees          TaskAssignment[]
   assets             TaskAsset[]
   comments           TaskComment[]
   createdBy          User             @relation("CreatedBy", fields: [createdById], references: [id])
+  group              Group?           @relation(fields: [groupId], references: [id], onDelete: SetNull)
 
+  @@index([groupId])
   @@schema("agenda")
 }
 
@@ -231,6 +270,58 @@ enum Plan {
 enum Role {
   user
   admin
+
+  @@schema("agenda")
+}
+
+/// Session de formation (privée) — créée par un utilisateur Pro.
+model TrainingSession {
+  id          String              @id @default(cuid())
+  title       String
+  startDate   DateTime            @db.Date
+  endDate     DateTime            @db.Date
+  examDate    DateTime?           @db.Date
+  createdById String
+  createdAt   DateTime            @default(now())
+  updatedAt   DateTime            @updatedAt
+  createdBy   User                @relation("TrainingSessionCreator", fields: [createdById], references: [id], onDelete: Cascade)
+  assignments SessionAssignment[]
+
+  @@index([createdById])
+  @@index([startDate])
+  @@schema("agenda")
+}
+
+/// Proposition formateur / assessor — validation indépendante par rôle.
+model SessionAssignment {
+  id          String                  @id @default(cuid())
+  sessionId   String
+  userId      String
+  role        SessionAssignmentRole
+  status      SessionAssignmentStatus   @default(pending)
+  respondedAt DateTime?
+  createdAt   DateTime                @default(now())
+  updatedAt   DateTime                @updatedAt
+  session     TrainingSession         @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  user        User                    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([sessionId, role])
+  @@index([userId])
+  @@index([sessionId])
+  @@schema("agenda")
+}
+
+enum SessionAssignmentRole {
+  formateur
+  assessor
+
+  @@schema("agenda")
+}
+
+enum SessionAssignmentStatus {
+  pending
+  accepted
+  declined
 
   @@schema("agenda")
 }

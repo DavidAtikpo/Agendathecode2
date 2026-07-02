@@ -21,6 +21,8 @@ export type ToPublicUserInput = {
   aiCreditsExpiresAt?: Date | null;
   /** ID client Stripe — présent uniquement si abonnement souscrit via Stripe */
   stripeCustomerId?: string | null;
+  /** Notifications push non vues — badge de l'icône app mobile */
+  unreadNotificationCount?: number;
 };
 
 export type PublicUser = {
@@ -41,6 +43,8 @@ export type PublicUser = {
   aiCreditsExpiresAt: string | null;
   /** true si l'utilisateur a un abonnement Stripe actif (stripeCustomerId présent) */
   hasStripeSubscription: boolean;
+  /** Notifications push non vues — pilote le badge de l'icône app mobile */
+  unreadNotificationCount: number;
 };
 
 type ToPublicUserOptions = {
@@ -62,6 +66,7 @@ export function toPublicUser(u: ToPublicUserInput, opts?: ToPublicUserOptions): 
     aiCredits: u.aiCredits ?? 0,
     aiCreditsExpiresAt: u.aiCreditsExpiresAt ? u.aiCreditsExpiresAt.toISOString() : null,
     hasStripeSubscription: Boolean(u.stripeCustomerId),
+    unreadNotificationCount: u.unreadNotificationCount ?? 0,
   };
   if (opts?.includePasswordLoginHint) {
     base.hasPasswordLogin = Boolean(u.passwordHash);

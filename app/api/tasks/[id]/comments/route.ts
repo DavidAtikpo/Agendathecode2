@@ -3,6 +3,7 @@ import { prisma } from '@/app/lib/prisma';
 import { getSessionUserId } from '@/app/lib/auth';
 import { tasksVisibleToUser } from '@/app/lib/task-access';
 import { sendPushToUser } from '@/app/lib/firebase-admin';
+import { notifyGroupAboutTask } from '@/app/lib/group-notify';
 
 export const runtime = 'nodejs';
 
@@ -59,7 +60,13 @@ export async function POST(req: NextRequest, ctx: Ctx) {
 
   const task = await prisma.task.findFirst({
     where: { id, ...tasksVisibleToUser(userId) },
-    select: { id: true, title: true, createdById: true, assignees: { select: { userId: true } } },
+    select: {
+      id: true,
+      title: true,
+      createdById: true,
+      groupId: true,
+      assignees: { select: { userId: true } },
+    },
   });
   if (!task) return NextResponse.json({ error: 'Tâche introuvable' }, { status: 404 });
 
@@ -79,19 +86,31 @@ export async function POST(req: NextRequest, ctx: Ctx) {
     },
   });
 
-  // Notify everyone in the task thread except the sender
-  const participants = new Set<string>();
-  participants.add(task.createdById);
-  for (const a of task.assignees) participants.add(a.userId);
-  participants.delete(userId);
-
   const shortMsg = content.length > 60 ? content.slice(0, 57) + '…' : content;
-  for (const recipientId of participants) {
-    await sendPushToUser(recipientId, {
-      title: `💬 ${comment.author.name} — ${task.title}`,
-      body: shortMsg,
-      data: { type: 'task_comment', taskId: task.id },
+
+  if (task.groupId) {
+    await notifyGroupAboutTask({
+      groupId: task.groupId,
+      excludeUserId: userId,
+      taskTitle: task.title,
+      event: 'comment',
+      actorName: comment.author.name,
+      commentPreview: shortMsg,
+      taskId: task.id,
     });
+  } else {
+    const participants = new Set<string>();
+    participants.add(task.createdById);
+    for (const a of task.assignees) participants.add(a.userId);
+    participants.delete(userId);
+
+    for (const recipientId of participants) {
+      await sendPushToUser(recipientId, {
+        title: `💬 ${comment.author.name} — ${task.title}`,
+        body: shortMsg,
+        data: { type: 'task_comment', taskId: task.id },
+      });
+    }
   }
 
   return NextResponse.json(serializeComment(comment), { status: 201 });

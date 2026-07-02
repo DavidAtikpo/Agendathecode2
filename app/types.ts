@@ -70,9 +70,47 @@ export interface Task {
   createdAt: string;
   updatedAt: string;
   dueDate?: string;
+  /** Groupe partagé — visible par tous les membres. */
+  groupId?: string;
+  group?: { id: string; name: string; logoUrl: string | null };
   /** ISO — présent quand la tâche a été assignée (badge pour l’assigné). */
   assigneeNotifiedAt?: string | null;
   assets?: TaskAsset[];
+}
+
+export interface Group {
+  id: string;
+  name: string;
+  logoUrl: string | null;
+  createdBy: string;
+  createdAt: string;
+  updatedAt: string;
+  members: User[];
+  memberCount: number;
+}
+
+export type SessionAssignmentRole = 'formateur' | 'assessor';
+export type SessionAssignmentStatus = 'pending' | 'accepted' | 'declined';
+
+export interface SessionAssignmentView {
+  id: string;
+  role: SessionAssignmentRole;
+  status: SessionAssignmentStatus;
+  respondedAt: string | null;
+  user: Pick<User, 'id' | 'email' | 'name' | 'color' | 'initials'>;
+}
+
+export interface TrainingSession {
+  id: string;
+  title: string;
+  startDate: string;
+  endDate: string;
+  examDate: string | null;
+  createdBy: string;
+  creatorName?: string;
+  createdAt: string;
+  updatedAt: string;
+  assignments: SessionAssignmentView[];
 }
 
 export interface TaskAsset {

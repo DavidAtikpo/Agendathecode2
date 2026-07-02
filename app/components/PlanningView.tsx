@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type { Note, Task, TaskStatus } from '../types';
+import type { Note, Task, TaskStatus, TrainingSession } from '../types';
 import {
   PLANNING_DAY_MS,
   addPlanningDays,
@@ -11,7 +11,7 @@ import {
 } from '../lib/planning-dates';
 import { IconCalendar } from './icons';
 
-type PlanningKind = 'task' | 'note';
+type PlanningKind = 'task' | 'note' | 'session';
 
 interface PlanningRow {
   id: string;
@@ -82,8 +82,38 @@ function startOfDay(ms: number) {
   return startOfPlanningDay(ms);
 }
 
-function buildRows(notes: Note[], tasks: Task[]): PlanningRow[] {
+function sessionStatusMeta(session: TrainingSession): { pct: number; label: string } {
+  const assignments = session.assignments;
+  if (assignments.length === 0) return { pct: 0, label: 'Sans intervenants' };
+  const accepted = assignments.filter(a => a.status === 'accepted').length;
+  const declined = assignments.some(a => a.status === 'declined');
+  if (declined) return { pct: Math.round((accepted / assignments.length) * 100), label: 'À réassigner' };
+  if (accepted === assignments.length) return { pct: 100, label: 'Confirmée' };
+  if (accepted > 0) return { pct: Math.round((accepted / assignments.length) * 100), label: 'Partiellement confirmée' };
+  return { pct: 0, label: 'En attente de validation' };
+}
+
+function buildRows(notes: Note[], tasks: Task[], sessions: TrainingSession[] = []): PlanningRow[] {
   const out: PlanningRow[] = [];
+
+  for (const session of sessions) {
+    const startRaw = parsePlanningDateMs(`${session.startDate}T00:00:00.000Z`);
+    const endRaw = parsePlanningDateMs(`${session.endDate}T00:00:00.000Z`);
+    const startMs = startRaw != null ? startOfDay(startRaw) : startOfDay(Date.now());
+    const endMs = endRaw != null ? startOfDay(endRaw) : addDays(startMs, 4);
+    const { startMs: sMs, endMs: eMs } = clampDateOrder(startMs, endMs);
+    const meta = sessionStatusMeta(session);
+    out.push({
+      id: `session:${session.id}`,
+      kind: 'session',
+      title: session.title,
+      startMs: sMs,
+      endMs: eMs,
+      progressPct: meta.pct,
+      statusLabel: meta.label,
+      typeLabel: 'Session',
+    });
+  }
 
   for (const t of tasks) {
     const created = parsePlanningDateMs(t.createdAt) ?? Date.now();
@@ -160,6 +190,15 @@ function durationDays(startMs: number, endMs: number) {
 }
 
 function barPalette(r: PlanningRow): { track: string; fillStrong: string } {
+  if (r.kind === 'session') {
+    if (r.statusLabel === 'Confirmée') {
+      return { track: 'bg-teal-950/80', fillStrong: 'bg-teal-400/95' };
+    }
+    if (r.statusLabel === 'À réassigner') {
+      return { track: 'bg-rose-950/80', fillStrong: 'bg-rose-400/90' };
+    }
+    return { track: 'bg-cyan-950/80', fillStrong: 'bg-cyan-400/90' };
+  }
   if (r.kind === 'note') {
     return { track: 'bg-sky-950/80', fillStrong: 'bg-sky-400/90' };
   }
@@ -179,6 +218,11 @@ function barPalette(r: PlanningRow): { track: string; fillStrong: string } {
 }
 
 function statusBadgeColor(statusLabel: string, kind: PlanningKind) {
+  if (kind === 'session') {
+    if (statusLabel === 'Confirmée') return 'bg-teal-500/20 text-teal-300';
+    if (statusLabel === 'À réassigner') return 'bg-rose-500/20 text-rose-300';
+    return 'bg-cyan-500/20 text-cyan-300';
+  }
   if (kind === 'note') return 'bg-sky-500/20 text-sky-300';
   if (statusLabel === 'Terminé') return 'bg-emerald-500/20 text-emerald-300';
   if (statusLabel === 'Révision') return 'bg-violet-500/20 text-violet-300';
@@ -197,8 +241,15 @@ interface MonthSegment {
 interface PlanningViewProps {
   notes: Note[];
   tasks: Task[];
+  sessions?: TrainingSession[];
   users?: import('../types').User[];
+  currentUserId?: string;
   compactLayout?: boolean;
+  onRespondSession?: (
+    sessionId: string,
+    role: 'formateur' | 'assessor',
+    status: 'accepted' | 'declined',
+  ) => Promise<void>;
 }
 
 /* ─── Panneau de détails ─────────────────────────────────────────────────── */
@@ -206,13 +257,23 @@ function DetailPanel({
   row,
   task,
   note,
+  session,
   userMap,
+  currentUserId,
+  onRespondSession,
   onClose,
 }: {
   row: PlanningRow;
   task: Task | undefined;
   note: Note | undefined;
+  session: TrainingSession | undefined;
   userMap: Map<string, import('../types').User>;
+  currentUserId?: string;
+  onRespondSession?: (
+    sessionId: string,
+    role: 'formateur' | 'assessor',
+    status: 'accepted' | 'declined',
+  ) => Promise<void>;
   onClose: () => void;
 }) {
   const pal = barPalette(row);
@@ -228,10 +289,14 @@ function DetailPanel({
           <div className="mb-1 flex flex-wrap items-center gap-1.5">
             <span
               className={`rounded px-1.5 py-0.5 text-[9px] font-bold uppercase leading-none ${
-                row.kind === 'task' ? 'bg-indigo-500/25 text-indigo-200' : 'bg-sky-500/20 text-sky-200'
+                row.kind === 'task'
+                  ? 'bg-indigo-500/25 text-indigo-200'
+                  : row.kind === 'session'
+                    ? 'bg-teal-500/25 text-teal-200'
+                    : 'bg-sky-500/20 text-sky-200'
               }`}
             >
-              {row.kind === 'task' ? 'Tâche' : 'Note'}
+              {row.kind === 'task' ? 'Tâche' : row.kind === 'session' ? 'Session' : 'Note'}
             </span>
             <span className={`rounded px-1.5 py-0.5 text-[9px] font-semibold uppercase leading-none ${statusBadgeColor(row.statusLabel, row.kind)}`}>
               {row.statusLabel}
@@ -282,11 +347,18 @@ function DetailPanel({
           </div>
           <div className="rounded-lg bg-slate-800/60 px-3 py-2">
             <p className="mb-0.5 text-[10px] font-medium uppercase tracking-wide text-slate-500">
-              {row.kind === 'task' ? 'Échéance' : 'Rappel'}
+              {row.kind === 'task' ? 'Échéance' : row.kind === 'session' ? 'Fin' : 'Rappel'}
             </p>
             <p className="text-xs font-medium text-slate-200">{formatFull(new Date(row.endMs).toISOString())}</p>
           </div>
         </div>
+
+        {session?.examDate ? (
+          <div className="rounded-lg bg-teal-500/10 px-3 py-2">
+            <p className="mb-0.5 text-[10px] font-medium uppercase tracking-wide text-teal-400/80">Examen</p>
+            <p className="text-xs font-medium text-teal-100">{formatFull(`${session.examDate}T12:00:00.000Z`)}</p>
+          </div>
+        ) : null}
 
         {/* Durée */}
         <div className="rounded-lg bg-slate-800/60 px-3 py-2">
@@ -322,6 +394,70 @@ function DetailPanel({
             Rappel e-mail activé
           </div>
         )}
+
+        {/* Intervenants (session) */}
+        {session && session.assignments.length > 0 && (
+          <div>
+            <p className="mb-1.5 text-[10px] font-medium uppercase tracking-wide text-slate-500">Intervenants</p>
+            <div className="flex flex-col gap-1.5">
+              {session.assignments.map(a => (
+                <div key={a.id} className="flex items-center gap-2 rounded-lg bg-slate-800/60 px-2.5 py-1.5">
+                  <span
+                    className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[10px] font-bold uppercase text-white"
+                    style={{ backgroundColor: a.user.color }}
+                  >
+                    {a.user.initials}
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-xs text-slate-200">
+                      {a.role === 'formateur' ? 'Formateur' : 'Assessor'} · {a.user.name}
+                    </p>
+                    <p className="text-[10px] text-slate-500">
+                      {a.status === 'accepted'
+                        ? 'Disponible'
+                        : a.status === 'declined'
+                          ? 'Indisponible'
+                          : 'En attente'}
+                    </p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {session &&
+          currentUserId &&
+          onRespondSession &&
+          session.assignments.some(a => a.user.id === currentUserId && a.status === 'pending') && (
+            <div className="flex gap-2">
+              {session.assignments
+                .filter(a => a.user.id === currentUserId && a.status === 'pending')
+                .map(a => (
+                  <div key={a.id} className="flex w-full flex-col gap-2">
+                    <p className="text-[10px] text-slate-500">
+                      Votre réponse ({a.role === 'formateur' ? 'Formateur' : 'Assessor'})
+                    </p>
+                    <div className="flex gap-2">
+                      <button
+                        type="button"
+                        onClick={() => void onRespondSession(session.id, a.role, 'accepted')}
+                        className="flex-1 rounded-lg bg-emerald-600 py-2 text-xs font-medium text-white hover:bg-emerald-500"
+                      >
+                        Disponible
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => void onRespondSession(session.id, a.role, 'declined')}
+                        className="flex-1 rounded-lg border border-slate-600 py-2 text-xs text-slate-300 hover:bg-slate-700"
+                      >
+                        Indisponible
+                      </button>
+                    </div>
+                  </div>
+                ))}
+            </div>
+          )}
 
         {/* Assignés (tâche) */}
         {task && task.assignedTo.length > 0 && (
@@ -458,8 +594,16 @@ function DetailPanel({
 }
 
 /* ─── Composant principal ────────────────────────────────────────────────── */
-export default function PlanningView({ notes, tasks, users = [], compactLayout }: PlanningViewProps) {
-  const [filter, setFilter] = useState<'all' | 'tasks' | 'notes'>('all');
+export default function PlanningView({
+  notes,
+  tasks,
+  sessions = [],
+  users = [],
+  currentUserId,
+  compactLayout,
+  onRespondSession,
+}: PlanningViewProps) {
+  const [filter, setFilter] = useState<'all' | 'tasks' | 'notes' | 'sessions'>('all');
   const [selectedId, setSelectedId] = useState<string | null>(null);
   /** Frise un peu plus compacte sur mobile pour que les barres tiennent mieux en largeur utile */
   const [narrowViewport, setNarrowViewport] = useState(false);
@@ -490,12 +634,19 @@ export default function PlanningView({ notes, tasks, users = [], compactLayout }
     return m;
   }, [users]);
 
+  const sessionMap = useMemo(() => {
+    const m = new Map<string, TrainingSession>();
+    for (const s of sessions) m.set(s.id, s);
+    return m;
+  }, [sessions]);
+
   const rows = useMemo(() => {
-    const base = buildRows(notes, tasks);
+    const base = buildRows(notes, tasks, sessions);
     if (filter === 'tasks') return base.filter(r => r.kind === 'task');
     if (filter === 'notes') return base.filter(r => r.kind === 'note');
+    if (filter === 'sessions') return base.filter(r => r.kind === 'session');
     return base;
-  }, [notes, tasks, filter]);
+  }, [notes, tasks, sessions, filter]);
 
   const selectedRow = useMemo(
     () => (selectedId ? rows.find(r => r.id === selectedId) ?? null : null),
@@ -679,6 +830,7 @@ export default function PlanningView({ notes, tasks, users = [], compactLayout }
                 ['all', 'Tout'],
                 ['tasks', 'Tâches'],
                 ['notes', 'Notes'],
+                ['sessions', 'Sessions'],
               ] as const
             ).map(([key, label]) => (
               <button
@@ -911,7 +1063,10 @@ export default function PlanningView({ notes, tasks, users = [], compactLayout }
                   row={selectedRow}
                   task={selectedRow.kind === 'task' ? taskMap.get(selectedRow.id.slice(5)) : undefined}
                   note={selectedRow.kind === 'note' ? noteMap.get(selectedRow.id.slice(5)) : undefined}
+                  session={selectedRow.kind === 'session' ? sessionMap.get(selectedRow.id.slice(8)) : undefined}
                   userMap={userMap}
+                  currentUserId={currentUserId}
+                  onRespondSession={onRespondSession}
                   onClose={() => setSelectedId(null)}
                 />
               </div>

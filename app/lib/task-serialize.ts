@@ -3,6 +3,7 @@ import type { Prisma } from '@prisma/client';
 export const TASK_WITH_RELATIONS_INCLUDE = {
   assignees: { include: { user: { select: { id: true, email: true } } } },
   assets: { orderBy: { createdAt: 'desc' } },
+  group: { select: { id: true, name: true, logoUrl: true } },
 } satisfies Prisma.TaskInclude;
 
 export type TaskWithRelations = Prisma.TaskGetPayload<{ include: typeof TASK_WITH_RELATIONS_INCLUDE }>;
@@ -16,6 +17,10 @@ export function serializeTask(task: TaskWithRelations) {
     priority: task.priority as string,
     assignedTo: task.assignees.map(a => a.userId),
     createdBy: task.createdById,
+    groupId: task.groupId ?? undefined,
+    group: task.group
+      ? { id: task.group.id, name: task.group.name, logoUrl: task.group.logoUrl ?? null }
+      : undefined,
     assigneeNotifiedAt: task.assigneeNotifiedAt?.toISOString() ?? null,
     dueDate: task.dueDate?.toISOString() ?? undefined,
     createdAt: task.createdAt.toISOString(),

@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useMemo, useRef, useEffect, useCallback, type ComponentType } from 'react';
-import { Task, TaskAsset, User, TaskStatus, TaskPriority } from '../types';
+import { Task, TaskAsset, User, TaskStatus, TaskPriority, Group } from '../types';
 import { uploadWithProgress } from '../lib/upload-with-progress';
 import {
   IconAlertTriangle,
@@ -22,16 +22,178 @@ import {
 interface TaskBoardProps {
   tasks: Task[];
   users: User[];
+  groups?: Group[];
   currentUser: User;
   onAdd: (data: Omit<Task, 'id' | 'createdAt' | 'updatedAt' | 'createdBy'>) => Task | void | Promise<Task | void>;
   onUpdate: (id: string, data: Partial<Task>) => void | Promise<void>;
   onDelete: (id: string) => void | Promise<void>;
   onMove: (id: string, status: TaskStatus) => void | Promise<void>;
   compactLayout?: boolean;
-  /** Desktop : ouvre la modale collaborateurs (évite la barre dupliquée dans la page). */
   onOpenCollaborators?: () => void;
-  /** Taille de l’équipe assignable (badge sur le bouton collaborateurs). */
+  onOpenGroups?: () => void;
   collaboratorTeamSize?: number;
+  /** Ouvre le tableau filtré sur ce groupe (depuis la page Groupes). */
+  initialGroupFilter?: string | null;
+  /** Ouvre la modale de création avec ce groupe présélectionné. */
+  initialOpenCreate?: boolean;
+  onInitialConsumed?: () => void;
+  /** Filtre groupe imposé (page Groupes) — masque les pills de groupe. */
+  forcedGroupFilter?: string | null;
+  /** Mode intégré dans la page Groupes (toolbar allégée). */
+  groupEmbed?: boolean;
+  titleOverride?: string;
+  /** Masque la barre titre/filtres (header unifié page Groupes). */
+  hideToolbar?: boolean;
+  /** Filtre assigné contrôlé depuis l’extérieur. */
+  assigneeFilter?: AssigneeFilter;
+  onAssigneeFilterChange?: (filter: AssigneeFilter) => void;
+  /** Expose openAdd pour le bouton « Nouvelle tâche » du header Groupes. */
+  onBoardReady?: (api: { openAdd: (status?: TaskStatus) => void }) => void;
+}
+
+export type AssigneeFilter = 'all' | 'unassigned' | string;
+type GroupFilter = 'all' | 'personal' | string;
+
+export function TaskAssigneeFilters({
+  currentUser,
+  assigneeFilter,
+  onAssigneeFilterChange,
+  users,
+  showGroupPills = false,
+  groups = [],
+  groupFilter = 'all',
+  onGroupFilterChange,
+}: {
+  currentUser: User;
+  assigneeFilter: AssigneeFilter;
+  onAssigneeFilterChange: (filter: AssigneeFilter) => void;
+  users: User[];
+  showGroupPills?: boolean;
+  groups?: Group[];
+  groupFilter?: GroupFilter;
+  onGroupFilterChange?: (filter: GroupFilter) => void;
+}) {
+  return (
+    <div
+      className="flex min-w-0 items-center gap-1.5 overflow-x-auto py-0.5 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+      role="toolbar"
+      aria-label="Filtrer les tâches par personne assignée"
+    >
+      {showGroupPills ? (
+        <>
+          <button
+            type="button"
+            onClick={() => onGroupFilterChange?.('all')}
+            aria-pressed={groupFilter === 'all'}
+            className={`inline-flex shrink-0 items-center rounded-full border px-2.5 py-1 text-[11px] font-medium transition-colors touch-manipulation sm:px-3 sm:text-xs ${
+              groupFilter === 'all'
+                ? 'border-violet-400 bg-violet-500/25 text-violet-200'
+                : 'border-slate-600 bg-slate-800/90 text-slate-300 hover:border-slate-500'
+            }`}
+          >
+            Toutes
+          </button>
+          <button
+            type="button"
+            onClick={() => onGroupFilterChange?.('personal')}
+            aria-pressed={groupFilter === 'personal'}
+            className={`inline-flex shrink-0 items-center rounded-full border px-2.5 py-1 text-[11px] font-medium transition-colors touch-manipulation sm:px-3 sm:text-xs ${
+              groupFilter === 'personal'
+                ? 'border-violet-400 bg-violet-500/25 text-violet-200'
+                : 'border-slate-600 bg-slate-800/90 text-slate-300 hover:border-slate-500'
+            }`}
+          >
+            Perso
+          </button>
+          {groups.map(g => (
+            <button
+              key={g.id}
+              type="button"
+              onClick={() => onGroupFilterChange?.(g.id)}
+              aria-pressed={groupFilter === g.id}
+              className={`inline-flex shrink-0 items-center gap-1 rounded-full border px-2.5 py-1 text-[11px] font-medium transition-colors touch-manipulation sm:px-3 sm:text-xs ${
+                groupFilter === g.id
+                  ? 'border-violet-400 bg-violet-500/25 text-violet-200'
+                  : 'border-slate-600 bg-slate-800/90 text-slate-300 hover:border-slate-500'
+              }`}
+            >
+              {g.logoUrl ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={g.logoUrl} alt="" className="h-4 w-4 rounded-full object-cover" />
+              ) : null}
+              <span className="max-w-[7rem] truncate">{g.name}</span>
+            </button>
+          ))}
+          <span className="mx-0.5 h-4 w-px shrink-0 bg-slate-600" aria-hidden />
+        </>
+      ) : null}
+      <button
+        type="button"
+        onClick={() => onAssigneeFilterChange('all')}
+        aria-pressed={assigneeFilter === 'all'}
+        className={`inline-flex shrink-0 items-center rounded-full border px-2.5 py-1 text-[11px] font-medium transition-colors touch-manipulation sm:px-3 sm:text-xs ${
+          assigneeFilter === 'all'
+            ? 'border-indigo-400 bg-indigo-500/25 text-indigo-200'
+            : 'border-slate-600 bg-slate-800/90 text-slate-300 hover:border-slate-500'
+        }`}
+      >
+        Tous
+      </button>
+      <button
+        type="button"
+        onClick={() => onAssigneeFilterChange(currentUser.id)}
+        aria-pressed={assigneeFilter === currentUser.id}
+        title="Tâches qui vous sont assignées"
+        className={`inline-flex shrink-0 items-center gap-1 rounded-full border py-0.5 pl-0.5 pr-2 text-[11px] font-medium transition-colors touch-manipulation sm:gap-1.5 sm:py-1 sm:pl-1 sm:pr-2.5 sm:text-xs ${
+          assigneeFilter === currentUser.id
+            ? 'border-indigo-400 bg-indigo-500/25 text-indigo-100'
+            : 'border-slate-600 bg-slate-800/90 text-slate-300 hover:border-slate-500'
+        }`}
+      >
+        <span
+          className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[9px] font-bold text-white shadow-sm sm:h-6 sm:w-6 sm:text-[10px]"
+          style={{ backgroundColor: currentUser.color }}
+        >
+          {currentUser.initials}
+        </span>
+        <span className="max-w-[2.75rem] truncate sm:max-w-[4rem]">À moi</span>
+      </button>
+      <button
+        type="button"
+        onClick={() => onAssigneeFilterChange('unassigned')}
+        aria-pressed={assigneeFilter === 'unassigned'}
+        className={`inline-flex shrink-0 items-center rounded-full border px-2.5 py-1 text-[11px] font-medium transition-colors touch-manipulation sm:px-3 sm:text-xs ${
+          assigneeFilter === 'unassigned'
+            ? 'border-indigo-400 bg-indigo-500/25 text-indigo-200'
+            : 'border-slate-600 bg-slate-800/90 text-slate-300 hover:border-slate-500'
+        }`}
+      >
+        <span className="sm:hidden">Sans ass.</span>
+        <span className="hidden sm:inline">Sans assignation</span>
+      </button>
+      {users.map(u => (
+        <button
+          key={u.id}
+          type="button"
+          onClick={() => onAssigneeFilterChange(u.id)}
+          aria-pressed={assigneeFilter === u.id}
+          className={`inline-flex max-w-[9rem] shrink-0 items-center gap-1 rounded-full border py-0.5 pl-0.5 pr-2 text-left text-[11px] font-medium transition-colors touch-manipulation sm:max-w-[11rem] sm:gap-2 sm:py-1 sm:pl-1 sm:pr-2.5 sm:text-xs ${
+            assigneeFilter === u.id
+              ? 'border-indigo-400 bg-indigo-500/25 text-indigo-100'
+              : 'border-slate-600 bg-slate-800/90 text-slate-300 hover:border-slate-500'
+          }`}
+        >
+          <span
+            className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[9px] font-bold text-white shadow-sm sm:h-6 sm:w-6 sm:text-[10px]"
+            style={{ backgroundColor: u.color }}
+          >
+            {u.initials}
+          </span>
+          <span className="min-w-0 truncate">{u.name}</span>
+        </button>
+      ))}
+    </div>
+  );
 }
 
 const COLUMNS: {
@@ -120,6 +282,7 @@ interface FormData {
   priority: TaskPriority;
   status: TaskStatus;
   dueDate: string;
+  groupId: string;
 }
 
 function formatDate(iso: string) {
@@ -151,8 +314,6 @@ function isPdfAsset(asset: TaskAsset) {
 function getPdfViewerUrl(url: string) {
   return `https://docs.google.com/gview?url=${encodeURIComponent(url)}&embedded=true`;
 }
-
-type AssigneeFilter = 'all' | 'unassigned' | string;
 
 function normalizeAssigneeIds(value: unknown): string[] {
   if (Array.isArray(value)) {
@@ -324,6 +485,20 @@ function KanbanTaskCard({
 
       {task.description ? <p className="mb-3 line-clamp-2 pl-4 text-xs text-slate-500">{task.description}</p> : null}
 
+      {task.group ? (
+        <div className="mb-2 flex items-center gap-1.5 pl-4">
+          {task.group.logoUrl ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={task.group.logoUrl} alt="" className="h-4 w-4 rounded-full object-cover" />
+          ) : (
+            <span className="flex h-4 w-4 items-center justify-center rounded-full bg-violet-500/30 text-[8px] font-bold text-violet-200">
+              {task.group.name.slice(0, 1)}
+            </span>
+          )}
+          <span className="text-[10px] font-medium text-violet-300/90">{task.group.name}</span>
+        </div>
+      ) : null}
+
       {/* Vignettes photos + vidéos */}
       {(visibleImages.length > 0 || visibleVideos.length > 0) ? (
         <div className="mb-2.5 flex flex-wrap gap-1.5 pl-4">
@@ -436,6 +611,7 @@ function KanbanTaskCard({
 export default function TaskBoard({
   tasks,
   users,
+  groups = [],
   currentUser,
   onAdd,
   onUpdate,
@@ -443,7 +619,18 @@ export default function TaskBoard({
   onMove,
   compactLayout = false,
   onOpenCollaborators,
+  onOpenGroups,
   collaboratorTeamSize = 0,
+  initialGroupFilter = null,
+  initialOpenCreate = false,
+  onInitialConsumed,
+  forcedGroupFilter = null,
+  groupEmbed = false,
+  titleOverride,
+  hideToolbar = false,
+  assigneeFilter: assigneeFilterProp,
+  onAssigneeFilterChange,
+  onBoardReady,
 }: TaskBoardProps) {
   const padHeader = compactLayout ? 'px-3 py-2 sm:px-4' : 'px-3 py-2.5 sm:px-5';
   const padMain = compactLayout ? 'p-3 sm:p-4' : 'p-4 sm:p-6';
@@ -461,8 +648,14 @@ export default function TaskBoard({
     priority: 'medium',
     status: 'todo',
     dueDate: '',
+    groupId: '',
   });
-  const [assigneeFilter, setAssigneeFilter] = useState<AssigneeFilter>('all');
+  const [assigneeFilterInternal, setAssigneeFilterInternal] = useState<AssigneeFilter>('all');
+  const assigneeFilter = assigneeFilterProp ?? assigneeFilterInternal;
+  const setAssigneeFilter = onAssigneeFilterChange ?? setAssigneeFilterInternal;
+  const [groupFilter, setGroupFilter] = useState<GroupFilter>(
+    () => (forcedGroupFilter as GroupFilter) || 'all',
+  );
   /** Mobile (viewport < md) : une seule colonne à la fois, pas de scroll horizontal Kanban */
   const [mobileStatusTab, setMobileStatusTab] = useState<TaskStatus>('todo');
   const [pdfViewer, setPdfViewer] = useState<{ url: string; name: string } | null>(null);
@@ -521,12 +714,65 @@ export default function TaskBoard({
   const editOutputFileRef = useRef<HTMLInputElement | null>(null);
 
   const filteredTasks = useMemo(() => {
-    if (assigneeFilter === 'all') return tasks;
-    if (assigneeFilter === 'unassigned') {
-      return tasks.filter(t => normalizeAssigneeIds(t.assignedTo).length === 0);
+    let list = tasks;
+    if (groupFilter === 'personal') {
+      list = list.filter(t => !t.groupId);
+    } else if (groupFilter !== 'all') {
+      list = list.filter(t => t.groupId === groupFilter);
     }
-    return tasks.filter(t => normalizeAssigneeIds(t.assignedTo).includes(assigneeFilter));
-  }, [tasks, assigneeFilter]);
+    if (assigneeFilter === 'all') return list;
+    if (assigneeFilter === 'unassigned') {
+      return list.filter(t => normalizeAssigneeIds(t.assignedTo).length === 0);
+    }
+    return list.filter(t => normalizeAssigneeIds(t.assignedTo).includes(assigneeFilter));
+  }, [tasks, assigneeFilter, groupFilter]);
+
+  const activeGroupId =
+    groupFilter !== 'all' && groupFilter !== 'personal' ? groupFilter : null;
+
+  const groupMemberUsers = useMemo((): User[] | null => {
+    if (!activeGroupId) return null;
+    const g = groups.find(x => x.id === activeGroupId);
+    if (!g) return null;
+    const seen = new Set<string>();
+    const out: User[] = [];
+    for (const m of g.members) {
+      if (!seen.has(m.id)) {
+        seen.add(m.id);
+        out.push(m);
+      }
+    }
+    return out.length > 0 ? out : null;
+  }, [activeGroupId, groups]);
+
+  /** En vue groupe : filtres assignés limités aux membres du groupe. */
+  const assigneePickerUsers = useMemo(() => {
+    const pool = groupMemberUsers ?? users;
+    return pool.filter(u => u.id !== currentUser.id);
+  }, [groupMemberUsers, users, currentUser.id]);
+
+  useEffect(() => {
+    if (assigneeFilter === 'all' || assigneeFilter === 'unassigned') return;
+    const pool = groupMemberUsers ?? users;
+    if (!pool.some(u => u.id === assigneeFilter)) {
+      setAssigneeFilter('all');
+    }
+  }, [activeGroupId, groupMemberUsers, users, assigneeFilter]);
+
+  const assignUsersForForm = useMemo(() => {
+    if (!form.groupId) return users;
+    const g = groups.find(x => x.id === form.groupId);
+    if (!g) return users;
+    const seen = new Set<string>();
+    const out: User[] = [];
+    for (const m of g.members) {
+      if (!seen.has(m.id)) {
+        seen.add(m.id);
+        out.push(m);
+      }
+    }
+    return out.length > 0 ? out : users;
+  }, [form.groupId, groups, users]);
 
   const tasksByStatus = useMemo(() => {
     const map: Record<TaskStatus, Task[]> = {
@@ -550,10 +796,13 @@ export default function TaskBoard({
     return normalizeAssigneeIds(ids).map(id => getUserById(id)).filter((u): u is User => Boolean(u));
   };
 
-  const openAdd = (status: TaskStatus = defaultStatus) => {
+  const openAdd = useCallback((status: TaskStatus = defaultStatus, presetGroupId?: string) => {
     setSubmitError(null);
     setDefaultStatus(status);
     setEditingTask(null);
+    const defaultGroupId =
+      presetGroupId ??
+      (groupFilter !== 'all' && groupFilter !== 'personal' ? groupFilter : '');
     setForm({
       title: '',
       description: '',
@@ -561,12 +810,44 @@ export default function TaskBoard({
       priority: 'medium',
       status,
       dueDate: '',
+      groupId: defaultGroupId,
     });
     resetDrafts();
     setShowModal(true);
-  };
+  }, [currentUser.id, defaultStatus, groupFilter, resetDrafts]);
+
+  useEffect(() => {
+    if (!initialGroupFilter) return;
+    setGroupFilter(initialGroupFilter);
+    if (initialOpenCreate) {
+      openAdd(defaultStatus, initialGroupFilter);
+    }
+    onInitialConsumed?.();
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- consommé une fois à l’arrivée depuis Groupes
+  }, [initialGroupFilter, initialOpenCreate]);
+
+  useEffect(() => {
+    if (forcedGroupFilter) setGroupFilter(forcedGroupFilter);
+  }, [forcedGroupFilter]);
+
+  useEffect(() => {
+    onBoardReady?.({ openAdd });
+  }, [onBoardReady, openAdd]);
+
+  const isGroupTaskContentReadOnly = (task: Task | null) =>
+    !!task?.groupId && task.createdBy !== currentUser.id;
+
+  const isTaskAssignee = (task: Task | null) =>
+    !!task && normalizeAssigneeIds(task.assignedTo).includes(currentUser.id);
+
+  const canChangeTaskStatus = (task: Task | null) =>
+    !!task && (task.createdBy === currentUser.id || isTaskAssignee(task));
 
   const openEdit = (task: Task) => {
+    if (isGroupTaskContentReadOnly(task)) {
+      setSelectedTask(task);
+      return;
+    }
     setSubmitError(null);
     setDetailError(null);
     setEditingTask(task);
@@ -577,6 +858,7 @@ export default function TaskBoard({
       priority: task.priority,
       status: task.status,
       dueDate: task.dueDate || '',
+      groupId: task.groupId || '',
     });
     setShowModal(true);
     setSelectedTask(null);
@@ -600,7 +882,9 @@ export default function TaskBoard({
             status: form.status,
             dueDate: form.dueDate || undefined,
           });
-        } else {
+        } else if (isTaskAssignee(editingTask) && editingTask.groupId) {
+          await onUpdate(editingTask.id, { status: form.status });
+        } else if (!editingTask.groupId) {
           await onUpdate(editingTask.id, {
             title: form.title,
             description: form.description,
@@ -615,6 +899,7 @@ export default function TaskBoard({
           priority: form.priority,
           status: form.status,
           dueDate: form.dueDate || undefined,
+          ...(form.groupId ? { groupId: form.groupId } : {}),
         });
         if (created?.id && draftFiles.length > 0) {
           setDraftStatuses(draftFiles.map(() => ({ kind: 'pending' as const })));
@@ -675,6 +960,10 @@ export default function TaskBoard({
 
   const moveSelected = async (status: TaskStatus) => {
     if (!selectedTask || selectedTask.status === status) return;
+    if (!canChangeTaskStatus(selectedTask)) {
+      setDetailError('Seul le créateur ou un assigné peut modifier le statut.');
+      return;
+    }
     const prevStatus = selectedTask.status;
     const taskId = selectedTask.id;
     setDetailError(null);
@@ -732,12 +1021,14 @@ export default function TaskBoard({
 
   return (
     <div className="h-full flex flex-col">
-      {/* Une seule barre : titre + filtres + collaborateurs (desktop) + nouvelle tâche */}
+      {!hideToolbar ? (
       <div
         className={`flex min-h-[2.75rem] flex-shrink-0 flex-wrap items-center gap-2 border-b border-slate-700 ${padHeader}`}
       >
         <div className="flex shrink-0 flex-col leading-tight">
-          <h2 className="text-sm font-bold text-white sm:text-base">Tâches</h2>
+          <h2 className="text-sm font-bold text-white sm:text-base">
+            {titleOverride ?? 'Tâches'}
+          </h2>
           <p className="w-[4.25rem] truncate text-[10px] text-slate-500 sm:w-auto sm:max-w-[11rem] sm:text-xs">
             {filteredTasks.length}/{tasks.length}
             {assigneeFilter !== 'all' ? (
@@ -749,82 +1040,35 @@ export default function TaskBoard({
         <div
           className="order-3 flex min-h-0 min-w-0 w-full flex-1 items-center overflow-hidden sm:order-none sm:w-auto"
         >
-          <div
-            className="flex w-full min-w-0 items-center gap-1.5 overflow-x-auto py-0.5 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
-            role="toolbar"
-            aria-label="Filtrer les tâches par personne assignée"
-          >
-            <button
-              type="button"
-              onClick={() => setAssigneeFilter('all')}
-              aria-pressed={assigneeFilter === 'all'}
-              className={`inline-flex shrink-0 items-center rounded-full border px-2.5 py-1 text-[11px] font-medium transition-colors touch-manipulation sm:px-3 sm:text-xs ${
-                assigneeFilter === 'all'
-                  ? 'border-indigo-400 bg-indigo-500/25 text-indigo-200'
-                  : 'border-slate-600 bg-slate-800/90 text-slate-300 hover:border-slate-500'
-              }`}
-            >
-              Tous
-            </button>
-            <button
-              type="button"
-              onClick={() => setAssigneeFilter(currentUser.id)}
-              aria-pressed={assigneeFilter === currentUser.id}
-              title="Tâches qui vous sont assignées"
-              className={`inline-flex shrink-0 items-center gap-1 rounded-full border py-0.5 pl-0.5 pr-2 text-[11px] font-medium transition-colors touch-manipulation sm:gap-1.5 sm:py-1 sm:pl-1 sm:pr-2.5 sm:text-xs ${
-                assigneeFilter === currentUser.id
-                  ? 'border-indigo-400 bg-indigo-500/25 text-indigo-100'
-                  : 'border-slate-600 bg-slate-800/90 text-slate-300 hover:border-slate-500'
-              }`}
-            >
-              <span
-                className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[9px] font-bold text-white shadow-sm sm:h-6 sm:w-6 sm:text-[10px]"
-                style={{ backgroundColor: currentUser.color }}
-              >
-                {currentUser.initials}
-              </span>
-              <span className="max-w-[2.75rem] truncate sm:max-w-[4rem]">À moi</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => setAssigneeFilter('unassigned')}
-              aria-pressed={assigneeFilter === 'unassigned'}
-              className={`inline-flex shrink-0 items-center rounded-full border px-2.5 py-1 text-[11px] font-medium transition-colors touch-manipulation sm:px-3 sm:text-xs ${
-                assigneeFilter === 'unassigned'
-                  ? 'border-indigo-400 bg-indigo-500/25 text-indigo-200'
-                  : 'border-slate-600 bg-slate-800/90 text-slate-300 hover:border-slate-500'
-              }`}
-            >
-              <span className="sm:hidden">Sans ass.</span>
-              <span className="hidden sm:inline">Sans assignation</span>
-            </button>
-            {users
-              .filter(u => u.id !== currentUser.id)
-              .map(u => (
-                <button
-                  key={u.id}
-                  type="button"
-                  onClick={() => setAssigneeFilter(u.id)}
-                  aria-pressed={assigneeFilter === u.id}
-                  className={`inline-flex max-w-[9rem] shrink-0 items-center gap-1 rounded-full border py-0.5 pl-0.5 pr-2 text-left text-[11px] font-medium transition-colors touch-manipulation sm:max-w-[11rem] sm:gap-2 sm:py-1 sm:pl-1 sm:pr-2.5 sm:text-xs ${
-                    assigneeFilter === u.id
-                      ? 'border-indigo-400 bg-indigo-500/25 text-indigo-100'
-                      : 'border-slate-600 bg-slate-800/90 text-slate-300 hover:border-slate-500'
-                  }`}
-                >
-                  <span
-                    className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[9px] font-bold text-white shadow-sm sm:h-6 sm:w-6 sm:text-[10px]"
-                    style={{ backgroundColor: u.color }}
-                  >
-                    {u.initials}
-                  </span>
-                  <span className="min-w-0 truncate">{u.name}</span>
-                </button>
-              ))}
-          </div>
+          <TaskAssigneeFilters
+            currentUser={currentUser}
+            assigneeFilter={assigneeFilter}
+            onAssigneeFilterChange={setAssigneeFilter}
+            users={assigneePickerUsers}
+            showGroupPills={!groupEmbed}
+            groups={groups}
+            groupFilter={groupFilter}
+            onGroupFilterChange={setGroupFilter}
+          />
         </div>
 
-        {onOpenCollaborators ? (
+        {onOpenGroups && !groupEmbed ? (
+          <button
+            type="button"
+            onClick={onOpenGroups}
+            className="hidden shrink-0 touch-manipulation items-center gap-1.5 rounded-xl border border-slate-600 bg-slate-800 px-2.5 py-1.5 text-xs font-medium text-slate-200 hover:bg-slate-700 md:inline-flex"
+          >
+            <span className="text-slate-400">👥</span>
+            <span className="hidden lg:inline">Groupes</span>
+            {groups.length > 0 ? (
+              <span className="rounded-full bg-violet-500/25 px-1.5 py-0.5 text-[10px] font-semibold tabular-nums text-violet-200">
+                {groups.length}
+              </span>
+            ) : null}
+          </button>
+        ) : null}
+
+        {onOpenCollaborators && !groupEmbed ? (
           <button
             type="button"
             onClick={onOpenCollaborators}
@@ -857,6 +1101,7 @@ export default function TaskBoard({
           <span>Nouvelle tâche</span>
         </button>
       </div>
+      ) : null}
 
       {/* Mobile : onglets par statut + liste pleine largeur (scroll vertical uniquement) */}
       <div className="flex min-h-0 flex-1 flex-col overflow-hidden md:hidden">
@@ -1227,13 +1472,23 @@ export default function TaskBoard({
               ) : (
                 <div className="flex-1 min-w-0" aria-hidden />
               )}
-              <button
-                onClick={() => openEdit(selectedTask)}
-                className="inline-flex w-full items-center justify-center gap-2 bg-indigo-500 hover:bg-indigo-400 text-white px-4 py-2 rounded-xl text-sm font-medium transition-all sm:w-auto"
-              >
-                <IconPencil className="h-4 w-4" />
-                Modifier
-              </button>
+              {!isGroupTaskContentReadOnly(selectedTask) ? (
+                <button
+                  onClick={() => openEdit(selectedTask)}
+                  className="inline-flex w-full items-center justify-center gap-2 bg-indigo-500 hover:bg-indigo-400 text-white px-4 py-2 rounded-xl text-sm font-medium transition-all sm:w-auto"
+                >
+                  <IconPencil className="h-4 w-4" />
+                  Modifier
+                </button>
+              ) : canChangeTaskStatus(selectedTask) ? (
+                <p className="text-xs text-slate-500 sm:text-right">
+                  Assigné — changez le statut avec « Déplacer vers » ci-dessus.
+                </p>
+              ) : (
+                <p className="text-xs text-slate-500 sm:text-right">
+                  Tâche de groupe — consultation et commentaires uniquement.
+                </p>
+              )}
             </div>
           </div>
         </div>
@@ -1531,15 +1786,47 @@ export default function TaskBoard({
               </div>
 
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                {!editingTask ? (
+                  <div className="sm:col-span-2">
+                    <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">
+                      Groupe (optionnel)
+                    </label>
+                    <select
+                      value={form.groupId}
+                      onChange={e =>
+                        setForm(f => ({
+                          ...f,
+                          groupId: e.target.value,
+                          assignedTo: [currentUser.id],
+                        }))
+                      }
+                      className="w-full rounded-xl border border-slate-600 bg-slate-900 px-3 py-2 text-sm text-slate-200 focus:border-indigo-500 focus:outline-none"
+                    >
+                      <option value="">Tâche personnelle</option>
+                      {groups.map(g => (
+                        <option key={g.id} value={g.id}>
+                          {g.name}
+                        </option>
+                      ))}
+                    </select>
+                    {form.groupId ? (
+                      <p className="mt-1 text-[11px] text-slate-500">
+                        Tous les membres du groupe verront cette tâche et seront notifiés.
+                      </p>
+                    ) : null}
+                  </div>
+                ) : null}
                 <div>
                   <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">
                     Assignée à
                   </label>
                   <p className="text-[11px] text-slate-500 mb-2 leading-snug">
-                    Vous et les personnes ajoutées par email (barre latérale). Maximum 2 assignés.
+                    {form.groupId
+                      ? 'Membres du groupe uniquement. Maximum 2 assignés.'
+                      : 'Vous et vos collaborateurs (email). Maximum 2 assignés.'}
                   </p>
                   <div className="space-y-2 rounded-xl border border-slate-700 bg-slate-900/40 p-2.5">
-                    {users.map(u => {
+                    {assignUsersForForm.map(u => {
                       const selected = form.assignedTo.includes(u.id);
                       const assignLocked = !!editingTask && !isTaskCreator(editingTask);
                       const disabled = assignLocked || (!selected && form.assignedTo.length >= 2);

@@ -49,6 +49,7 @@ export async function sendPushToUser(
     title: string;
     body: string;
     data?: Record<string, string>;
+    badgeCount?: number;
   }
 ) {
   const fcmMessaging = getMessaging();
@@ -59,17 +60,48 @@ export async function sendPushToUser(
 
   const rows = await prisma.deviceToken.findMany({
     where: { userId },
-    select: { id: true, token: true },
+    select: { id: true, token: true, platform: true },
   });
   if (rows.length === 0) return;
+
+  // Chaque notification envoyée incrémente le compteur persistant côté serveur
+  // (remis à zéro quand l'utilisateur ouvre l'app — voir /api/user/notifications/seen).
+  // Ceci garantit que le badge sur l'icône reflète TOUTES les notifications non vues,
+  // pas seulement les tâches assignées.
+  let resolvedBadgeCount = payload.badgeCount;
+  if (resolvedBadgeCount === undefined) {
+    const updated = await prisma.user.update({
+      where: { id: userId },
+      data: { unreadNotificationCount: { increment: 1 } },
+      select: { unreadNotificationCount: true },
+    });
+    resolvedBadgeCount = updated.unreadNotificationCount;
+  }
+  const badgeCount: number = resolvedBadgeCount;
+  const data = {
+    ...(payload.data ?? {}),
+    badgeCount: String(badgeCount),
+  };
 
   const messages: admin.messaging.Message[] = rows.map((r) => ({
     token: r.token,
     notification: { title: payload.title, body: payload.body },
-    data: payload.data ?? {},
+    data,
     android: {
       priority: 'high',
-      notification: { channelId: 'neurix_default', sound: 'default' },
+      notification: {
+        channelId: 'neurix_default',
+        sound: 'default',
+        notificationCount: badgeCount > 0 ? badgeCount : undefined,
+      },
+    },
+    apns: {
+      payload: {
+        aps: {
+          badge: badgeCount,
+          sound: 'default',
+        },
+      },
     },
   }));
 

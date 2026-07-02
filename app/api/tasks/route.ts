@@ -2,6 +2,9 @@ import { NextResponse } from 'next/server';
 import { prisma } from '@/app/lib/prisma';
 import { getSessionUserId } from '@/app/lib/auth';
 import { resolveAssignees } from '@/app/lib/task-assign';
+import { resolveGroupAssignees } from '@/app/lib/group-assign';
+import { assertGroupMember } from '@/app/lib/group-access';
+import { notifyGroupAboutTask } from '@/app/lib/group-notify';
 import { tasksVisibleToUser } from '@/app/lib/task-access';
 import { sendTaskNotificationEmail } from '@/app/lib/email';
 import { TASK_WITH_RELATIONS_INCLUDE, serializeTask } from '@/app/lib/task-serialize';
@@ -29,19 +32,37 @@ export async function POST(request: Request) {
   }
 
   const body = await request.json();
-  const { title, description, status, priority, assignedTo, dueDate } = body;
+  const { title, description, status, priority, assignedTo, dueDate, groupId } = body;
 
   if (!title?.trim()) {
     return NextResponse.json({ error: 'Le titre est requis' }, { status: 400 });
   }
 
+  const rawGroupId = typeof groupId === 'string' && groupId.trim() ? groupId.trim() : null;
+
+  if (rawGroupId) {
+    try {
+      await assertGroupMember(rawGroupId, sessionId);
+    } catch {
+      return NextResponse.json({ error: 'Groupe introuvable ou accès refusé.' }, { status: 403 });
+    }
+  }
+
   let assignedToIds: string[];
   try {
-    assignedToIds = await resolveAssignees(sessionId, assignedTo);
+    if (rawGroupId) {
+      assignedToIds = await resolveGroupAssignees(rawGroupId, sessionId, assignedTo);
+    } else {
+      assignedToIds = await resolveAssignees(sessionId, assignedTo);
+    }
   } catch (e: unknown) {
     if (e instanceof Error && e.message === 'ASSIGN_FORBIDDEN') {
       return NextResponse.json(
-        { error: 'Vous ne pouvez assigner qu’à vous-même ou à un collaborateur ajouté par email.' },
+        {
+          error: rawGroupId
+            ? 'Vous ne pouvez assigner qu’à des membres du groupe.'
+            : 'Vous ne pouvez assigner qu’à vous-même ou à un collaborateur ajouté par email.',
+        },
         { status: 403 }
       );
     }
@@ -50,6 +71,9 @@ export async function POST(request: Request) {
         { error: 'Vous pouvez assigner une tâche à 2 collaborateurs maximum.' },
         { status: 400 }
       );
+    }
+    if (e instanceof Error && e.message === 'GROUP_FORBIDDEN') {
+      return NextResponse.json({ error: 'Groupe introuvable ou accès refusé.' }, { status: 403 });
     }
     throw e;
   }
@@ -62,6 +86,7 @@ export async function POST(request: Request) {
         status: (status as TaskStatus) ?? TaskStatus.todo,
         priority: (priority as TaskPriority) ?? TaskPriority.medium,
         assigneeNotifiedAt: assignedToIds.length > 0 ? new Date() : null,
+        groupId: rawGroupId,
         assignees: {
           create: assignedToIds.map(userId => ({ userId })),
         },
@@ -75,26 +100,48 @@ export async function POST(request: Request) {
       where: { id: sessionId },
       select: { name: true },
     });
-    const otherAssignees = task.assignees.filter(a => a.userId !== sessionId);
-    const assigneeEmails = otherAssignees.map(a => a.user.email).filter(Boolean);
-    for (const email of assigneeEmails) {
-      const notify = await sendTaskNotificationEmail(email, {
+
+    if (rawGroupId) {
+      await notifyGroupAboutTask({
+        groupId: rawGroupId,
+        excludeUserId: sessionId,
+        taskTitle: task.title,
+        event: 'created',
+        actorName: actor?.name ?? null,
+        status: task.status,
+        taskId: task.id,
+      });
+      if (assignedToIds.length > 0) {
+        await notifyGroupAboutTask({
+          groupId: rawGroupId,
+          excludeUserId: sessionId,
+          taskTitle: task.title,
+          event: 'assigned',
+          actorName: actor?.name ?? null,
+          taskId: task.id,
+        });
+      }
+    } else {
+      const otherAssignees = task.assignees.filter(a => a.userId !== sessionId);
+      const assigneeEmails = otherAssignees.map(a => a.user.email).filter(Boolean);
+      for (const email of assigneeEmails) {
+        const notify = await sendTaskNotificationEmail(email, {
           taskTitle: task.title,
           event: 'created',
           actorName: actor?.name ?? null,
           status: task.status,
-      });
-      if (!notify.ok) {
-        console.warn('[tasks POST] task notification email failed:', notify.error);
+        });
+        if (!notify.ok) {
+          console.warn('[tasks POST] task notification email failed:', notify.error);
+        }
       }
-    }
-    // Push notification to each new assignee
-    for (const a of otherAssignees) {
-      await sendPushToUser(a.userId, {
-        title: '📋 Nouvelle tâche assignée',
-        body: `${actor?.name ?? 'Quelqu\'un'} vous a assigné : ${task.title}`,
-        data: { type: 'task_assigned', taskId: task.id },
-      });
+      for (const a of otherAssignees) {
+        await sendPushToUser(a.userId, {
+          title: '📋 Nouvelle tâche assignée',
+          body: `${actor?.name ?? 'Quelqu\'un'} vous a assigné : ${task.title}`,
+          data: { type: 'task_assigned', taskId: task.id },
+        });
+      }
     }
 
     return NextResponse.json(serializeTask(task), { status: 201 });

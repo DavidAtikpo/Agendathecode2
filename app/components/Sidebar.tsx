@@ -17,9 +17,17 @@ import {
 const BRAND_LOGO = '/logo (1).png';
 const BRAND_NAME = 'Neurix';
 
+export type AppView =
+  | 'notes'
+  | 'tasks'
+  | 'planning'
+  | 'groups'
+  | 'sessions-organizer'
+  | 'sessions-assignee';
+
 interface SidebarProps {
-  activeView: 'notes' | 'tasks' | 'planning';
-  onViewChange: (view: 'notes' | 'tasks' | 'planning') => void;
+  activeView: AppView;
+  onViewChange: (view: AppView) => void;
   currentUser: User;
   isGuest: boolean;
   onOpenLogin: () => void;
@@ -46,6 +54,15 @@ interface SidebarProps {
   lastDataUpdatedAt?: string | null;
   /** Tiroir mobile : menu toujours large (pas de mode réduit). */
   preferExpanded?: boolean;
+  /** Compte Pro : afficher la gestion des sessions créées. */
+  showSessionsOrganizer?: boolean;
+  /** Propositions formateur / assessor reçues. */
+  showSessionsAssignee?: boolean;
+  /** Badge « en attente » sur Mes propositions. */
+  sessionPendingCount?: number;
+  /** Afficher la page groupes (utilisateur connecté). */
+  showGroups?: boolean;
+  groupCount?: number;
 }
 
 function SectionLabel({ children }: { children: React.ReactNode }) {
@@ -77,6 +94,11 @@ export default function Sidebar({
   className = '',
   lastDataUpdatedAt = null,
   preferExpanded = false,
+  showSessionsOrganizer = false,
+  showSessionsAssignee = false,
+  sessionPendingCount = 0,
+  showGroups = false,
+  groupCount = 0,
 }: SidebarProps) {
   const [accountOpen, setAccountOpen] = useState(false);
   /** Réduit par défaut ; invité ou tiroir mobile : toujours large. */
@@ -231,6 +253,110 @@ export default function Sidebar({
               />
               {expanded ? <span className="min-w-0 truncate">Planning</span> : null}
             </button>
+
+            {showGroups && expanded ? <SectionLabel>Équipe</SectionLabel> : null}
+
+            {showGroups ? (
+              <button
+                type="button"
+                onClick={() => {
+                  onViewChange('groups');
+                  afterNav();
+                }}
+                className={navBtn(activeView === 'groups', 'bg-violet-500/20 text-violet-300')}
+                title={expanded ? undefined : 'Groupes'}
+              >
+                <svg
+                  className={`h-5 w-5 shrink-0 ${activeView === 'groups' ? 'text-violet-300' : 'text-slate-400'}`}
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.8"
+                  aria-hidden
+                >
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+                </svg>
+                {expanded ? <span className="min-w-0 truncate">Groupes</span> : null}
+                {expanded && groupCount > 0 ? (
+                  <span className="ml-auto min-w-[1.25rem] rounded-full bg-violet-500/25 px-2 py-0.5 text-center text-xs tabular-nums text-violet-200">
+                    {groupCount}
+                  </span>
+                ) : null}
+                {!expanded && groupCount > 0 ? (
+                  <span className="absolute right-0.5 top-1.5 flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-violet-500 px-0.5 text-[10px] font-bold leading-none text-white">
+                    {groupCount > 9 ? '9+' : groupCount}
+                  </span>
+                ) : null}
+              </button>
+            ) : null}
+
+            {(showSessionsOrganizer || showSessionsAssignee) && expanded ? (
+              <SectionLabel>Formation</SectionLabel>
+            ) : null}
+
+            {showSessionsOrganizer ? (
+              <button
+                type="button"
+                onClick={() => {
+                  onViewChange('sessions-organizer');
+                  afterNav();
+                }}
+                className={navBtn(
+                  activeView === 'sessions-organizer',
+                  'bg-teal-500/20 text-teal-300',
+                )}
+                title={expanded ? undefined : 'Gestion sessions'}
+              >
+                <svg
+                  className={`h-5 w-5 shrink-0 ${activeView === 'sessions-organizer' ? 'text-teal-300' : 'text-slate-400'}`}
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.8"
+                  aria-hidden
+                >
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M4 19V5m0 14h16M8 11v8m4-8v8m4-8v8M8 7V5m4 2V5m4 2V5" />
+                </svg>
+                {expanded ? <span className="min-w-0 truncate">Gestion sessions</span> : null}
+              </button>
+            ) : null}
+
+            {showSessionsAssignee ? (
+              <button
+                type="button"
+                onClick={() => {
+                  onViewChange('sessions-assignee');
+                  afterNav();
+                }}
+                className={navBtn(
+                  activeView === 'sessions-assignee',
+                  'bg-indigo-500/20 text-indigo-300',
+                )}
+                title={expanded ? undefined : 'Mes propositions'}
+              >
+                <svg
+                  className={`h-5 w-5 shrink-0 ${activeView === 'sessions-assignee' ? 'text-indigo-300' : 'text-slate-400'}`}
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.8"
+                  aria-hidden
+                >
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4M7.5 4.5l1.5 1.5M16.5 4.5L15 6M12 3v2M5 20h14a2 2 0 002-2V8a2 2 0 00-2-2h-3.5l-1-1.5h-3L9 6H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                </svg>
+                {expanded ? <span className="min-w-0 truncate">Mes propositions</span> : null}
+                {expanded && sessionPendingCount > 0 ? (
+                  <span className="ml-auto min-w-[1.25rem] rounded-full bg-amber-500/25 px-2 py-0.5 text-center text-xs font-semibold tabular-nums text-amber-200">
+                    {sessionPendingCount > 99 ? '99+' : sessionPendingCount}
+                  </span>
+                ) : null}
+                {!expanded && sessionPendingCount > 0 ? (
+                  <span className="absolute right-0.5 top-1.5 flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-amber-500 px-0.5 text-[10px] font-bold leading-none text-white">
+                    {sessionPendingCount > 9 ? '9+' : sessionPendingCount}
+                  </span>
+                ) : null}
+              </button>
+            ) : null}
 
             <button
               type="button"
