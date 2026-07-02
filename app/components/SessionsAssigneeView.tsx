@@ -3,14 +3,15 @@
 import { useMemo, useState } from 'react';
 import type { SessionAssignmentRole, TrainingSession, User } from '../types';
 import {
-  ROLE_LABEL,
-  STATUS_LABEL,
   formatSessionDate,
   matchesAssigneeFilter,
   myAssignment,
+  sessionRoleLabel,
+  sessionStatusLabel,
   statusBadgeClass,
   type AssigneeStatusFilter,
 } from '../lib/session-labels';
+import { useI18n } from '@/app/lib/i18n';
 
 interface SessionsAssigneeViewProps {
   sessions: TrainingSession[];
@@ -23,12 +24,7 @@ interface SessionsAssigneeViewProps {
   ) => Promise<void>;
 }
 
-const FILTERS: { key: AssigneeStatusFilter; label: string }[] = [
-  { key: 'all', label: 'Toutes' },
-  { key: 'pending', label: 'En attente' },
-  { key: 'accepted', label: 'Disponible' },
-  { key: 'declined', label: 'Indisponible' },
-];
+const ASSIGNEE_FILTER_KEYS: AssigneeStatusFilter[] = ['all', 'pending', 'accepted', 'declined'];
 
 export default function SessionsAssigneeView({
   sessions,
@@ -36,6 +32,7 @@ export default function SessionsAssigneeView({
   compactLayout,
   onRespondSession,
 }: SessionsAssigneeViewProps) {
+  const { locale, t, dateLocale } = useI18n();
   const [filter, setFilter] = useState<AssigneeStatusFilter>('all');
   const [busyId, setBusyId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -72,7 +69,7 @@ export default function SessionsAssigneeView({
     try {
       await onRespondSession(sessionId, role, status);
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : 'Erreur');
+      setError(err instanceof Error ? err.message : t('common.status.error'));
     } finally {
       setBusyId(null);
     }
@@ -84,28 +81,26 @@ export default function SessionsAssigneeView({
     <div className="flex h-full min-h-0 flex-col bg-[#0f1419]">
       <div className={`shrink-0 border-b border-slate-700/80 bg-slate-900/90 ${pad}`}>
         <h2 className={`font-semibold text-white ${compactLayout ? 'text-base' : 'text-lg'}`}>
-          Mes propositions
+          {t('sessions.assignee.title')}
         </h2>
-        <p className="mt-0.5 text-xs text-slate-500">
-          Sessions où vous êtes formateur ou assessor — validez ou refusez votre disponibilité.
-        </p>
+        <p className="mt-0.5 text-xs text-slate-500">{t('sessions.assignee.subtitle')}</p>
 
         <div className="mt-4 flex flex-wrap gap-1.5" role="tablist">
-          {FILTERS.map(f => (
+          {ASSIGNEE_FILTER_KEYS.map(key => (
             <button
-              key={f.key}
+              key={key}
               type="button"
               role="tab"
-              aria-selected={filter === f.key}
-              onClick={() => setFilter(f.key)}
+              aria-selected={filter === key}
+              onClick={() => setFilter(key)}
               className={`rounded-lg px-3 py-1.5 text-xs font-medium transition-colors ${
-                filter === f.key
+                filter === key
                   ? 'bg-indigo-500/25 text-indigo-200'
                   : 'bg-slate-800 text-slate-400 hover:text-slate-200'
               }`}
             >
-              {f.label}
-              <span className="ml-1 tabular-nums opacity-70">({counts[f.key]})</span>
+              {t(`sessions.assignee.filters.${key}`)}
+              <span className="ml-1 tabular-nums opacity-70">({counts[key]})</span>
             </button>
           ))}
         </div>
@@ -118,8 +113,8 @@ export default function SessionsAssigneeView({
           <div className="flex flex-col items-center justify-center py-16 text-center text-slate-500">
             <p className="text-sm">
               {assigned.length === 0
-                ? 'Aucune proposition reçue pour le moment.'
-                : 'Aucune session pour ce filtre.'}
+                ? t('sessions.assignee.emptyNone')
+                : t('sessions.assignee.emptyFilter')}
             </p>
           </div>
         ) : (
@@ -142,19 +137,23 @@ export default function SessionsAssigneeView({
                     <div className="min-w-0 flex-1">
                       <div className="mb-1 flex flex-wrap items-center gap-2">
                         <span className="rounded bg-indigo-500/20 px-2 py-0.5 text-[10px] font-semibold uppercase text-indigo-200">
-                          {ROLE_LABEL[mine.role]}
+                          {sessionRoleLabel(mine.role, locale)}
                         </span>
                         <span className={`rounded px-2 py-0.5 text-[10px] font-semibold ${statusBadgeClass(mine.status)}`}>
-                          {STATUS_LABEL[mine.status]}
+                          {sessionStatusLabel(mine.status, locale)}
                         </span>
                       </div>
                       <p className="font-medium text-slate-100">{s.title}</p>
                       <p className="mt-1 text-xs text-slate-400">
-                        {formatSessionDate(s.startDate)} → {formatSessionDate(s.endDate)}
-                        {s.examDate ? ` · Examen ${formatSessionDate(s.examDate)}` : ''}
+                        {formatSessionDate(s.startDate, locale)} → {formatSessionDate(s.endDate, locale)}
+                        {s.examDate
+                          ? ` · ${t('sessions.organizer.exam')} ${formatSessionDate(s.examDate, locale)}`
+                          : ''}
                       </p>
                       {s.creatorName ? (
-                        <p className="mt-1 text-xs text-slate-500">Organisateur : {s.creatorName}</p>
+                        <p className="mt-1 text-xs text-slate-500">
+                          {t('sessions.assignee.organizer', { name: s.creatorName })}
+                        </p>
                       ) : null}
                     </div>
                   </div>
@@ -167,7 +166,7 @@ export default function SessionsAssigneeView({
                         onClick={() => void respond(s.id, mine.role, 'accepted')}
                         className="min-w-[8rem] flex-1 rounded-lg bg-emerald-600 py-2 text-sm font-medium text-white hover:bg-emerald-500 disabled:opacity-50 sm:flex-none sm:px-6"
                       >
-                        Disponible
+                        {t('sessions.assignee.respondAvailable')}
                       </button>
                       <button
                         type="button"
@@ -175,18 +174,19 @@ export default function SessionsAssigneeView({
                         onClick={() => void respond(s.id, mine.role, 'declined')}
                         className="min-w-[8rem] flex-1 rounded-lg border border-slate-600 py-2 text-sm text-slate-300 hover:bg-slate-700 disabled:opacity-50 sm:flex-none sm:px-6"
                       >
-                        Indisponible
+                        {t('sessions.assignee.respondUnavailable')}
                       </button>
                     </div>
                   ) : mine.respondedAt ? (
                     <p className="mt-3 text-[11px] text-slate-500">
-                      Répondu le{' '}
-                      {new Date(mine.respondedAt).toLocaleDateString('fr-FR', {
-                        day: 'numeric',
-                        month: 'long',
-                        year: 'numeric',
-                        hour: '2-digit',
-                        minute: '2-digit',
+                      {t('sessions.assignee.respondedAt', {
+                        date: new Date(mine.respondedAt).toLocaleDateString(dateLocale, {
+                          day: 'numeric',
+                          month: 'long',
+                          year: 'numeric',
+                          hour: '2-digit',
+                          minute: '2-digit',
+                        }),
                       })}
                     </p>
                   ) : null}

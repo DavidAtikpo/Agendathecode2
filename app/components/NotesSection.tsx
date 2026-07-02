@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useMemo, useRef, useEffect, useCallback } from 'react';
+import { useI18n } from '@/app/lib/i18n';
 import { Note, NoteAsset, User } from '../types';
 import {
   toDatetimeLocalValue,
@@ -119,17 +120,20 @@ declare global {
   }
 }
 
-function timeAgo(iso: string) {
+function timeAgo(iso: string, dateLocale: string, t: (key: string, params?: Record<string, string | number>) => string) {
   const diff = Date.now() - new Date(iso).getTime();
   const days = Math.floor(diff / 86400000);
-  if (days === 0) return "Aujourd'hui";
-  if (days === 1) return 'Hier';
-  if (days < 7) return `Il y a ${days} jours`;
-  if (days < 30) return `Il y a ${Math.floor(days / 7)} sem.`;
-  return new Date(iso).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' });
+  if (days === 0) return t('notes.timeAgo.today');
+  if (days === 1) return t('notes.timeAgo.yesterday');
+  if (days < 7) return t('notes.timeAgo.daysAgo', { days });
+  if (days < 30) return t('notes.timeAgo.weeksAgo', { weeks: Math.floor(days / 7) });
+  return new Date(iso).toLocaleDateString(dateLocale, { day: 'numeric', month: 'short' });
 }
 
-function useSpeechRecognition(onTranscript: (text: string, isFinal: boolean) => void) {
+function useSpeechRecognition(
+  onTranscript: (text: string, isFinal: boolean) => void,
+  speechLang: string,
+) {
   const recognitionRef = useRef<SpeechRecognitionInstance | null>(null);
   /** Mots définitivement finalisés pendant la session en cours */
   const confirmedRef = useRef('');
@@ -148,7 +152,7 @@ function useSpeechRecognition(onTranscript: (text: string, isFinal: boolean) => 
     confirmedRef.current = baseText;
 
     const rec = new Ctor();
-    rec.lang = 'fr-FR';
+    rec.lang = speechLang;
     rec.continuous = true;
     rec.interimResults = true;
 
@@ -176,7 +180,7 @@ function useSpeechRecognition(onTranscript: (text: string, isFinal: boolean) => 
     recognitionRef.current = rec;
     rec.start();
     setRecording(true);
-  }, [onTranscript]);
+  }, [onTranscript, speechLang]);
 
   const stop = useCallback(() => {
     recognitionRef.current?.stop();
@@ -190,6 +194,8 @@ function useSpeechRecognition(onTranscript: (text: string, isFinal: boolean) => 
 
   return { recording, supported, toggle };
 }
+
+type TranslateFn = ReturnType<typeof useI18n>['t'];
 
 function isNoteOwner(note: Note, currentUserId: string) {
   return (note.ownerId ?? currentUserId) === currentUserId;
@@ -222,7 +228,12 @@ function getPdfViewerUrl(url: string) {
 }
 
 /** Ouvre une fenêtre d'impression formatée pour le compte-rendu de réunion. */
-function printMeetingPdf(analysis: MeetingAnalysis, transcript: string, meetingDate: string) {
+function printMeetingPdf(
+  analysis: MeetingAnalysis,
+  transcript: string,
+  meetingDate: string,
+  t: TranslateFn,
+) {
   const rows = analysis.actionItems.map(a =>
     `<tr><td>${a.who}</td><td>${a.what}</td><td>${a.deadline ?? '—'}</td></tr>`
   ).join('');
@@ -252,34 +263,34 @@ function printMeetingPdf(analysis: MeetingAnalysis, transcript: string, meetingD
 <h1>${analysis.title}</h1>
 <div class="meta">📅 ${meetingDate}${analysis.duration_estimate ? ` &nbsp;·&nbsp; ⏱ ${analysis.duration_estimate}` : ''}</div>
 
-<h2>Résumé</h2>
+<h2>${t('notes.meeting.summary')}</h2>
 <p style="margin:0">${analysis.summary}</p>
 
 ${analysis.participants.length > 0 ? `
-<h2>Participants</h2>
+<h2>${t('notes.meeting.participants')}</h2>
 <div class="chip-row">${analysis.participants.map(p => `<span class="chip">${p}</span>`).join('')}</div>` : ''}
 
 ${analysis.keyPoints.length > 0 ? `
-<h2>Points clés</h2>
+<h2>${t('notes.meeting.keyPoints')}</h2>
 <ul>${analysis.keyPoints.map(k => `<li>${k}</li>`).join('')}</ul>` : ''}
 
 ${analysis.decisions.length > 0 ? `
-<h2>Décisions prises</h2>
+<h2>${t('notes.meeting.decisions')}</h2>
 <ul>${analysis.decisions.map(d => `<li>${d}</li>`).join('')}</ul>` : ''}
 
 ${analysis.actionItems.length > 0 ? `
-<h2>Actions à réaliser</h2>
-<table><thead><tr><th>Responsable</th><th>Action</th><th>Échéance</th></tr></thead>
+<h2>${t('notes.meeting.actions')}</h2>
+<table><thead><tr><th>${t('notes.meeting.tableHeaders.owner')}</th><th>${t('notes.meeting.tableHeaders.action')}</th><th>${t('notes.meeting.tableHeaders.due')}</th></tr></thead>
 <tbody>${rows}</tbody></table>` : ''}
 
-${analysis.nextMeeting ? `<h2>Prochaine réunion</h2><p style="margin:0">${analysis.nextMeeting}</p>` : ''}
-${analysis.notes ? `<h2>Notes complémentaires</h2><p style="margin:0">${analysis.notes}</p>` : ''}
+${analysis.nextMeeting ? `<h2>${t('notes.meeting.nextMeeting')}</h2><p style="margin:0">${analysis.nextMeeting}</p>` : ''}
+${analysis.notes ? `<h2>${t('notes.meeting.extraNotes')}</h2><p style="margin:0">${analysis.notes}</p>` : ''}
 
 ${transcript.trim() ? `
-<h2>Transcription complète</h2>
+<h2>${t('notes.meeting.fullTranscript')}</h2>
 <div class="transcript-box">${transcript.trim()}</div>` : ''}
 
-<div class="footer">Compte-rendu généré par Neurix IA · ${meetingDate}</div>
+<div class="footer">${t('common.brand.name')} · ${meetingDate}</div>
 </body></html>`;
 
   const win = window.open('', '_blank', 'width=900,height=700');
@@ -293,9 +304,11 @@ ${transcript.trim() ? `
 function UploadProgressRow({
   percent,
   phase,
+  t,
 }: {
   percent: number | null;
   phase: 'uploading' | 'processing';
+  t: TranslateFn;
 }) {
   const isIndeterminate = percent === null;
   const display = isIndeterminate ? null : Math.max(0, Math.min(100, percent ?? 0));
@@ -315,10 +328,10 @@ function UploadProgressRow({
       </div>
       <p className="text-[10px] tabular-nums text-slate-400">
         {phase === 'processing'
-          ? 'Traitement côté serveur…'
+          ? t('common.upload.serverProcessing')
           : isIndeterminate
-            ? 'Envoi en cours…'
-            : `Envoi ${display}%`}
+            ? t('common.upload.uploading')
+            : t('common.upload.uploadPercent', { percent: display ?? 0 })}
       </p>
     </div>
   );
@@ -344,6 +357,7 @@ export default function NotesSection({
   onCreditsUpdate,
   onBuyCredits,
 }: NotesSectionProps) {
+  const { t, dateLocale } = useI18n();
   const padHeader = compactLayout ? 'px-3 py-2 sm:px-4' : 'px-3 py-2.5 sm:px-5';
   const padContent = compactLayout ? 'p-3 sm:p-4' : 'p-4 sm:p-6';
 
@@ -420,7 +434,7 @@ export default function NotesSection({
     const Ctor = window.SpeechRecognition ?? window.webkitSpeechRecognition;
     if (!Ctor) return;
     const rec = new Ctor();
-    rec.lang = 'fr-FR';
+    rec.lang = dateLocale;
     rec.continuous = true;
     rec.interimResults = true;
 
@@ -454,7 +468,7 @@ export default function NotesSection({
     rec.onerror = () => {};
     meetingRecRef.current = rec;
     try { rec.start(); } catch { /* already started */ }
-  }, []);
+  }, [dateLocale]);
 
   const toggleMeetingRecording = useCallback(() => {
     if (meetingRecording) {
@@ -475,11 +489,11 @@ export default function NotesSection({
     setMeetingNoCredits(false);
     try {
       const dateLabel = meetingDate
-        ? new Date(meetingDate).toLocaleString('fr-FR', {
+        ? new Date(meetingDate).toLocaleString(dateLocale, {
             day: 'numeric', month: 'long', year: 'numeric',
             hour: '2-digit', minute: '2-digit',
           })
-        : new Date().toLocaleString('fr-FR');
+        : new Date().toLocaleString(dateLocale);
       const res = await fetch('/api/meeting/analyze', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -492,28 +506,28 @@ export default function NotesSection({
           setMeetingNoCredits(true);
           if (typeof data.creditsRemaining === 'number') onCreditsUpdate?.(data.creditsRemaining);
         }
-        throw new Error(data.error ?? 'Erreur serveur');
+        throw new Error(data.error ?? t('common.errors.generic'));
       }
-      if (!data.analysis) throw new Error('Réponse IA invalide');
+      if (!data.analysis) throw new Error(t('notes.meeting.invalidAiResponse'));
       setMeetingAnalysis(data.analysis as MeetingAnalysis);
       if (typeof data.creditsRemaining === 'number') {
         onCreditsUpdate?.(data.creditsRemaining);
       }
     } catch (e: unknown) {
-      setMeetingError(e instanceof Error ? e.message : 'Analyse impossible');
+      setMeetingError(e instanceof Error ? e.message : t('common.errors.unknown'));
     } finally {
       setMeetingAnalyzing(false);
     }
-  }, [meetingTranscript, meetingDate, meetingTitle, onCreditsUpdate]);
+  }, [meetingTranscript, meetingDate, meetingTitle, onCreditsUpdate, dateLocale, t]);
 
   const saveMeetingAsNote = useCallback(async () => {
     if (!meetingTranscript.trim() && !meetingAnalysis) return;
     const dateLabel = meetingDate
-      ? new Date(meetingDate).toLocaleString('fr-FR', {
+      ? new Date(meetingDate).toLocaleString(dateLocale, {
           day: 'numeric', month: 'long', year: 'numeric',
           hour: '2-digit', minute: '2-digit',
         })
-      : new Date().toLocaleString('fr-FR');
+      : new Date().toLocaleString(dateLocale);
 
     if (meetingAnalysis) {
       const lines: string[] = [];
@@ -521,23 +535,27 @@ export default function NotesSection({
       lines.push('');
       lines.push(`📝 ${meetingAnalysis.summary}`);
       if (meetingAnalysis.participants.length > 0)
-        lines.push(`\n👥 Participants : ${meetingAnalysis.participants.join(', ')}`);
+        lines.push(`\n👥 ${t('notes.meeting.participantsLine', { names: meetingAnalysis.participants.join(', ') })}`);
       if (meetingAnalysis.keyPoints.length > 0) {
-        lines.push('\n🔑 Points clés :');
+        lines.push(`\n🔑 ${t('notes.meeting.keyPoints')} :`);
         meetingAnalysis.keyPoints.forEach(k => lines.push(`  • ${k}`));
       }
       if (meetingAnalysis.decisions.length > 0) {
-        lines.push('\n✅ Décisions :');
+        lines.push(`\n✅ ${t('notes.meeting.decisions')} :`);
         meetingAnalysis.decisions.forEach(d => lines.push(`  • ${d}`));
       }
       if (meetingAnalysis.actionItems.length > 0) {
-        lines.push('\n🎯 Actions :');
+        lines.push(`\n🎯 ${t('notes.meeting.actions')} :`);
         meetingAnalysis.actionItems.forEach(a =>
           lines.push(`  • [${a.who}] ${a.what}${a.deadline ? ` → ${a.deadline}` : ''}`)
         );
       }
-      if (meetingAnalysis.nextMeeting) lines.push(`\n📆 Prochaine réunion : ${meetingAnalysis.nextMeeting}`);
-      if (meetingTranscript.trim()) lines.push(`\n📄 Transcription :\n${meetingTranscript.trim()}`);
+      if (meetingAnalysis.nextMeeting) {
+        lines.push(`\n📆 ${t('notes.meeting.nextMeeting')} : ${meetingAnalysis.nextMeeting}`);
+      }
+      if (meetingTranscript.trim()) {
+        lines.push(`\n📄 ${t('notes.meeting.fullTranscript')} :\n${meetingTranscript.trim()}`);
+      }
 
       await onAdd({
         title: meetingAnalysis.title,
@@ -547,8 +565,8 @@ export default function NotesSection({
         reminderByEmail: false,
       });
     } else {
-      const title = meetingTitle?.trim() || `Réunion du ${dateLabel}`;
-      const content = `📅 ${dateLabel}\n\n📄 Transcription :\n${meetingTranscript.trim()}`;
+      const title = meetingTitle?.trim() || t('notes.meeting.defaultTitle', { date: dateLabel });
+      const content = `📅 ${dateLabel}\n\n📄 ${t('notes.meeting.fullTranscript')} :\n${meetingTranscript.trim()}`;
       await onAdd({
         title,
         content,
@@ -558,7 +576,7 @@ export default function NotesSection({
       });
     }
     closeMeetingModal();
-  }, [meetingAnalysis, meetingDate, meetingTitle, meetingTranscript, onAdd, closeMeetingModal]);
+  }, [meetingAnalysis, meetingDate, meetingTitle, meetingTranscript, onAdd, closeMeetingModal, dateLocale, t]);
 
   const uploadsSupported = !!onUploadAsset && !isGuest;
 
@@ -610,14 +628,14 @@ export default function NotesSection({
         /* On nettoie l’indicateur après un court délai pour laisser voir le 100%. */
         window.setTimeout(() => setEditingUpload(null), 800);
       } catch (e: unknown) {
-        const msg = e instanceof Error ? e.message : 'Upload impossible';
+        const msg = e instanceof Error ? e.message : t('common.upload.uploadFailed');
         setAssetError(msg);
         setEditingUpload(prev => (prev ? { ...prev, status: { kind: 'error', message: msg } } : prev));
       } finally {
         setAssetBusy(false);
       }
     },
-    [editingNote, onUploadAsset],
+    [editingNote, onUploadAsset, t],
   );
 
   const handleEditingDeleteAsset = useCallback(
@@ -629,12 +647,12 @@ export default function NotesSection({
         const updated = await onDeleteAsset(editingNote.id, assetId);
         setEditingNote(updated);
       } catch (e: unknown) {
-        setAssetError(e instanceof Error ? e.message : 'Suppression impossible');
+        setAssetError(e instanceof Error ? e.message : t('notes.errors.deleteFailed', { status: '?' }));
       } finally {
         setAssetBusy(false);
       }
     },
-    [editingNote, onDeleteAsset],
+    [editingNote, onDeleteAsset, t],
   );
 
   const filtered = useMemo(() => {
@@ -713,7 +731,7 @@ export default function NotesSection({
         ...sharePayload,
       });
     } catch (e: unknown) {
-      setAssetError(e instanceof Error ? e.message : 'Création impossible');
+      setAssetError(e instanceof Error ? e.message : t('notes.meeting.createFailed'));
       return;
     }
 
@@ -745,7 +763,7 @@ export default function NotesSection({
             return next;
           });
         } catch (e: unknown) {
-          const msg = e instanceof Error ? e.message : 'Upload impossible';
+          const msg = e instanceof Error ? e.message : t('common.upload.uploadFailed');
           if (!firstError) firstError = msg;
           setDraftStatuses(prev => {
             const next = [...prev];
@@ -756,7 +774,7 @@ export default function NotesSection({
       }
       setAssetBusy(false);
       if (firstError) {
-        setAssetError(`Note créée, mais une pièce jointe a échoué : ${firstError}`);
+        setAssetError(t('notes.meeting.attachmentAfterCreate', { error: firstError }));
         return;
       }
     }
@@ -787,7 +805,7 @@ export default function NotesSection({
     setForm(f => ({ ...f, content: text }));
   }, []);
 
-  const { recording, supported, toggle: toggleMic } = useSpeechRecognition(handleTranscript);
+  const { recording, supported, toggle: toggleMic } = useSpeechRecognition(handleTranscript, dateLocale);
 
   /* Auto-focus content textarea when modal opens */
   useEffect(() => {
@@ -803,11 +821,13 @@ export default function NotesSection({
         className={`flex min-h-[2.75rem] flex-shrink-0 items-center gap-2 border-b border-slate-700 ${padHeader}`}
       >
         <div className="shrink-0 leading-tight">
-          <h2 className="text-sm font-bold text-white sm:text-base">Notes</h2>
+          <h2 className="text-sm font-bold text-white sm:text-base">{t('notes.header.title')}</h2>
           <p className="text-[10px] text-slate-500 sm:text-xs">
-            {notes.length} idée{notes.length !== 1 ? 's' : ''}
+            {notes.length === 1
+              ? t('notes.header.ideaCountOne')
+              : t('notes.header.ideaCountMany', { count: notes.length })}
             {filtered.length !== notes.length ? (
-              <span className="text-indigo-400/90"> · {filtered.length} aff.</span>
+              <span className="text-indigo-400/90"> · {filtered.length} {t('common.status.filtered')}</span>
             ) : null}
           </p>
         </div>
@@ -823,14 +843,14 @@ export default function NotesSection({
               type="text"
               value={search}
               onChange={e => setSearch(e.target.value)}
-              placeholder="Rechercher…"
+              placeholder={t('notes.header.searchPlaceholder')}
               className="w-full rounded-xl border border-slate-700 bg-slate-800 py-2 pl-8 pr-2 text-xs text-slate-200 placeholder-slate-500 transition-colors focus:border-indigo-500 focus:outline-none sm:py-2 sm:pl-9 sm:pr-3 sm:text-sm"
             />
           </div>
           {upcomingReminders.length > 0 ? (
             <div
               className="flex min-h-0 min-w-0 flex-1 items-center gap-1 overflow-x-auto py-0.5 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
-              aria-label="Prochains rappels"
+              aria-label={t('notes.header.upcomingReminders')}
             >
               {upcomingReminders.map(n => (
                 <button
@@ -855,31 +875,31 @@ export default function NotesSection({
         {showWhatsAppSection ? (
           <details className="group relative shrink-0">
             <summary className="cursor-pointer list-none rounded-xl border border-slate-600 bg-slate-800/90 px-2 py-1.5 text-[10px] font-medium text-slate-300 marker:content-none transition-colors hover:border-slate-500 hover:bg-slate-700/80 sm:px-2.5 sm:text-xs [&::-webkit-details-marker]:hidden">
-              <span className="hidden sm:inline">WhatsApp</span>
+              <span className="hidden sm:inline">{t('notes.whatsapp.label')}</span>
               <span className="sm:hidden" aria-hidden>
-                WA
+                {t('notes.whatsapp.labelShort')}
               </span>
             </summary>
             <div className="absolute right-0 top-[calc(100%+0.35rem)] z-40 w-[min(calc(100vw-1rem),22rem)] rounded-xl border border-slate-600 bg-slate-800 p-3 shadow-2xl sm:left-auto sm:right-0">
-              <p className="mb-2 text-[11px] font-semibold text-slate-400">Rappels via WhatsApp (optionnel)</p>
+              <p className="mb-2 text-[11px] font-semibold text-slate-400">{t('notes.whatsapp.sectionTitle')}</p>
               <label className="block text-[11px] font-medium text-slate-500">
-                Votre numéro (indicatif pays, sans +)
+                {t('notes.whatsapp.phoneLabel')}
               </label>
               <input
                 type="tel"
                 inputMode="tel"
                 autoComplete="tel"
-                placeholder="ex. 33612345678"
+                placeholder={t('notes.whatsapp.phonePlaceholder')}
                 value={whatsappPhone}
                 onChange={e => onWhatsappPhoneChange(e.target.value)}
                 className="mt-1 w-full rounded-xl border border-slate-600 bg-slate-900 px-3 py-2 text-sm text-slate-200 placeholder-slate-600 focus:border-emerald-500/80 focus:outline-none"
               />
               {whatsappPhone && !normalizeWhatsAppPhone(whatsappPhone) ? (
-                <p className="mt-1 text-[11px] text-amber-500/90">10 à 15 chiffres attendus (indicatif inclus).</p>
+                <p className="mt-1 text-[11px] text-amber-500/90">{t('notes.whatsapp.phoneInvalid')}</p>
               ) : null}
               {whatsappPhone && normalizeWhatsAppPhone(whatsappPhone) ? (
                 <p className="mt-1 text-[11px] text-emerald-500/90">
-                  Numéro reconnu — au rappel, un message sera prêt dans WhatsApp.
+                  {t('notes.whatsapp.phoneValid')}
                 </p>
               ) : null}
               <label className="mt-2 flex cursor-pointer items-start gap-2">
@@ -890,13 +910,11 @@ export default function NotesSection({
                   className="mt-0.5 rounded border-slate-600"
                 />
                 <span className="text-[11px] leading-snug text-slate-500">
-                  Ouvrir WhatsApp automatiquement au rappel si les notifications sont désactivées (peut être bloqué par
-                  le navigateur).
+                  {t('notes.whatsapp.autoOpen')}
                 </span>
               </label>
               <p className="mt-2 text-[10px] leading-relaxed text-slate-600">
-                Une conversation s’ouvre avec le texte du rappel. Les notifications du navigateur, si activées,
-                ouvrent aussi WhatsApp.
+                {t('notes.whatsapp.help')}
               </p>
             </div>
           </details>
@@ -905,11 +923,11 @@ export default function NotesSection({
         <button
           type="button"
           onClick={openMeetingModal}
-          title="Enregistrer une réunion avec IA"
+          title={t('notes.actions.meetingAiTitle')}
           className="flex shrink-0 touch-manipulation items-center justify-center gap-1.5 rounded-xl border border-violet-500/40 bg-violet-500/15 px-3 py-1.5 text-xs font-medium text-violet-200 transition-all hover:bg-violet-500/25 sm:gap-2 sm:px-3 sm:text-sm"
         >
           <IconSparkles className="h-4 w-4 shrink-0" />
-          <span className="hidden sm:inline">Réunion IA</span>
+          <span className="hidden sm:inline">{t('notes.actions.meetingAi')}</span>
         </button>
 
         <button
@@ -918,7 +936,7 @@ export default function NotesSection({
           className="flex shrink-0 touch-manipulation items-center justify-center gap-1.5 rounded-xl bg-indigo-500 px-3 py-1.5 text-xs font-medium text-white shadow-md shadow-indigo-500/20 transition-all hover:bg-indigo-400 sm:gap-2 sm:px-4 sm:text-sm"
         >
           <IconPlus className="h-4 w-4 shrink-0" />
-          <span className="hidden sm:inline">Nouvelle idée</span>
+          <span className="hidden sm:inline">{t('notes.actions.newIdea')}</span>
         </button>
       </div>
 
@@ -929,15 +947,15 @@ export default function NotesSection({
             <div className="mb-5 flex justify-center">
               <IconLightBulb className="h-20 w-20 text-slate-600" aria-hidden />
             </div>
-            <h3 className="text-lg font-semibold text-slate-300 mb-2">Aucune idée pour l&apos;instant</h3>
+            <h3 className="text-lg font-semibold text-slate-300 mb-2">{t('notes.empty.none')}</h3>
             <p className="text-slate-500 mb-6 max-w-xs">
-              Capturez vos premières idées avant qu&apos;elles ne s&apos;envolent !
+              {t('notes.empty.noneHint')}
             </p>
             <button
               onClick={openAdd}
               className="bg-indigo-500 hover:bg-indigo-400 text-white px-5 py-2.5 rounded-xl text-sm font-medium transition-all shadow-lg shadow-indigo-500/20"
             >
-              Ajouter ma première idée
+              {t('notes.actions.addFirstIdea')}
             </button>
           </div>
         ) : filtered.length === 0 ? (
@@ -945,7 +963,7 @@ export default function NotesSection({
             <div className="mb-3 flex justify-center">
               <IconSearch className="h-12 w-12 text-slate-600" aria-hidden />
             </div>
-            <p>Aucune note ne correspond à &quot;{search}&quot;</p>
+            <p>{t('notes.empty.search', { query: search })}</p>
           </div>
         ) : (
           <div className="space-y-6">
@@ -953,7 +971,7 @@ export default function NotesSection({
               <section>
                 <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3 flex items-center gap-2">
                   <IconPin className="h-3.5 w-3.5 text-amber-500/80" />
-                  Épinglées
+                  {t('notes.sections.pinned')}
                 </p>
                 <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
                   {pinned.map(note => (
@@ -980,7 +998,7 @@ export default function NotesSection({
               <section>
                 {pinned.length > 0 && (
                   <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3">
-                    Toutes les notes
+                    {t('notes.sections.all')}
                   </p>
                 )}
                 <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
@@ -1029,12 +1047,12 @@ export default function NotesSection({
                 {editingNote ? (
                   <>
                     <IconPencil className="h-5 w-5 text-indigo-400" />
-                    Modifier la note
+                    {t('notes.modal.editTitle')}
                   </>
                 ) : (
                   <>
                     <IconLightBulb className="h-5 w-5 text-indigo-400" />
-                    Nouvelle idée
+                    {t('notes.modal.newTitle')}
                   </>
                 )}
               </h3>
@@ -1047,7 +1065,7 @@ export default function NotesSection({
                 }}
                 disabled={assetBusy}
                 className="text-slate-500 hover:text-slate-300 transition-colors w-7 h-7 flex items-center justify-center rounded-lg hover:bg-slate-700 disabled:opacity-40"
-                aria-label="Fermer"
+                aria-label={t('common.aria.close')}
               >
                 <IconX className="h-5 w-5" />
               </button>
@@ -1058,14 +1076,14 @@ export default function NotesSection({
               {/* Title */}
               <div>
                 <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">
-                  Titre *
+                  {t('notes.modal.titleLabel')}
                 </label>
                 <input
                   type="text"
                   value={form.title}
                   onChange={e => setForm(f => ({ ...f, title: e.target.value }))}
                   onKeyDown={e => { if (e.key === 'Enter') contentRef.current?.focus(); }}
-                  placeholder="Titre de l'idée..."
+                  placeholder={t('notes.modal.titlePlaceholder')}
                   className="w-full bg-slate-700 border border-slate-600 rounded-xl px-4 py-2.5 text-sm text-slate-200 placeholder-slate-500 focus:outline-none focus:border-indigo-500 transition-colors"
                   autoFocus
                 />
@@ -1075,7 +1093,7 @@ export default function NotesSection({
               <div>
                 <div className="flex items-center justify-between mb-2">
                   <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider">
-                    Contenu
+                    {t('notes.modal.contentLabel')}
                   </label>
 
                   {/* Mic button */}
@@ -1088,17 +1106,17 @@ export default function NotesSection({
                           ? 'bg-red-500 hover:bg-red-400 text-white shadow-lg shadow-red-500/30 animate-pulse'
                           : 'bg-slate-700 hover:bg-slate-600 text-slate-300 border border-slate-600'
                       }`}
-                      title={recording ? "Arrêter l'enregistrement" : 'Dicter mon idée'}
+                      title={recording ? t('notes.modal.stopRecording') : t('notes.modal.dictateTitle')}
                     >
                       {recording ? (
                         <>
                           <span className="w-2 h-2 bg-white rounded-full" />
-                          <span>Écoute…</span>
+                          <span>{t('notes.modal.listening')}</span>
                         </>
                       ) : (
                         <>
                           <IconMicrophone className="h-3.5 w-3.5" />
-                          <span>Dicter</span>
+                          <span>{t('notes.modal.dictating')}</span>
                         </>
                       )}
                     </button>
@@ -1112,8 +1130,8 @@ export default function NotesSection({
                     onChange={e => setForm(f => ({ ...f, content: e.target.value }))}
                     placeholder={
                       recording
-                        ? 'Parlez maintenant, votre texte apparaît ici…'
-                        : 'Développez votre idée ici, ou utilisez le bouton Dicter.'
+                        ? t('notes.modal.contentPlaceholderRecording')
+                        : t('notes.modal.contentPlaceholder')
                     }
                     rows={7}
                     className={`w-full bg-slate-700 border rounded-xl px-4 py-3 text-sm text-slate-200 placeholder-slate-500 focus:outline-none resize-none transition-colors ${
@@ -1141,7 +1159,7 @@ export default function NotesSection({
                 {recording && (
                   <p className="text-xs text-red-400/80 mt-1.5 flex items-center gap-1">
                     <span className="w-1.5 h-1.5 bg-red-400 rounded-full animate-pulse" />
-                    Enregistrement en cours — cliquez sur &quot;Écoute…&quot; pour arrêter
+                    {t('notes.modal.recordingHint')}
                   </p>
                 )}
               </div>
@@ -1149,7 +1167,7 @@ export default function NotesSection({
               {/* Photos & documents */}
               <div className="rounded-xl border border-slate-600/80 bg-slate-800/50 p-3">
                 <label className="mb-2 block text-xs font-semibold uppercase tracking-wider text-slate-400">
-                  Photos & documents
+                  {t('notes.modal.attachmentsLabel')}
                 </label>
                 {uploadsSupported ? (
                   <>
@@ -1161,7 +1179,7 @@ export default function NotesSection({
                         className="flex items-center justify-center gap-1.5 rounded-lg border border-slate-600 bg-slate-900/60 px-3 py-2 text-xs font-medium text-slate-200 transition-colors hover:border-indigo-500/60 hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
                       >
                         <IconCamera className="h-4 w-4 text-indigo-300" />
-                        Prendre une photo
+                        {t('notes.modal.takePhoto')}
                       </button>
                       <button
                         type="button"
@@ -1170,7 +1188,7 @@ export default function NotesSection({
                         className="flex items-center justify-center gap-1.5 rounded-lg border border-slate-600 bg-slate-900/60 px-3 py-2 text-xs font-medium text-slate-200 transition-colors hover:border-indigo-500/60 hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
                       >
                         <IconPaperclip className="h-4 w-4 text-indigo-300" />
-                        Photo / document
+                        {t('notes.modal.addPhotoDoc')}
                       </button>
                     </div>
                     <input
@@ -1221,10 +1239,11 @@ export default function NotesSection({
                             <UploadProgressRow
                               percent={editingUpload.status.percent}
                               phase={editingUpload.status.phase}
+                              t={t}
                             />
                           ) : editingUpload.status.kind === 'done' ? (
                             <p className="text-[11px] font-medium text-emerald-300">
-                              ✓ Téléversé
+                              {t('common.status.uploaded')}
                             </p>
                           ) : editingUpload.status.kind === 'error' ? (
                             <p className="text-[11px] text-red-300">
@@ -1248,7 +1267,7 @@ export default function NotesSection({
                                 type="button"
                                 onClick={() => setLightboxUrl(asset.url)}
                                 className="h-9 w-9 shrink-0 overflow-hidden rounded border border-slate-700 bg-slate-800"
-                                title="Aperçu"
+                                title={t('common.actions.preview')}
                               >
                                 <img
                                   src={asset.url}
@@ -1266,7 +1285,7 @@ export default function NotesSection({
                                 {asset.originalName}
                               </p>
                               <p className="text-[10px] text-slate-500">
-                                {isImageAsset(asset) ? 'Image' : 'Document'} · {formatBytes(asset.bytes)}
+                                {isImageAsset(asset) ? t('common.fileTypes.image') : t('common.fileTypes.document')} · {formatBytes(asset.bytes)}
                               </p>
                             </div>
                             {isPdfAsset(asset) ? (
@@ -1275,7 +1294,7 @@ export default function NotesSection({
                                 onClick={() => setPdfViewer({ url: asset.url, name: asset.originalName })}
                                 className="rounded-md border border-slate-600 px-2 py-1 text-[10px] text-slate-300 hover:border-slate-500 hover:text-slate-100"
                               >
-                                Ouvrir
+                                {t('common.actions.open')}
                               </button>
                             ) : (
                               <a
@@ -1284,7 +1303,7 @@ export default function NotesSection({
                                 rel="noreferrer"
                                 className="rounded-md border border-slate-600 px-2 py-1 text-[10px] text-slate-300 hover:border-slate-500 hover:text-slate-100"
                               >
-                                Ouvrir
+                                {t('common.actions.open')}
                               </a>
                             )}
                             {onDeleteAsset && isNoteOwner(editingNote, currentUser.id) ? (
@@ -1293,7 +1312,7 @@ export default function NotesSection({
                                 onClick={() => void handleEditingDeleteAsset(asset.id)}
                                 disabled={assetBusy}
                                 className="rounded-md p-1 text-slate-500 hover:bg-red-500/15 hover:text-red-300 disabled:opacity-50"
-                                title="Supprimer"
+                                title={t('common.actions.delete')}
                               >
                                 <IconTrash className="h-3.5 w-3.5" />
                               </button>
@@ -1336,9 +1355,9 @@ export default function NotesSection({
                                 <div className="min-w-0 flex-1">
                                   <p className="truncate text-xs font-medium text-slate-200">{p.file.name}</p>
                                   <p className="text-[10px] text-slate-500">
-                                    {p.isImage ? 'Image' : 'Document'} · {formatBytes(p.file.size)}
-                                    {status.kind === 'pending' ? ' · en attente' : ''}
-                                    {status.kind === 'done' ? ' · ✓ envoyé' : ''}
+                                    {p.isImage ? t('common.fileTypes.image') : t('common.fileTypes.document')} · {formatBytes(p.file.size)}
+                                    {status.kind === 'pending' ? ` · ${t('common.status.pending')}` : ''}
+                                    {status.kind === 'done' ? ` · ${t('common.status.sent')}` : ''}
                                   </p>
                                 </div>
                                 {showRemove ? (
@@ -1346,7 +1365,7 @@ export default function NotesSection({
                                     type="button"
                                     onClick={() => removeDraft(i)}
                                     className="rounded-md p-1 text-slate-500 hover:bg-red-500/15 hover:text-red-300"
-                                    title="Retirer"
+                                    title={t('common.actions.remove')}
                                   >
                                     <IconX className="h-3.5 w-3.5" />
                                   </button>
@@ -1354,7 +1373,7 @@ export default function NotesSection({
                               </div>
                               {status.kind === 'uploading' ? (
                                 <div className="mt-2">
-                                  <UploadProgressRow percent={status.percent} phase={status.phase} />
+                                  <UploadProgressRow percent={status.percent} phase={status.phase} t={t} />
                                 </div>
                               ) : null}
                               {status.kind === 'error' ? (
@@ -1365,7 +1384,7 @@ export default function NotesSection({
                         })}
                         {draftStatuses.every(s => s.kind === 'pending') ? (
                           <p className="text-[10px] text-slate-500">
-                            Les pièces seront envoyées automatiquement après création de la note.
+                            {t('notes.modal.attachmentsPendingHint')}
                           </p>
                         ) : null}
                       </ul>
@@ -1373,15 +1392,15 @@ export default function NotesSection({
 
                     {!editingNote && draftPreviews.length === 0 ? (
                       <p className="mt-2 text-[11px] leading-snug text-slate-500">
-                        Photographiez un tableau, un croquis ou joignez un PDF / document. Maximum 50 Mo par fichier.
+                        {t('notes.modal.attachmentsHint')}
                       </p>
                     ) : null}
                   </>
                 ) : (
                   <p className="text-[11px] leading-snug text-slate-500">
                     {isGuest
-                      ? 'Connectez-vous pour ajouter des photos ou des documents à vos notes.'
-                      : 'Téléversement non disponible.'}
+                      ? t('notes.modal.guestUploadBlocked')
+                      : t('notes.modal.uploadUnavailable')}
                   </p>
                 )}
               </div>
@@ -1389,14 +1408,14 @@ export default function NotesSection({
               {!isGuest && (editingNote ? isNoteOwner(editingNote, currentUser.id) : true) ? (
                 <div className="rounded-xl border border-slate-600/80 bg-slate-800/50 p-3">
                   <label className="mb-2 block text-xs font-semibold uppercase tracking-wider text-slate-400">
-                    Partager en lecture
+                    {t('notes.modal.shareReadOnly')}
                   </label>
                   <p className="mb-2 text-[11px] leading-snug text-slate-500">
-                    Les collaborateurs cochés voient cette idée dans leurs notes (sans pouvoir la modifier).
+                    {t('notes.modal.shareHint')}
                   </p>
                   {collaborators.filter(c => c.id !== currentUser.id).length === 0 ? (
                     <p className="text-[11px] text-slate-600">
-                      Ajoutez des collaborateurs (menu Collaborateurs) pour pouvoir partager.
+                      {t('notes.modal.shareNoCollaborators')}
                     </p>
                   ) : (
                     <div className="max-h-36 space-y-2 overflow-y-auto pr-1">
@@ -1440,7 +1459,7 @@ export default function NotesSection({
               {/* Rappel */}
               <div className="rounded-xl border border-slate-600/80 bg-slate-800/50 p-3">
                 <label className="mb-2 block text-xs font-semibold uppercase tracking-wider text-slate-400">
-                  Rappel (optionnel)
+                  {t('notes.modal.reminderLabel')}
                 </label>
                 <input
                   type="datetime-local"
@@ -1456,8 +1475,7 @@ export default function NotesSection({
                   className="w-full rounded-xl border border-slate-600 bg-slate-700 px-3 py-2.5 text-sm text-slate-200 focus:border-amber-500 focus:outline-none"
                 />
                 <p className="mt-1.5 text-[11px] leading-snug text-slate-500">
-                  Vous recevrez une notification à l&apos;heure prévue (navigateur ou bannière dans l&apos;app). Autorisez les
-                  notifications si demandé.
+                  {t('notes.modal.reminderHint')}
                 </p>
                 {!isGuest && form.remindLocal ? (
                   <label className="mt-3 flex cursor-pointer items-start gap-2 rounded-lg border border-slate-600/60 bg-slate-800/80 p-2.5">
@@ -1468,15 +1486,13 @@ export default function NotesSection({
                       className="mt-0.5 rounded border-slate-600"
                     />
                     <span className="text-[11px] leading-snug text-slate-400">
-                      <span className="font-medium text-slate-300">E-mail dans ma boîte</span> — à l&apos;heure du rappel,
-                      envoi automatique sur <span className="text-indigo-400">{currentUser.email}</span> (SMTP + cron
-                      serveur).
+                      {t('notes.modal.reminderEmail', { email: currentUser.email })}
                     </span>
                   </label>
                 ) : null}
                 {isGuest && form.remindLocal ? (
                   <p className="mt-2 text-[11px] text-slate-600">
-                    Connectez-vous pour recevoir aussi le rappel par e-mail sur votre compte.
+                    {t('notes.modal.reminderGuestEmail')}
                   </p>
                 ) : null}
                 {form.remindLocal && (
@@ -1485,7 +1501,7 @@ export default function NotesSection({
                     onClick={() => setForm(f => ({ ...f, remindLocal: '', reminderByEmail: false }))}
                     className="mt-2 text-xs text-amber-400/90 hover:text-amber-300"
                   >
-                    Effacer le rappel
+                    {t('notes.modal.clearReminder')}
                   </button>
                 )}
               </div>
@@ -1498,7 +1514,7 @@ export default function NotesSection({
                 disabled={assetBusy}
                 className="px-4 py-2 text-sm text-slate-400 hover:text-slate-200 transition-colors rounded-lg hover:bg-slate-700 disabled:opacity-50"
               >
-                Annuler
+                {t('common.actions.cancel')}
               </button>
               <button
                 onClick={() => void handleSubmit()}
@@ -1506,12 +1522,12 @@ export default function NotesSection({
                 className="bg-indigo-500 hover:bg-indigo-400 disabled:opacity-50 disabled:cursor-not-allowed text-white px-5 py-2 rounded-xl text-sm font-medium transition-all shadow-lg shadow-indigo-500/20"
               >
                 {assetBusy
-                  ? 'Envoi…'
+                  ? t('notes.modal.sending')
                   : editingNote
-                    ? 'Enregistrer'
+                    ? t('notes.modal.save')
                     : draftAssets.length > 0
-                      ? `Ajouter (+${draftAssets.length})`
-                      : 'Ajouter'}
+                      ? t('notes.modal.addWithAttachments', { count: draftAssets.length })
+                      : t('notes.modal.add')}
               </button>
             </div>
           </div>
@@ -1532,14 +1548,14 @@ export default function NotesSection({
             <div className="flex items-center justify-between border-b border-slate-700 px-5 py-4">
               <h3 className="flex items-center gap-2 font-semibold text-white">
                 <IconSparkles className="h-5 w-5 text-violet-400" />
-                Réunion IA — Enregistrement &amp; Analyse
+                {t('notes.meeting.title')}
               </h3>
               <button
                 type="button"
                 onClick={closeMeetingModal}
                 disabled={meetingAnalyzing}
                 className="flex h-7 w-7 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-700 hover:text-slate-300 disabled:opacity-40"
-                aria-label="Fermer"
+                aria-label={t('common.aria.close')}
               >
                 <IconX className="h-5 w-5" />
               </button>
@@ -1561,13 +1577,13 @@ export default function NotesSection({
                 </div>
                 <div>
                   <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-slate-400">
-                    Titre (optionnel)
+                    {t('common.labels.title')} ({t('common.labels.optional')})
                   </label>
                   <input
                     type="text"
                     value={meetingTitle}
                     onChange={e => setMeetingTitle(e.target.value)}
-                    placeholder="Ex. : Réunion hebdomadaire équipe…"
+                    placeholder={t('notes.meeting.titlePlaceholder')}
                     className="w-full rounded-xl border border-slate-600 bg-slate-700 px-3 py-2.5 text-sm text-slate-200 placeholder-slate-500 focus:border-violet-500 focus:outline-none"
                   />
                 </div>
@@ -1590,7 +1606,7 @@ export default function NotesSection({
                     }`}
                   >
                     <IconMicrophone className="h-3.5 w-3.5 shrink-0" />
-                    {meetingRecording ? 'Arrêter' : 'Démarrer l\'enregistrement'}
+                    {meetingRecording ? t('notes.meeting.stopRecording') : t('notes.meeting.startRecording')}
                   </button>
                 </div>
 
@@ -1607,7 +1623,7 @@ export default function NotesSection({
                     meetingBaseRef.current = e.target.value;
                     setMeetingTranscript(e.target.value);
                   }}
-                  placeholder="La transcription apparaît ici automatiquement… Vous pouvez aussi la corriger ou la coller manuellement."
+                  placeholder={t('notes.meeting.transcriptionPlaceholder')}
                   rows={8}
                   className={`w-full resize-none rounded-xl border px-4 py-3 text-sm text-slate-200 placeholder-slate-500 focus:outline-none ${
                     meetingRecording
@@ -1653,7 +1669,7 @@ export default function NotesSection({
 
                   {meetingAnalysis.participants.length > 0 && (
                     <div>
-                      <p className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-slate-500">Participants</p>
+                      <p className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-slate-500">{t('notes.meeting.participants')}</p>
                       <div className="flex flex-wrap gap-1.5">
                         {meetingAnalysis.participants.map((p, i) => (
                           <span key={i} className="rounded-full border border-violet-500/25 bg-violet-500/15 px-2.5 py-0.5 text-[11px] font-medium text-violet-200">
@@ -1666,7 +1682,7 @@ export default function NotesSection({
 
                   {meetingAnalysis.keyPoints.length > 0 && (
                     <div>
-                      <p className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-slate-500">Points clés</p>
+                      <p className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-slate-500">{t('notes.meeting.keyPoints')}</p>
                       <ul className="space-y-1">
                         {meetingAnalysis.keyPoints.map((k, i) => (
                           <li key={i} className="flex gap-2 text-xs text-slate-300">
@@ -1679,7 +1695,7 @@ export default function NotesSection({
 
                   {meetingAnalysis.decisions.length > 0 && (
                     <div>
-                      <p className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-slate-500">Décisions</p>
+                      <p className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-slate-500">{t('notes.meeting.decisions')}</p>
                       <ul className="space-y-1">
                         {meetingAnalysis.decisions.map((d, i) => (
                           <li key={i} className="flex gap-2 text-xs text-slate-300">
@@ -1692,7 +1708,7 @@ export default function NotesSection({
 
                   {meetingAnalysis.actionItems.length > 0 && (
                     <div>
-                      <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-slate-500">Actions à réaliser</p>
+                      <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-slate-500">{t('notes.meeting.actions')}</p>
                       <div className="space-y-1.5">
                         {meetingAnalysis.actionItems.map((a, i) => (
                           <div key={i} className="flex flex-wrap items-start gap-x-2 rounded-lg border border-slate-700 bg-slate-900/50 px-3 py-1.5 text-xs">
@@ -1709,7 +1725,7 @@ export default function NotesSection({
 
                   {meetingAnalysis.nextMeeting && (
                     <p className="text-xs text-slate-400">
-                      <span className="font-semibold text-slate-300">Prochaine réunion :</span> {meetingAnalysis.nextMeeting}
+                      <span className="font-semibold text-slate-300">{t('notes.meeting.nextMeeting')} :</span> {meetingAnalysis.nextMeeting}
                     </p>
                   )}
                 </div>
@@ -1724,7 +1740,7 @@ export default function NotesSection({
                 disabled={meetingAnalyzing}
                 className="text-sm text-slate-400 hover:text-slate-200 disabled:opacity-50"
               >
-                Fermer
+                {t('common.actions.close')}
               </button>
               <div className="flex flex-wrap items-center gap-2">
                 {/* PDF export — only when analysis exists */}
@@ -1733,12 +1749,12 @@ export default function NotesSection({
                     type="button"
                     onClick={() => {
                       const dateLabel = meetingDate
-                        ? new Date(meetingDate).toLocaleString('fr-FR', {
+                        ? new Date(meetingDate).toLocaleString(dateLocale, {
                             day: 'numeric', month: 'long', year: 'numeric',
                             hour: '2-digit', minute: '2-digit',
                           })
-                        : new Date().toLocaleString('fr-FR');
-                      printMeetingPdf(meetingAnalysis, meetingTranscript, dateLabel);
+                        : new Date().toLocaleString(dateLocale);
+                      printMeetingPdf(meetingAnalysis, meetingTranscript, dateLabel, t);
                     }}
                     className="flex items-center gap-1.5 rounded-xl border border-slate-600 px-4 py-2 text-sm font-medium text-slate-300 hover:border-slate-500 hover:text-slate-100"
                   >
@@ -1756,7 +1772,7 @@ export default function NotesSection({
                     className="flex items-center gap-1.5 rounded-xl bg-emerald-600 px-4 py-2 text-sm font-semibold text-white transition-all hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     <IconLightBulb className="h-4 w-4" />
-                    {meetingAnalysis ? 'Sauvegarder comme note' : 'Sauvegarder la transcription'}
+                    {meetingAnalysis ? t('notes.meeting.saveAsNote') : t('notes.meeting.saveTranscription')}
                   </button>
                 )}
 
@@ -1769,7 +1785,7 @@ export default function NotesSection({
                     className="flex items-center gap-1.5 rounded-xl bg-violet-600 px-4 py-2 text-sm font-semibold text-white transition-all hover:bg-violet-500 disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     <IconSparkles className="h-4 w-4" />
-                    {meetingAnalyzing ? 'Analyse en cours…' : 'Analyser avec Claude IA (5 cr.)'}
+                    {meetingAnalyzing ? t('notes.meeting.analyzing') : t('notes.meeting.analyze')}
                   </button>
                 )}
               </div>
@@ -1788,7 +1804,7 @@ export default function NotesSection({
             type="button"
             onClick={() => setLightboxUrl(null)}
             className="absolute right-4 top-4 rounded-full bg-slate-900/80 p-2 text-white shadow-lg hover:bg-slate-800"
-            aria-label="Fermer l’aperçu"
+            aria-label={t('notes.preview.close')}
           >
             <IconX className="h-5 w-5" />
           </button>
@@ -1814,7 +1830,7 @@ export default function NotesSection({
                 download={pdfViewer.name}
                 className="rounded-lg border border-slate-600 px-3 py-1.5 text-xs text-slate-300 transition-colors hover:border-slate-500 hover:text-slate-100"
               >
-                Télécharger
+                {t('common.actions.download')}
               </a>
               <a
                 href={pdfViewer.url}
@@ -1822,13 +1838,13 @@ export default function NotesSection({
                 rel="noreferrer"
                 className="rounded-lg border border-slate-600 px-3 py-1.5 text-xs text-slate-300 transition-colors hover:border-slate-500 hover:text-slate-100"
               >
-                Ouvrir onglet
+                {t('common.actions.open')}
               </a>
               <button
                 type="button"
                 onClick={() => setPdfViewer(null)}
                 className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-700 hover:text-slate-300"
-                aria-label="Fermer"
+                aria-label={t('common.aria.close')}
               >
                 <IconX className="h-5 w-5" />
               </button>
@@ -1858,7 +1874,7 @@ export default function NotesSection({
                 type="button"
                 onClick={() => setPreviewNote(null)}
                 className="text-slate-500 hover:text-slate-300 w-7 h-7 flex items-center justify-center rounded-lg hover:bg-slate-700"
-                aria-label="Fermer"
+                aria-label={t('common.aria.close')}
               >
                 <IconX className="h-5 w-5" />
               </button>
@@ -1888,7 +1904,7 @@ export default function NotesSection({
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-sm font-medium text-slate-200">{asset.originalName}</p>
                     <p className="text-[11px] text-slate-500">
-                      {isImageAsset(asset) ? 'Image' : 'Document'} · {formatBytes(asset.bytes)}
+                      {isImageAsset(asset) ? t('common.fileTypes.image') : t('common.fileTypes.document')} · {formatBytes(asset.bytes)}
                     </p>
                   </div>
                   {isPdfAsset(asset) ? (
@@ -1897,7 +1913,7 @@ export default function NotesSection({
                       onClick={() => setPdfViewer({ url: asset.url, name: asset.originalName })}
                       className="rounded-md border border-slate-600 px-2 py-1 text-[11px] text-slate-300 hover:border-slate-500 hover:text-slate-100"
                     >
-                      Ouvrir
+                      {t('common.actions.open')}
                     </button>
                   ) : (
                     <a
@@ -1906,7 +1922,7 @@ export default function NotesSection({
                       rel="noreferrer"
                       className="rounded-md border border-slate-600 px-2 py-1 text-[11px] text-slate-300 hover:border-slate-500 hover:text-slate-100"
                     >
-                      Ouvrir
+                      {t('common.actions.open')}
                     </a>
                   )}
                 </li>
@@ -1952,6 +1968,7 @@ function NoteCard({
   onOpenAssets,
   onConvertToTask,
 }: NoteCardProps) {
+  const { t, dateLocale } = useI18n();
   const [hover, setHover] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [convertOpen, setConvertOpen] = useState(false);
@@ -1975,7 +1992,7 @@ function NoteCard({
       await onConvertToTask(note.id, { deleteOriginal });
       setConvertOpen(false);
     } catch (e: unknown) {
-      setConvertError(e instanceof Error ? e.message : 'Conversion impossible');
+      setConvertError(e instanceof Error ? e.message : t('notes.errors.convertFailed', { status: '?' }));
     } finally {
       setConverting(false);
     }
@@ -1999,12 +2016,12 @@ function NoteCard({
           >
             {note.ownerInitials ?? '?'}
           </span>
-          Idée partagée par {note.ownerName}
+          {t('notes.card.sharedBy', { name: note.ownerName ?? '' })}
         </p>
       ) : null}
       {isOwner && sharedNames.length > 0 ? (
         <p className="mb-2 text-[10px] leading-snug text-slate-500">
-          <span className="font-semibold text-slate-400">Partagée avec</span> {sharedNames.join(', ')}
+          <span className="font-semibold text-slate-400">{t('notes.card.sharedWith')}</span> {sharedNames.join(', ')}
         </p>
       ) : null}
       {/* Card Header */}
@@ -2022,14 +2039,14 @@ function NoteCard({
           <button
             onClick={onTogglePin}
             className={`text-slate-500 hover:text-amber-400 transition-colors p-0.5 ${note.pinned ? 'text-amber-400' : ''}`}
-            title={note.pinned ? 'Désépingler' : 'Épingler'}
+            title={note.pinned ? t('notes.card.unpin') : t('notes.card.pin')}
           >
             <IconPin className="h-4 w-4" />
           </button>
           <button
             onClick={onEdit}
             className="text-slate-500 hover:text-indigo-400 transition-colors p-0.5"
-            title="Modifier"
+            title={t('common.actions.edit')}
           >
             <IconPencil className="h-4 w-4" />
           </button>
@@ -2040,8 +2057,8 @@ function NoteCard({
                 setConvertOpen(true);
               }}
               className="text-slate-500 hover:text-emerald-400 transition-colors p-0.5"
-              title="Convertir en tâche"
-              aria-label="Convertir en tâche"
+              title={t('notes.card.convertToTask')}
+              aria-label={t('notes.card.convertToTaskAria')}
             >
               <IconClipboardList className="h-4 w-4" />
             </button>
@@ -2051,13 +2068,13 @@ function NoteCard({
               onClick={onDelete}
               className="text-red-400 hover:text-red-300 text-xs px-1.5 py-0.5 bg-red-500/20 rounded-lg transition-colors"
             >
-              Confirmer
+              {t('common.actions.confirm')}
             </button>
           ) : (
             <button
               onClick={() => setConfirmDelete(true)}
               className="text-slate-500 hover:text-red-400 transition-colors p-0.5"
-              title="Supprimer"
+              title={t('common.actions.delete')}
             >
               <IconTrash className="h-4 w-4" />
             </button>
@@ -2070,11 +2087,11 @@ function NoteCard({
         <div className="mb-3 rounded-xl border border-emerald-500/30 bg-emerald-500/5 p-3">
           <p className="mb-2 flex items-center gap-1.5 text-[11px] font-semibold text-emerald-300">
             <IconClipboardList className="h-3.5 w-3.5" />
-            Convertir cette idée en tâche
+            {t('notes.convert.title')}
           </p>
           <p className="mb-3 text-[11px] leading-snug text-slate-400">
-            Une nouvelle tâche sera créée dans la colonne « À faire » avec le titre, le contenu et les pièces jointes.
-            {note.remindAt ? ' Le rappel devient la date limite.' : ''}
+            {t('notes.convert.description')}
+            {note.remindAt ? t('notes.convert.reminderBecomesDeadline') : ''}
           </p>
           {convertError ? (
             <p className="mb-2 text-[11px] text-red-300">{convertError}</p>
@@ -2086,7 +2103,7 @@ function NoteCard({
               disabled={converting}
               className="rounded-lg px-2.5 py-1 text-[11px] text-slate-400 hover:bg-slate-700 hover:text-slate-200 disabled:opacity-50"
             >
-              Annuler
+              {t('common.actions.cancel')}
             </button>
             <button
               type="button"
@@ -2094,7 +2111,7 @@ function NoteCard({
               disabled={converting}
               className="rounded-lg border border-emerald-500/40 bg-emerald-500/10 px-2.5 py-1 text-[11px] font-medium text-emerald-200 hover:bg-emerald-500/20 disabled:opacity-50"
             >
-              {converting ? 'Conversion…' : 'Garder la note'}
+              {converting ? t('notes.convert.converting') : t('notes.convert.keepNote')}
             </button>
             <button
               type="button"
@@ -2102,7 +2119,7 @@ function NoteCard({
               disabled={converting}
               className="rounded-lg bg-emerald-500 px-2.5 py-1 text-[11px] font-semibold text-white shadow-sm hover:bg-emerald-400 disabled:opacity-50"
             >
-              {converting ? 'Conversion…' : 'Convertir et supprimer la note'}
+              {converting ? t('notes.convert.converting') : t('notes.convert.convertAndDelete')}
             </button>
           </div>
         </div>
@@ -2122,12 +2139,12 @@ function NoteCard({
               {expanded ? (
                 <>
                   <IconChevronUp className="h-3.5 w-3.5" />
-                  Voir moins
+                  {t('notes.card.seeLess')}
                 </>
               ) : (
                 <>
                   <IconChevronDown className="h-3.5 w-3.5" />
-                  Voir plus
+                  {t('notes.card.seeMore')}
                 </>
               )}
             </button>
@@ -2163,7 +2180,7 @@ function NoteCard({
                   className="flex h-16 w-16 flex-col items-center justify-center rounded-lg border border-slate-700 bg-slate-900 text-[11px] font-semibold text-slate-300 hover:border-indigo-500/60 hover:text-white"
                 >
                   +{imageAssets.length - 4}
-                  <span className="text-[9px] font-normal text-slate-500">photos</span>
+                  <span className="text-[9px] font-normal text-slate-500">{t('common.fileTypes.photos')}</span>
                 </button>
               ) : null}
             </div>
@@ -2202,7 +2219,7 @@ function NoteCard({
                   onClick={onOpenAssets}
                   className="rounded-md border border-slate-700 bg-slate-900/60 px-2 py-1 text-[11px] font-medium text-slate-300 hover:border-indigo-500/60 hover:text-white"
                 >
-                  +{docAssets.length - 3} document{docAssets.length - 3 > 1 ? 's' : ''}
+                  +{docAssets.length - 3} {docAssets.length - 3 > 1 ? t('common.fileTypes.filesPlural') : t('common.fileTypes.files')}
                 </button>
               ) : null}
             </div>
@@ -2214,7 +2231,7 @@ function NoteCard({
               className="inline-flex items-center gap-1 text-[11px] text-slate-500 hover:text-indigo-300"
             >
               <IconImage className="h-3 w-3" />
-              Voir toutes les pièces ({assets.length})
+              {t('notes.card.viewAllAttachments', { count: assets.length })}
             </button>
           ) : null}
         </div>
@@ -2232,17 +2249,17 @@ function NoteCard({
               <IconBell className="h-3 w-3 shrink-0 opacity-90" />
               {new Date(note.remindAt).getTime() > Date.now()
                 ? formatReminderRelative(note.remindAt)
-                : `Prévu ${formatReminderLabel(note.remindAt)}`}
+                : t('notes.card.reminderScheduled', { date: formatReminderLabel(note.remindAt) })}
             </span>
           ) : (
             <span />
           )}
-          <span className="text-slate-600 text-xs">{timeAgo(note.updatedAt)}</span>
+          <span className="text-slate-600 text-xs">{timeAgo(note.updatedAt, dateLocale, t)}</span>
         </div>
         {note.reminderEmailSentAt ? (
           <p className="text-[10px] text-emerald-500/90 flex items-center gap-1">
             <IconEnvelope className="h-3 w-3 shrink-0" />
-            E-mail envoyé · {formatReminderLabel(note.reminderEmailSentAt)}
+            {t('notes.card.emailSent', { date: formatReminderLabel(note.reminderEmailSentAt) })}
           </p>
         ) : null}
         {!note.reminderEmailSentAt &&

@@ -2,6 +2,7 @@
 
 import { useState, useMemo, useRef, useEffect, useCallback, type ComponentType } from 'react';
 import { Task, TaskAsset, User, TaskStatus, TaskPriority, Group } from '../types';
+import { useI18n } from '../lib/i18n/context';
 import { uploadWithProgress } from '../lib/upload-with-progress';
 import {
   IconAlertTriangle,
@@ -73,11 +74,12 @@ export function TaskAssigneeFilters({
   groupFilter?: GroupFilter;
   onGroupFilterChange?: (filter: GroupFilter) => void;
 }) {
+  const { t } = useI18n();
   return (
     <div
       className="flex min-w-0 items-center gap-1.5 overflow-x-auto py-0.5 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
       role="toolbar"
-      aria-label="Filtrer les tâches par personne assignée"
+      aria-label={t('tasks.filters.aria')}
     >
       {showGroupPills ? (
         <>
@@ -91,7 +93,7 @@ export function TaskAssigneeFilters({
                 : 'border-slate-600 bg-slate-800/90 text-slate-300 hover:border-slate-500'
             }`}
           >
-            Toutes
+            {t('tasks.filters.allGroups')}
           </button>
           <button
             type="button"
@@ -103,7 +105,7 @@ export function TaskAssigneeFilters({
                 : 'border-slate-600 bg-slate-800/90 text-slate-300 hover:border-slate-500'
             }`}
           >
-            Perso
+            {t('tasks.filters.personal')}
           </button>
           {groups.map(g => (
             <button
@@ -137,13 +139,13 @@ export function TaskAssigneeFilters({
             : 'border-slate-600 bg-slate-800/90 text-slate-300 hover:border-slate-500'
         }`}
       >
-        Tous
+        {t('tasks.filters.allAssignees')}
       </button>
       <button
         type="button"
         onClick={() => onAssigneeFilterChange(currentUser.id)}
         aria-pressed={assigneeFilter === currentUser.id}
-        title="Tâches qui vous sont assignées"
+        title={t('tasks.filters.assignedToMeTitle')}
         className={`inline-flex shrink-0 items-center gap-1 rounded-full border py-0.5 pl-0.5 pr-2 text-[11px] font-medium transition-colors touch-manipulation sm:gap-1.5 sm:py-1 sm:pl-1 sm:pr-2.5 sm:text-xs ${
           assigneeFilter === currentUser.id
             ? 'border-indigo-400 bg-indigo-500/25 text-indigo-100'
@@ -156,7 +158,7 @@ export function TaskAssigneeFilters({
         >
           {currentUser.initials}
         </span>
-        <span className="max-w-[2.75rem] truncate sm:max-w-[4rem]">À moi</span>
+        <span className="max-w-[2.75rem] truncate sm:max-w-[4rem]">{t('tasks.filters.assignedToMe')}</span>
       </button>
       <button
         type="button"
@@ -168,8 +170,8 @@ export function TaskAssigneeFilters({
             : 'border-slate-600 bg-slate-800/90 text-slate-300 hover:border-slate-500'
         }`}
       >
-        <span className="sm:hidden">Sans ass.</span>
-        <span className="hidden sm:inline">Sans assignation</span>
+        <span className="sm:hidden">{t('tasks.filters.unassignedShort')}</span>
+        <span className="hidden sm:inline">{t('tasks.filters.unassigned')}</span>
       </button>
       {users.map(u => (
         <button
@@ -196,11 +198,8 @@ export function TaskAssigneeFilters({
   );
 }
 
-const COLUMNS: {
+const COLUMN_META: {
   id: TaskStatus;
-  label: string;
-  /** Court texte sous le titre (colonne « urgence »). */
-  subtitle?: string;
   Icon: ComponentType<{ className?: string }>;
   color: string;
   dimColor: string;
@@ -209,7 +208,6 @@ const COLUMNS: {
 }[] = [
   {
     id: 'todo',
-    label: 'À faire',
     Icon: IconClipboardList,
     color: 'text-blue-300',
     dimColor: 'text-blue-400/60',
@@ -218,8 +216,6 @@ const COLUMNS: {
   },
   {
     id: 'urgent',
-    label: 'Urgence / bug',
-    subtitle: 'À traiter tout de suite',
     Icon: IconAlertTriangle,
     color: 'text-rose-300',
     dimColor: 'text-rose-400/60',
@@ -228,7 +224,6 @@ const COLUMNS: {
   },
   {
     id: 'doing',
-    label: 'En cours',
     Icon: IconBolt,
     color: 'text-amber-300',
     dimColor: 'text-amber-400/60',
@@ -237,7 +232,6 @@ const COLUMNS: {
   },
   {
     id: 'testing',
-    label: 'En cour de test',
     Icon: IconSearch,
     color: 'text-cyan-300',
     dimColor: 'text-cyan-400/60',
@@ -246,7 +240,6 @@ const COLUMNS: {
   },
   {
     id: 'review',
-    label: 'Révision',
     Icon: IconSearch,
     color: 'text-purple-300',
     dimColor: 'text-purple-400/60',
@@ -255,7 +248,6 @@ const COLUMNS: {
   },
   {
     id: 'done',
-    label: 'Terminé',
     Icon: IconCheckCircle,
     color: 'text-emerald-300',
     dimColor: 'text-emerald-400/60',
@@ -264,16 +256,41 @@ const COLUMNS: {
   },
 ];
 
-const PRIORITY_CONFIG: Record<TaskPriority, { label: string; cls: string; dot: string }> = {
-  low: { label: 'Basse', cls: 'text-slate-400 bg-slate-700/80', dot: 'bg-slate-400' },
-  medium: { label: 'Moyenne', cls: 'text-amber-400 bg-amber-500/20', dot: 'bg-amber-400' },
-  high: { label: 'Haute', cls: 'text-red-400 bg-red-500/20', dot: 'bg-red-400' },
+const PRIORITY_STYLES: Record<TaskPriority, { cls: string; dot: string }> = {
+  low: { cls: 'text-slate-400 bg-slate-700/80', dot: 'bg-slate-400' },
+  medium: { cls: 'text-amber-400 bg-amber-500/20', dot: 'bg-amber-400' },
+  high: { cls: 'text-red-400 bg-red-500/20', dot: 'bg-red-400' },
   urgent: {
-    label: 'Urgent',
     cls: 'text-fuchsia-200 bg-fuchsia-600/30 ring-1 ring-fuchsia-400/40',
     dot: 'bg-fuchsia-400 shadow-[0_0_8px_rgba(232,121,249,0.7)]',
   },
 };
+
+function useTaskColumns(t: (key: string, params?: Record<string, string | number>) => string) {
+  return useMemo(
+    () =>
+      COLUMN_META.map(col => ({
+        ...col,
+        label: t(`tasks.columns.${col.id}`),
+        subtitle: col.id === 'urgent' ? t('tasks.columns.urgentSubtitle') : undefined,
+      })),
+    [t],
+  );
+}
+
+function usePriorityConfig(t: (key: string) => string) {
+  return useMemo(
+    () =>
+      (Object.keys(PRIORITY_STYLES) as TaskPriority[]).reduce(
+        (acc, key) => {
+          acc[key] = { ...PRIORITY_STYLES[key], label: t(`tasks.priorities.${key}`) };
+          return acc;
+        },
+        {} as Record<TaskPriority, { label: string; cls: string; dot: string }>,
+      ),
+    [t],
+  );
+}
 
 interface FormData {
   title: string;
@@ -285,8 +302,8 @@ interface FormData {
   groupId: string;
 }
 
-function formatDate(iso: string) {
-  return new Date(iso).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' });
+function formatDate(iso: string, dateLocale: string) {
+  return new Date(iso).toLocaleDateString(dateLocale, { day: 'numeric', month: 'short' });
 }
 
 function isOverdue(dueDate: string | undefined, status: TaskStatus) {
@@ -347,6 +364,7 @@ function UploadProgressInline({
   percent: number | null;
   phase: 'uploading' | 'processing';
 }) {
+  const { t } = useI18n();
   const indeterminate = percent === null;
   const display = indeterminate ? null : Math.max(0, Math.min(100, percent ?? 0));
   return (
@@ -366,10 +384,10 @@ function UploadProgressInline({
       </div>
       <p className="mt-0.5 text-[10px] tabular-nums text-slate-400">
         {phase === 'processing'
-          ? 'Traitement côté serveur…'
+          ? t('common.upload.serverProcessing')
           : indeterminate
-            ? 'Envoi en cours…'
-            : `Envoi ${display}%`}
+            ? t('common.upload.uploading')
+            : t('common.upload.uploadPercent', { percent: display ?? 0 })}
       </p>
     </div>
   );
@@ -386,6 +404,7 @@ function AssetList({
   assets: TaskAsset[];
   onOpenPdf?: (url: string, name: string) => void;
 }) {
+  const { t, dateLocale } = useI18n();
   return (
     <div>
       <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wider text-slate-500">{title}</p>
@@ -402,7 +421,7 @@ function AssetList({
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-xs font-medium text-slate-200">{asset.originalName}</p>
                     <p className="text-[11px] text-slate-500">
-                      {isVideo ? 'Vidéo' : isPdf ? 'PDF' : 'Fichier'} · {formatBytes(asset.bytes)} · {formatDate(asset.createdAt)}
+                      {isVideo ? t('common.fileTypes.video') : isPdf ? t('common.fileTypes.pdf') : t('common.fileTypes.file')} · {formatBytes(asset.bytes)} · {formatDate(asset.createdAt, dateLocale)}
                     </p>
                   </div>
                   {isPdf ? (
@@ -411,7 +430,7 @@ function AssetList({
                       onClick={() => onOpenPdf?.(asset.url, asset.originalName)}
                       className="rounded-md border border-slate-600 px-2 py-1 text-[11px] text-slate-300 hover:border-indigo-500/60 hover:text-indigo-200"
                     >
-                      Voir PDF
+                      {t('tasks.detail.viewPdf')}
                     </button>
                   ) : (
                     <a
@@ -420,7 +439,7 @@ function AssetList({
                       rel="noreferrer"
                       className="rounded-md border border-slate-600 px-2 py-1 text-[11px] text-slate-300 hover:border-slate-500 hover:text-slate-100"
                     >
-                      {isVideo ? 'Regarder' : 'Télécharger'}
+                      {isVideo ? t('common.actions.watch') : t('common.actions.download')}
                     </a>
                   )}
                 </div>
@@ -444,8 +463,10 @@ function KanbanTaskCard({
   onToggle: () => void;
   getUsersByIds: (ids: string[] | null | undefined) => User[];
 }) {
+  const { t, dateLocale } = useI18n();
+  const priorityConfig = usePriorityConfig(t);
   const assignedUsers = getUsersByIds(task.assignedTo);
-  const prio = PRIORITY_CONFIG[task.priority] ?? PRIORITY_CONFIG.medium;
+  const prio = priorityConfig[task.priority] ?? priorityConfig.medium;
   const overdue = isOverdue(task.dueDate, task.status);
 
   const assets = task.assets ?? [];
@@ -519,7 +540,7 @@ function KanbanTaskCard({
           {hiddenImages > 0 ? (
             <div className="flex h-16 w-16 flex-col items-center justify-center rounded-lg border border-slate-700 bg-slate-900 text-[11px] font-semibold text-slate-300">
               +{hiddenImages}
-              <span className="text-[9px] font-normal text-slate-500">photos</span>
+              <span className="text-[9px] font-normal text-slate-500">{t('common.fileTypes.photos')}</span>
             </div>
           ) : null}
           {visibleVideos.map(asset => (
@@ -546,7 +567,7 @@ function KanbanTaskCard({
           {hiddenVideos > 0 ? (
             <div className="flex h-16 w-16 flex-col items-center justify-center rounded-lg border border-slate-700 bg-slate-900 text-[11px] font-semibold text-slate-300">
               +{hiddenVideos}
-              <span className="text-[9px] font-normal text-slate-500">vidéos</span>
+              <span className="text-[9px] font-normal text-slate-500">{t('common.fileTypes.videos')}</span>
             </div>
           ) : null}
         </div>
@@ -564,12 +585,13 @@ function KanbanTaskCard({
           {otherCount > 0 ? (
             <span className="inline-flex items-center gap-1 rounded-md border border-slate-600/60 bg-slate-700/50 px-1.5 py-0.5 text-[10px] font-medium text-slate-400">
               <IconPaperclip className="h-3 w-3 shrink-0" />
-              {otherCount} fichier{otherCount > 1 ? 's' : ''}
+              {otherCount}{' '}
+              {otherCount > 1 ? t('common.fileTypes.filesPlural') : t('common.fileTypes.files')}
             </span>
           ) : null}
           {hasOutput ? (
             <span className="inline-flex items-center gap-1 rounded-md border border-emerald-500/30 bg-emerald-500/10 px-1.5 py-0.5 text-[10px] font-medium text-emerald-300">
-              ✓ Livré
+              {t('tasks.delivered')}
             </span>
           ) : null}
         </div>
@@ -585,7 +607,7 @@ function KanbanTaskCard({
               ) : (
                 <IconCalendar className="h-3.5 w-3.5 shrink-0" />
               )}
-              {formatDate(task.dueDate)}
+              {formatDate(task.dueDate, dateLocale)}
             </span>
           ) : null}
           {assignedUsers.length > 0 ? (
@@ -632,6 +654,9 @@ export default function TaskBoard({
   onAssigneeFilterChange,
   onBoardReady,
 }: TaskBoardProps) {
+  const { t, dateLocale } = useI18n();
+  const columns = useTaskColumns(t);
+  const priorityConfig = usePriorityConfig(t);
   const padHeader = compactLayout ? 'px-3 py-2 sm:px-4' : 'px-3 py-2.5 sm:px-5';
   const padMain = compactLayout ? 'p-3 sm:p-4' : 'p-4 sm:p-6';
   const [showModal, setShowModal] = useState(false);
@@ -926,14 +951,14 @@ export default function TaskBoard({
                   },
                 },
               );
-              if (!result.ok) throw new Error(result.error ?? 'Upload impossible');
+              if (!result.ok) throw new Error(result.error ?? t('common.upload.uploadFailed'));
               setDraftStatuses(prev => {
                 const next = [...prev];
                 next[i] = { kind: 'done' };
                 return next;
               });
             } catch (e: unknown) {
-              const msg = e instanceof Error ? e.message : 'Upload impossible';
+              const msg = e instanceof Error ? e.message : t('common.upload.uploadFailed');
               if (!firstError) firstError = msg;
               setDraftStatuses(prev => {
                 const next = [...prev];
@@ -944,7 +969,7 @@ export default function TaskBoard({
           }
           await onUpdate(created.id, {});
           if (firstError) {
-            setSubmitError(`Tâche créée, mais une pièce jointe a échoué : ${firstError}`);
+            setSubmitError(t('tasks.errors.attachmentAfterCreate', { error: firstError }));
             setSubmitting(false);
             return;
           }
@@ -952,7 +977,7 @@ export default function TaskBoard({
       }
       setShowModal(false);
     } catch (e: unknown) {
-      setSubmitError(e instanceof Error ? e.message : 'Erreur lors de l’enregistrement');
+      setSubmitError(e instanceof Error ? e.message : t('common.errors.generic'));
     } finally {
       setSubmitting(false);
     }
@@ -961,7 +986,7 @@ export default function TaskBoard({
   const moveSelected = async (status: TaskStatus) => {
     if (!selectedTask || selectedTask.status === status) return;
     if (!canChangeTaskStatus(selectedTask)) {
-      setDetailError('Seul le créateur ou un assigné peut modifier le statut.');
+      setDetailError(t('tasks.errors.statusForbidden'));
       return;
     }
     const prevStatus = selectedTask.status;
@@ -972,7 +997,7 @@ export default function TaskBoard({
       await onMove(taskId, status);
     } catch (e: unknown) {
       setSelectedTask(t => (t && t.id === taskId ? { ...t, status: prevStatus } : t));
-      setDetailError(e instanceof Error ? e.message : 'Impossible de déplacer la tâche');
+      setDetailError(e instanceof Error ? e.message : t('tasks.errors.moveFailed'));
     }
   };
   const uploadAsset = async (taskId: string, kind: 'input' | 'output', file: File | null) => {
@@ -988,7 +1013,7 @@ export default function TaskBoard({
         },
       });
       if (!result.ok || !result.data) {
-        throw new Error(result.error ?? `Upload impossible (${result.status})`);
+        throw new Error(result.error ?? t('common.upload.uploadFailed'));
       }
       const updated = result.data;
       setSelectedTask(prev => (prev && prev.id === updated.id ? updated : prev));
@@ -996,7 +1021,7 @@ export default function TaskBoard({
       await onUpdate(updated.id, {});
       setAssetProgress(null);
     } catch (e: unknown) {
-      setAssetError(e instanceof Error ? e.message : 'Erreur upload');
+      setAssetError(e instanceof Error ? e.message : t('common.errors.generic'));
       setAssetProgress(null);
     } finally {
       setAssetBusy(null);
@@ -1027,12 +1052,12 @@ export default function TaskBoard({
       >
         <div className="flex shrink-0 flex-col leading-tight">
           <h2 className="text-sm font-bold text-white sm:text-base">
-            {titleOverride ?? 'Tâches'}
+            {titleOverride ?? t('tasks.title')}
           </h2>
           <p className="w-[4.25rem] truncate text-[10px] text-slate-500 sm:w-auto sm:max-w-[11rem] sm:text-xs">
             {filteredTasks.length}/{tasks.length}
             {assigneeFilter !== 'all' ? (
-              <span className="text-indigo-400/90"> · filtré</span>
+              <span className="text-indigo-400/90"> · {t('tasks.filtered')}</span>
             ) : null}
           </p>
         </div>
@@ -1059,7 +1084,7 @@ export default function TaskBoard({
             className="hidden shrink-0 touch-manipulation items-center gap-1.5 rounded-xl border border-slate-600 bg-slate-800 px-2.5 py-1.5 text-xs font-medium text-slate-200 hover:bg-slate-700 md:inline-flex"
           >
             <span className="text-slate-400">👥</span>
-            <span className="hidden lg:inline">Groupes</span>
+            <span className="hidden lg:inline">{t('tasks.toolbar.groups')}</span>
             {groups.length > 0 ? (
               <span className="rounded-full bg-violet-500/25 px-1.5 py-0.5 text-[10px] font-semibold tabular-nums text-violet-200">
                 {groups.length}
@@ -1075,7 +1100,7 @@ export default function TaskBoard({
             className="hidden shrink-0 touch-manipulation items-center gap-1.5 rounded-xl border border-slate-600 bg-slate-800 px-2.5 py-1.5 text-xs font-medium text-slate-200 hover:bg-slate-700 md:inline-flex"
           >
             <CollaboratorsIcon className="h-4 w-4 shrink-0 text-slate-400" />
-            <span className="hidden lg:inline">Collaborateurs</span>
+            <span className="hidden lg:inline">{t('tasks.toolbar.collaborators')}</span>
             {teamBadge ? (
               <span className="rounded-full bg-indigo-500/25 px-1.5 py-0.5 text-[10px] font-semibold tabular-nums text-indigo-200">
                 {collaboratorTeamSize}
@@ -1090,7 +1115,7 @@ export default function TaskBoard({
           className="flex shrink-0 touch-manipulation items-center justify-center gap-1.5 rounded-xl bg-indigo-500 px-3 py-1.5 text-xs font-medium text-white shadow-md shadow-indigo-500/20 transition-all hover:bg-indigo-400 sm:gap-2 sm:px-4 sm:text-sm md:hidden"
         >
           <IconPlus className="h-4 w-4 shrink-0" />
-          <span>Nouvelle tâche</span>
+          <span>{t('tasks.newTask')}</span>
         </button>
         <button
           type="button"
@@ -1098,7 +1123,7 @@ export default function TaskBoard({
           className="hidden shrink-0 touch-manipulation items-center justify-center gap-1.5 rounded-xl bg-indigo-500 px-3 py-1.5 text-xs font-medium text-white shadow-md shadow-indigo-500/20 transition-all hover:bg-indigo-400 sm:gap-2 sm:px-4 sm:text-sm md:flex"
         >
           <IconPlus className="h-4 w-4 shrink-0" />
-          <span>Nouvelle tâche</span>
+          <span>{t('tasks.newTask')}</span>
         </button>
       </div>
       ) : null}
@@ -1107,10 +1132,10 @@ export default function TaskBoard({
       <div className="flex min-h-0 flex-1 flex-col overflow-hidden md:hidden">
         <div
           role="tablist"
-          aria-label="Statut des tâches"
+          aria-label={t('tasks.statusTabs.aria')}
           className="flex shrink-0 gap-1 overflow-x-auto border-b border-slate-700 bg-slate-900/90 px-2 py-2 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
         >
-          {COLUMNS.map(col => {
+          {columns.map(col => {
             const colTasks = tasksByStatus[col.id];
             const active = mobileStatusTab === col.id;
             return (
@@ -1145,7 +1170,7 @@ export default function TaskBoard({
         </div>
 
         {(() => {
-          const col = COLUMNS.find(c => c.id === mobileStatusTab)!;
+          const col = columns.find(c => c.id === mobileStatusTab)!;
           const colTasks = tasksByStatus[mobileStatusTab];
           const padMobile = compactLayout ? 'px-3 py-3' : 'px-3 py-4';
           return (
@@ -1169,7 +1194,7 @@ export default function TaskBoard({
                   type="button"
                   onClick={() => openAdd(col.id)}
                   className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg transition-colors hover:bg-white/5 ${col.dimColor} hover:text-white`}
-                  title={`Ajouter dans ${col.label}`}
+                  title={t('tasks.addInColumn', { column: col.label })}
                 >
                   +
                 </button>
@@ -1178,7 +1203,7 @@ export default function TaskBoard({
               <div className="min-h-0 flex-1 space-y-2.5 overflow-y-auto overscroll-y-contain pb-4">
                 {colTasks.length === 0 ? (
                   <div className="rounded-xl border-2 border-dashed border-slate-700/60 p-8 text-center">
-                    <p className="text-xs text-slate-600">Aucune tâche dans cette colonne</p>
+                    <p className="text-xs text-slate-600">{t('tasks.empty.column')}</p>
                   </div>
                 ) : (
                   colTasks.map(task => (
@@ -1200,7 +1225,7 @@ export default function TaskBoard({
       {/* Desktop : Kanban horizontal */}
       <div className={`hidden min-h-0 flex-1 overflow-x-auto overscroll-x-contain md:block ${padMain}`}>
         <div className="flex h-full min-w-max gap-3 pb-1 sm:gap-5 sm:pb-2">
-          {COLUMNS.map(col => {
+          {columns.map(col => {
             const colTasks = tasksByStatus[col.id];
             return (
               <div key={col.id} className="flex w-72 shrink-0 flex-col gap-2.5 sm:gap-3">
@@ -1222,7 +1247,7 @@ export default function TaskBoard({
                     type="button"
                     onClick={() => openAdd(col.id)}
                     className={`flex h-6 w-6 items-center justify-center rounded-lg transition-colors hover:bg-white/5 ${col.dimColor} hover:opacity-100`}
-                    title={`Ajouter dans ${col.label}`}
+                    title={t('tasks.addInColumn', { column: col.label })}
                   >
                     +
                   </button>
@@ -1232,7 +1257,7 @@ export default function TaskBoard({
                 <div className="flex-1 space-y-2.5 overflow-y-auto sm:space-y-3">
                   {colTasks.length === 0 && (
                     <div className="rounded-xl border-2 border-dashed border-slate-700/60 p-5 text-center">
-                      <p className="text-xs text-slate-600">Aucune tâche</p>
+                      <p className="text-xs text-slate-600">{t('tasks.empty.list')}</p>
                     </div>
                   )}
                   {colTasks.map(task => (
@@ -1264,14 +1289,14 @@ export default function TaskBoard({
             <div className="p-5 border-b border-slate-700 flex items-start justify-between gap-3">
               <div className="flex items-start gap-2">
                 <span
-                  className={`mt-1.5 w-2.5 h-2.5 rounded-full flex-shrink-0 ${(PRIORITY_CONFIG[selectedTask.priority] ?? PRIORITY_CONFIG.medium).dot}`}
+                  className={`mt-1.5 w-2.5 h-2.5 rounded-full flex-shrink-0 ${(priorityConfig[selectedTask.priority] ?? priorityConfig.medium).dot}`}
                 />
                 <h3 className="font-semibold text-white leading-snug">{selectedTask.title}</h3>
               </div>
               <button
                 onClick={() => setSelectedTask(null)}
                 className="text-slate-500 hover:text-slate-300 transition-colors w-7 h-7 flex items-center justify-center rounded-lg hover:bg-slate-700 flex-shrink-0"
-                aria-label="Fermer"
+                aria-label={t('common.aria.close')}
               >
                 <IconX className="h-5 w-5" />
               </button>
@@ -1283,7 +1308,7 @@ export default function TaskBoard({
               )}
 
               <div className="space-y-3">
-                <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Fichiers et vidéos</p>
+                <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">{t('tasks.detail.filesAndVideos')}</p>
                 <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
                   <button
                     type="button"
@@ -1291,7 +1316,7 @@ export default function TaskBoard({
                     disabled={assetBusy !== null || isGuestUser}
                     className="rounded-lg border border-slate-700 bg-slate-900/60 px-3 py-2 text-xs font-medium text-slate-200 hover:border-slate-600 disabled:opacity-60"
                   >
-                    Ajouter vidéo
+                    {t('tasks.detail.addVideo')}
                   </button>
                   <button
                     type="button"
@@ -1299,7 +1324,7 @@ export default function TaskBoard({
                     disabled={assetBusy !== null || isGuestUser}
                     className="rounded-lg border border-slate-700 bg-slate-900/60 px-3 py-2 text-xs font-medium text-slate-200 hover:border-slate-600 disabled:opacity-60"
                   >
-                    Ajouter pièce jointe
+                    {t('tasks.detail.addAttachment')}
                   </button>
                   <button
                     type="button"
@@ -1307,11 +1332,11 @@ export default function TaskBoard({
                     disabled={assetBusy !== null || isGuestUser}
                     className="rounded-lg border border-emerald-700/50 bg-emerald-900/20 px-3 py-2 text-xs font-medium text-emerald-200 hover:border-emerald-500/60 disabled:opacity-60"
                   >
-                    Livrer travail (terminé)
+                    {t('tasks.detail.deliverWork')}
                   </button>
                 </div>
                 {isGuestUser ? (
-                  <p className="text-[11px] text-slate-500">Connectez-vous pour ajouter des vidéos et pièces jointes.</p>
+                  <p className="text-[11px] text-slate-500">{t('tasks.detail.loginForAttachments')}</p>
                 ) : null}
                 {assetProgress ? (
                   <UploadProgressInline
@@ -1323,14 +1348,14 @@ export default function TaskBoard({
                 {assetError && <p className="text-[11px] text-red-300">{assetError}</p>}
 
                 <AssetList
-                  title="Brief / pièces de référence"
-                  emptyLabel="Aucun fichier de référence"
+                  title={t('tasks.detail.briefTitle')}
+                  emptyLabel={t('tasks.detail.briefEmpty')}
                   assets={inputAssets}
                   onOpenPdf={(url, name) => setPdfViewer({ url, name })}
                 />
                 <AssetList
-                  title="Travail livré (tâche terminée)"
-                  emptyLabel="Aucun livrable pour le moment"
+                  title={t('tasks.detail.outputTitle')}
+                  emptyLabel={t('tasks.detail.outputEmpty')}
                   assets={outputAssets}
                   onOpenPdf={(url, name) => setPdfViewer({ url, name })}
                 />
@@ -1377,9 +1402,9 @@ export default function TaskBoard({
 
               {/* Move between columns */}
               <div>
-                <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">Déplacer vers</p>
+                <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">{t('tasks.detail.moveTo')}</p>
                 <div className="flex flex-wrap gap-2">
-                  {COLUMNS.map(col => (
+                  {columns.map(col => (
                     <button
                       key={col.id}
                       onClick={() => void moveSelected(col.id)}
@@ -1399,7 +1424,7 @@ export default function TaskBoard({
               {/* Assignment */}
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <div>
-                  <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">Assignée à</p>
+                  <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">{t('tasks.detail.assignedTo')}</p>
                   {getUsersByIds(selectedTask.assignedTo).length > 0 ? (
                     <div className="space-y-2">
                       {getUsersByIds(selectedTask.assignedTo).map(u => (
@@ -1415,11 +1440,11 @@ export default function TaskBoard({
                       ))}
                     </div>
                   ) : (
-                    <span className="text-sm text-slate-500 italic">Non assignée</span>
+                    <span className="text-sm text-slate-500 italic">{t('tasks.detail.unassigned')}</span>
                   )}
                 </div>
                 <div>
-                  <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">Créée par</p>
+                  <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">{t('tasks.detail.createdBy')}</p>
                   <div className="flex items-center gap-2">
                     {getUserById(selectedTask.createdBy) ? (
                       <>
@@ -1447,13 +1472,13 @@ export default function TaskBoard({
                     ) : (
                       <IconCalendar className="h-4 w-4 shrink-0 text-slate-500" />
                     )}
-                    {formatDate(selectedTask.dueDate)}
+                    {formatDate(selectedTask.dueDate, dateLocale)}
                   </p>
                 </div>
               )}
 
               <p className="text-xs text-slate-600">
-                Créée le {formatDate(selectedTask.createdAt)} · Modifiée le {formatDate(selectedTask.updatedAt)}
+                {formatDate(selectedTask.createdAt, dateLocale)} · {formatDate(selectedTask.updatedAt, dateLocale)}
               </p>
             </div>
 
@@ -1467,7 +1492,7 @@ export default function TaskBoard({
                   className="inline-flex items-center gap-2 text-sm text-red-400 hover:text-red-300 transition-colors px-3 py-1.5 rounded-lg hover:bg-red-500/10"
                 >
                   <IconTrash className="h-4 w-4" />
-                  Supprimer
+                  {t('common.actions.delete')}
                 </button>
               ) : (
                 <div className="flex-1 min-w-0" aria-hidden />
@@ -1478,7 +1503,7 @@ export default function TaskBoard({
                   className="inline-flex w-full items-center justify-center gap-2 bg-indigo-500 hover:bg-indigo-400 text-white px-4 py-2 rounded-xl text-sm font-medium transition-all sm:w-auto"
                 >
                   <IconPencil className="h-4 w-4" />
-                  Modifier
+                  {t('common.actions.edit')}
                 </button>
               ) : canChangeTaskStatus(selectedTask) ? (
                 <p className="text-xs text-slate-500 sm:text-right">
@@ -1507,7 +1532,7 @@ export default function TaskBoard({
                 download={pdfViewer.name}
                 className="rounded-lg border border-slate-600 px-3 py-1.5 text-xs text-slate-300 transition-colors hover:border-slate-500 hover:text-slate-100"
               >
-                Télécharger
+                {t('common.actions.download')}
               </a>
               <a
                 href={pdfViewer.url}
@@ -1515,13 +1540,13 @@ export default function TaskBoard({
                 rel="noreferrer"
                 className="rounded-lg border border-slate-600 px-3 py-1.5 text-xs text-slate-300 transition-colors hover:border-slate-500 hover:text-slate-100"
               >
-                Ouvrir onglet
+                {t('common.actions.open')}
               </a>
               <button
                 type="button"
                 onClick={() => setPdfViewer(null)}
                 className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-700 hover:text-slate-300"
-                aria-label="Fermer"
+                aria-label={t('common.aria.close')}
               >
                 <IconX className="h-5 w-5" />
               </button>
@@ -1550,12 +1575,12 @@ export default function TaskBoard({
                 {editingTask ? (
                   <>
                     <IconPencil className="h-5 w-5 text-indigo-400" />
-                    Modifier la tâche
+                    {t('tasks.modal.editTitle')}
                   </>
                 ) : (
                   <>
                     <IconClipboardList className="h-5 w-5 text-indigo-400" />
-                    Nouvelle tâche
+                    {t('tasks.modal.createTitle')}
                   </>
                 )}
               </h3>
@@ -1563,7 +1588,7 @@ export default function TaskBoard({
                 onClick={() => { if (!submitting) setShowModal(false); }}
                 disabled={submitting}
                 className="text-slate-500 hover:text-slate-300 transition-colors w-7 h-7 flex items-center justify-center rounded-lg hover:bg-slate-700 disabled:opacity-40"
-                aria-label="Fermer"
+                aria-label={t('common.aria.close')}
               >
                 <IconX className="h-5 w-5" />
               </button>
@@ -1572,13 +1597,13 @@ export default function TaskBoard({
             <div className="p-4 space-y-4 sm:p-5">
               <div>
                 <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">
-                  Titre *
+                  {t('tasks.modal.titleLabel')} *
                 </label>
                 <input
                   type="text"
                   value={form.title}
                   onChange={e => setForm(f => ({ ...f, title: e.target.value }))}
-                  placeholder="Titre de la tâche..."
+                  placeholder={t('tasks.modal.titlePlaceholder')}
                   className="w-full bg-slate-700 border border-slate-600 rounded-xl px-4 py-2.5 text-sm text-slate-200 placeholder-slate-500 focus:outline-none focus:border-indigo-500 transition-colors"
                   autoFocus
                 />
@@ -1586,12 +1611,12 @@ export default function TaskBoard({
 
               <div>
                 <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">
-                  Description
+                  {t('tasks.modal.descriptionLabel')}
                 </label>
                 <textarea
                   value={form.description}
                   onChange={e => setForm(f => ({ ...f, description: e.target.value }))}
-                  placeholder="Décrivez la tâche en détail..."
+                  placeholder={t('tasks.modal.descriptionPlaceholder')}
                   rows={3}
                   className="w-full bg-slate-700 border border-slate-600 rounded-xl px-4 py-2.5 text-sm text-slate-200 placeholder-slate-500 focus:outline-none focus:border-indigo-500 transition-colors resize-none"
                 />
@@ -1599,7 +1624,7 @@ export default function TaskBoard({
 
               <div className="space-y-2">
                 <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider">
-                  Vidéo et pièces jointes
+                  {t('tasks.modal.attachmentsLabel')}
                 </label>
                 {editingTask ? (
                   <>
@@ -1610,7 +1635,7 @@ export default function TaskBoard({
                         disabled={assetBusy !== null || isGuestUser}
                         className="rounded-lg border border-slate-700 bg-slate-900/60 px-3 py-2 text-xs font-medium text-slate-200 hover:border-slate-600 disabled:opacity-60"
                       >
-                        Ajouter vidéo
+                        {t('tasks.modal.addVideo')}
                       </button>
                       <button
                         type="button"
@@ -1618,7 +1643,7 @@ export default function TaskBoard({
                         disabled={assetBusy !== null || isGuestUser}
                         className="rounded-lg border border-slate-700 bg-slate-900/60 px-3 py-2 text-xs font-medium text-slate-200 hover:border-slate-600 disabled:opacity-60"
                       >
-                        Ajouter pièce jointe
+                        {t('tasks.modal.addFile')}
                       </button>
                       <button
                         type="button"
@@ -1626,7 +1651,7 @@ export default function TaskBoard({
                         disabled={assetBusy !== null || isGuestUser}
                         className="rounded-lg border border-emerald-700/50 bg-emerald-900/20 px-3 py-2 text-xs font-medium text-emerald-200 hover:border-emerald-500/60 disabled:opacity-60"
                       >
-                        Livrer travail
+                        {t('tasks.modal.addDeliverable')}
                       </button>
                     </div>
                     <input
@@ -1666,7 +1691,7 @@ export default function TaskBoard({
                   <div className="space-y-2">
                     <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
                       <label className="cursor-pointer rounded-lg border border-slate-700 bg-slate-900/60 px-3 py-2 text-center text-xs font-medium text-slate-200 hover:border-slate-600">
-                        Ajouter vidéo
+                        {t('tasks.modal.addVideo')}
                         <input
                           type="file"
                           accept="video/*"
@@ -1676,7 +1701,7 @@ export default function TaskBoard({
                         />
                       </label>
                       <label className="cursor-pointer rounded-lg border border-slate-700 bg-slate-900/60 px-3 py-2 text-center text-xs font-medium text-slate-200 hover:border-slate-600">
-                        Ajouter pièce jointe
+                        {t('tasks.modal.addFile')}
                         <input
                           type="file"
                           accept="image/*,application/pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv,.zip"
@@ -1685,7 +1710,7 @@ export default function TaskBoard({
                         />
                       </label>
                       <label className="cursor-pointer rounded-lg border border-emerald-700/50 bg-emerald-900/20 px-3 py-2 text-center text-xs font-medium text-emerald-200 hover:border-emerald-500/60">
-                        Livrer travail
+                        {t('tasks.modal.addDeliverable')}
                         <input
                           type="file"
                           className="hidden"
@@ -1734,10 +1759,10 @@ export default function TaskBoard({
                                 <div className="min-w-0 flex-1">
                                   <p className="truncate text-xs font-medium text-slate-200">{p.file.name}</p>
                                   <p className="text-[10px] text-slate-500">
-                                    {p.isImage ? 'Image' : p.isVideo ? 'Vidéo' : p.isPdf ? 'PDF' : 'Fichier'} · {formatBytes(p.file.size)}
-                                    {p.assetKind === 'output' ? ' · Livrable' : ''}
-                                    {status.kind === 'pending' ? ' · en attente' : ''}
-                                    {status.kind === 'done' ? ' · ✓ envoyé' : ''}
+                                    {p.isImage ? t('common.fileTypes.image') : p.isVideo ? t('common.fileTypes.video') : p.isPdf ? t('common.fileTypes.pdf') : t('common.fileTypes.file')} · {formatBytes(p.file.size)}
+                                    {p.assetKind === 'output' ? ` · ${t('tasks.modal.addDeliverable')}` : ''}
+                                    {status.kind === 'pending' ? ` · ${t('common.status.pending')}` : ''}
+                                    {status.kind === 'done' ? ` · ${t('common.status.sent')}` : ''}
                                   </p>
                                 </div>
                                 {showRemove ? (
@@ -1745,7 +1770,7 @@ export default function TaskBoard({
                                     type="button"
                                     onClick={() => removeDraft(i)}
                                     className="rounded-md p-1 text-slate-500 hover:bg-red-500/15 hover:text-red-300"
-                                    title="Retirer"
+                                    title={t('tasks.modal.removeDraft')}
                                   >
                                     <IconX className="h-3.5 w-3.5" />
                                   </button>
@@ -1789,7 +1814,7 @@ export default function TaskBoard({
                 {!editingTask ? (
                   <div className="sm:col-span-2">
                     <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">
-                      Groupe (optionnel)
+                      {t('tasks.modal.groupLabel')} ({t('common.labels.optional')})
                     </label>
                     <select
                       value={form.groupId}
@@ -1802,7 +1827,7 @@ export default function TaskBoard({
                       }
                       className="w-full rounded-xl border border-slate-600 bg-slate-900 px-3 py-2 text-sm text-slate-200 focus:border-indigo-500 focus:outline-none"
                     >
-                      <option value="">Tâche personnelle</option>
+                      <option value="">{t('tasks.modal.personalTask')}</option>
                       {groups.map(g => (
                         <option key={g.id} value={g.id}>
                           {g.name}
@@ -1818,12 +1843,12 @@ export default function TaskBoard({
                 ) : null}
                 <div>
                   <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">
-                    Assignée à
+                    {t('tasks.modal.assigneesLabel')}
                   </label>
                   <p className="text-[11px] text-slate-500 mb-2 leading-snug">
                     {form.groupId
-                      ? 'Membres du groupe uniquement. Maximum 2 assignés.'
-                      : 'Vous et vos collaborateurs (email). Maximum 2 assignés.'}
+                      ? t('tasks.modal.assigneesHintGroup')
+                      : t('tasks.modal.assigneesHintDefault')}
                   </p>
                   <div className="space-y-2 rounded-xl border border-slate-700 bg-slate-900/40 p-2.5">
                     {assignUsersForForm.map(u => {
@@ -1849,7 +1874,7 @@ export default function TaskBoard({
                             {u.initials}
                           </span>
                           <span className="truncate">{u.name}</span>
-                          <span className="ml-auto text-xs">{selected ? 'Sélectionné' : 'Choisir'}</span>
+                          <span className="ml-auto text-xs">{selected ? t('common.actions.selected') : t('common.actions.select')}</span>
                         </button>
                       );
                     })}
@@ -1868,7 +1893,7 @@ export default function TaskBoard({
                 </div>
                 <div>
                   <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">
-                    Priorité
+                    {t('tasks.modal.priorityLabel')}
                   </label>
                   <select
                     value={form.priority}
@@ -1876,10 +1901,11 @@ export default function TaskBoard({
                     disabled={!!editingTask && !isTaskCreator(editingTask)}
                     className="w-full bg-slate-700 border border-slate-600 rounded-xl px-3 py-2.5 text-sm text-slate-200 focus:outline-none focus:border-indigo-500 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
                   >
-                    <option value="low">Basse</option>
-                    <option value="medium">Moyenne</option>
-                    <option value="high">Haute</option>
-                    <option value="urgent">Urgent</option>
+                    {(Object.keys(priorityConfig) as TaskPriority[]).map(key => (
+                      <option key={key} value={key}>
+                        {priorityConfig[key].label}
+                      </option>
+                    ))}
                   </select>
                 </div>
               </div>
@@ -1887,14 +1913,14 @@ export default function TaskBoard({
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <div>
                   <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">
-                    Colonne
+                    {t('tasks.modal.statusLabel')}
                   </label>
                   <select
                     value={form.status}
                     onChange={e => setForm(f => ({ ...f, status: e.target.value as TaskStatus }))}
                     className="w-full bg-slate-700 border border-slate-600 rounded-xl px-3 py-2.5 text-sm text-slate-200 focus:outline-none focus:border-indigo-500 transition-colors"
                   >
-                    {COLUMNS.map(c => (
+                    {columns.map(c => (
                       <option key={c.id} value={c.id}>
                         {c.label}
                       </option>
@@ -1903,7 +1929,7 @@ export default function TaskBoard({
                 </div>
                 <div>
                   <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">
-                    Date limite
+                    {t('tasks.modal.dueDateLabel')}
                   </label>
                   <input
                     type="date"
@@ -1927,7 +1953,7 @@ export default function TaskBoard({
                 disabled={submitting}
                 className="w-full px-4 py-2 text-sm text-slate-400 hover:text-slate-200 transition-colors rounded-lg hover:bg-slate-700 disabled:opacity-50 sm:w-auto"
               >
-                Annuler
+                {t('tasks.modal.cancel')}
               </button>
               <button
                 type="button"
@@ -1937,13 +1963,13 @@ export default function TaskBoard({
               >
                 {submitting
                   ? draftFiles.length > 0 && !editingTask
-                    ? 'Téléversement…'
-                    : 'Enregistrement…'
+                    ? t('tasks.modal.uploading')
+                    : t('common.actions.saving')
                   : editingTask
-                    ? 'Enregistrer'
+                    ? t('tasks.modal.save')
                     : draftFiles.length > 0
-                      ? `Créer (+${draftFiles.length})`
-                      : 'Créer la tâche'}
+                      ? t('tasks.modal.createWithAttachments', { count: draftFiles.length })
+                      : t('tasks.modal.create')}
               </button>
             </div>
           </div>

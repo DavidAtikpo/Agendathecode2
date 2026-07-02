@@ -1,6 +1,6 @@
 import type { Prisma } from '@prisma/client';
 
-/** Sessions visibles : créateur Pro ou personne proposée (formateur / assessor). */
+/** Sessions visibles : créateur (organisateur) ou personne proposée (formateur / assessor). */
 export function sessionsVisibleToUser(userId: string): Prisma.TrainingSessionWhereInput {
   return {
     OR: [{ createdById: userId }, { assignments: { some: { userId } } }],

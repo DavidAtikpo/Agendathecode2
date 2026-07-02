@@ -48,7 +48,21 @@ model User {
   groupMemberships     GroupMember[]
   trainingSessionsCreated TrainingSession[] @relation("TrainingSessionCreator")
   sessionAssignments   SessionAssignment[]
+  passwordResetTokens  PasswordResetToken[]
 
+  @@schema("agenda")
+}
+
+/// Jeton à usage unique pour réinitialiser le mot de passe (hash SHA-256 en base).
+model PasswordResetToken {
+  id        String   @id @default(cuid())
+  userId    String
+  tokenHash String   @unique
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
   @@schema("agenda")
 }
 
@@ -270,11 +284,17 @@ enum Plan {
 enum Role {
   user
   admin
+  /// Crée et gère les sessions formation (formateurs / assessors).
+  organizer
+  /// Reçoit les propositions de session — pas d’accès aux groupes.
+  formateur
+  /// Reçoit les propositions de session — pas d’accès aux groupes.
+  assessor
 
   @@schema("agenda")
 }
 
-/// Session de formation (privée) — créée par un utilisateur Pro.
+/// Session de formation — créée par un utilisateur Organisateur (rôle `organizer`).
 model TrainingSession {
   id          String              @id @default(cuid())
   title       String

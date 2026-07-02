@@ -2,7 +2,8 @@ import { NextResponse } from 'next/server';
 import { prisma } from '@/app/lib/prisma';
 import { getSessionUserId } from '@/app/lib/auth';
 import { isSessionCreator, sessionsVisibleToUser } from '@/app/lib/session-access';
-import { resolveUserIdByEmail } from '@/app/lib/session-assign';
+import { resolveUserIdByEmailForAssignment } from '@/app/lib/session-assign';
+import { sessionRoleMismatchMessage } from '@/app/lib/user-roles';
 import { buildSessionTitle, parseDateOnly } from '@/app/lib/session-title';
 import {
   SESSION_WITH_ASSIGNMENTS_INCLUDE,
@@ -94,10 +95,13 @@ export async function PATCH(request: Request, ctx: Ctx) {
     }
     let targetId: string;
     try {
-      targetId = await resolveUserIdByEmail(email);
+      targetId = await resolveUserIdByEmailForAssignment(email, role);
     } catch (e: unknown) {
       if (e instanceof Error && e.message === 'USER_NOT_FOUND') {
         throw new Error('USER_NOT_FOUND');
+      }
+      if (e instanceof Error && e.message === 'ROLE_MISMATCH') {
+        throw new Error(`ROLE_MISMATCH:${role}`);
       }
       throw e;
     }
@@ -147,6 +151,10 @@ export async function PATCH(request: Request, ctx: Ctx) {
     }
     if (e instanceof Error && e.message === 'SELF_ASSIGN') {
       return NextResponse.json({ error: 'Vous ne pouvez pas vous assigner ce rôle.' }, { status: 400 });
+    }
+    if (e instanceof Error && e.message?.startsWith('ROLE_MISMATCH:')) {
+      const failed = e.message.split(':')[1] as 'formateur' | 'assessor';
+      return NextResponse.json({ error: sessionRoleMismatchMessage(failed) }, { status: 400 });
     }
     throw e;
   }

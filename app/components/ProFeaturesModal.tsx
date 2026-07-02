@@ -1,6 +1,9 @@
 'use client';
 
-import { PRO_FEATURE_BLOCKS, statusLabel } from '../lib/pro-features-catalog';
+import { useMemo } from 'react';
+import { PRO_FEATURE_BLOCKS, type ProFeatureStatus } from '../lib/pro-features-catalog';
+import { modalsMessages } from '../lib/i18n/messages/modals';
+import { useI18n } from '../lib/i18n/context';
 import { IconSparkles, IconX } from './icons';
 
 type ProFeaturesModalProps = {
@@ -15,6 +18,16 @@ type ProFeaturesModalProps = {
   onUpgrade?: () => void | Promise<void>;
 };
 
+function statusLabel(
+  status: ProFeatureStatus,
+  t: (key: string) => string,
+): { label: string; short: string } {
+  if (status === 'live') {
+    return { label: t('modals.proFeatures.statusLiveTitle'), short: t('modals.proFeatures.statusLive') };
+  }
+  return { label: t('modals.proFeatures.statusPlannedTitle'), short: t('modals.proFeatures.statusPlanned') };
+}
+
 export default function ProFeaturesModal({
   open,
   onClose,
@@ -24,6 +37,19 @@ export default function ProFeaturesModal({
   upgradeOfferAvailable,
   onUpgrade,
 }: ProFeaturesModalProps) {
+  const { t, locale } = useI18n();
+
+  const blocks = useMemo(() => {
+    const catalog = modalsMessages[locale].proFeatures.blocks;
+    return PRO_FEATURE_BLOCKS.map(block => ({
+      id: block.id,
+      status: block.status,
+      title: t(`modals.proFeatures.blocks.${block.id}.title`),
+      intro: t(`modals.proFeatures.blocks.${block.id}.intro`),
+      bullets: [...catalog[block.id as keyof typeof catalog].bullets],
+    }));
+  }, [t, locale]);
+
   if (!open) return null;
 
   const isPro = plan === 'pro';
@@ -35,7 +61,12 @@ export default function ProFeaturesModal({
       aria-modal="true"
       aria-labelledby="pro-features-title"
     >
-      <button type="button" className="absolute inset-0 cursor-default" aria-label="Fermer" onClick={onClose} />
+      <button
+        type="button"
+        className="absolute inset-0 cursor-default"
+        aria-label={t('common.aria.close')}
+        onClick={onClose}
+      />
       <div
         className="relative z-10 flex max-h-[min(92dvh,40rem)] w-full max-w-3xl flex-col rounded-t-2xl border border-slate-700 bg-slate-900 shadow-2xl sm:rounded-2xl"
         onClick={e => e.stopPropagation()}
@@ -47,19 +78,16 @@ export default function ProFeaturesModal({
             </div>
             <div>
               <h2 id="pro-features-title" className="text-lg font-semibold text-white">
-                Fonctionnalités Neurix Pro
+                {t('modals.proFeatures.title')}
               </h2>
-              <p className="mt-1 text-sm text-slate-400">
-                Vision produit : gratuit utile, Pro pour scale, Business pour les structures. Les pastilles indiquent ce qui
-                est déjà en place ou en construction.
-              </p>
+              <p className="mt-1 text-sm text-slate-400">{t('modals.proFeatures.intro')}</p>
             </div>
           </div>
           <button
             type="button"
             onClick={onClose}
             className="rounded-lg p-2 text-slate-400 hover:bg-slate-800 hover:text-white"
-            aria-label="Fermer"
+            aria-label={t('common.aria.close')}
           >
             <IconX className="h-5 w-5" />
           </button>
@@ -67,8 +95,8 @@ export default function ProFeaturesModal({
 
         <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
           <div className="grid gap-4 sm:grid-cols-2">
-            {PRO_FEATURE_BLOCKS.map(block => {
-              const st = statusLabel(block.status);
+            {blocks.map(block => {
+              const st = statusLabel(block.status, t);
               return (
                 <article
                   key={block.id}
@@ -104,18 +132,19 @@ export default function ProFeaturesModal({
           {isGuest ? (
             <p className="mt-4 rounded-lg border border-slate-700 bg-slate-800/80 px-3 py-2 text-center text-sm text-slate-400">
               {upgradeOfferAvailable
-                ? 'Connectez-vous pour souscrire à Pro une fois votre compte créé.'
-                : 'Créez un compte pour synchroniser vos notes et tâches dans le cloud.'}
+                ? t('modals.proFeatures.guestSubscribe')
+                : t('modals.proFeatures.guestCreateAccount')}
             </p>
           ) : !isPro && upgradeOfferAvailable ? (
             <div className="mt-5 flex flex-col items-stretch gap-2 border-t border-slate-700 pt-4 sm:flex-row sm:items-center sm:justify-between">
               <p className="text-sm text-slate-400">
                 {proPriceLabel ? (
                   <>
-                    Tarif affiché au paiement : <span className="text-slate-200">{proPriceLabel}</span>
+                    {t('modals.proFeatures.priceShown')}{' '}
+                    <span className="text-slate-200">{proPriceLabel}</span>
                   </>
                 ) : (
-                  'Tarif selon configuration Stripe.'
+                  t('modals.proFeatures.priceStripe')
                 )}
               </p>
               {onUpgrade ? (
@@ -127,19 +156,16 @@ export default function ProFeaturesModal({
                   }}
                   className="rounded-xl bg-indigo-500 px-5 py-2.5 text-sm font-medium text-white shadow-lg shadow-indigo-500/25 hover:bg-indigo-400"
                 >
-                  Passer à Pro
+                  {t('modals.proFeatures.upgrade')}
                 </button>
               ) : null}
             </div>
           ) : !isPro && !upgradeOfferAvailable ? (
             <p className="mt-4 rounded-lg border border-slate-700 bg-slate-800/80 px-3 py-2 text-center text-sm text-slate-400">
-              L’abonnement Pro n’est pas encore proposé à la souscription. Les fonctionnalités payantes seront annoncées ici
-              lorsqu’elles seront prêtes.
+              {t('modals.proFeatures.notAvailable')}
             </p>
           ) : (
-            <p className="mt-4 text-center text-sm text-amber-200/80">
-              Merci de soutenir Neurix Pro — les blocs « À venir » seront déployés progressivement.
-            </p>
+            <p className="mt-4 text-center text-sm text-amber-200/80">{t('modals.proFeatures.thankYou')}</p>
           )}
         </div>
       </div>

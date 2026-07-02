@@ -1,0 +1,84 @@
+export const groupsMessages = {
+  fr: {
+    title: 'Groupes',
+    creditsTitle: 'Crédits IA · Cliquez pour en acheter',
+    creditsLabel: '{count} crédits',
+    filters: {
+      all: 'Tous',
+      owned: 'Créés par moi',
+      member: 'Membre',
+    },
+    tabs: {
+      aria: 'Groupes',
+    },
+    settings: 'Paramètres',
+    newGroup: 'Nouveau groupe',
+    close: 'Fermer',
+    newTask: 'Nouvelle tâche',
+    taskShort: 'Tâche',
+    taskCount: '{count} tâche',
+    taskCountPlural: '{count} tâches',
+    filtered: 'filtré',
+    create: {
+      namePlaceholder: 'Nom du groupe',
+      submit: 'Créer',
+    },
+    settingsPanel: {
+      rename: 'Renommer',
+      changeLogo: 'Changer le logo',
+      delete: 'Supprimer',
+      deleteConfirm: 'Supprimer ce groupe ?',
+      members: 'Membres',
+    },
+    empty: {
+      loginRequired: 'Connectez-vous pour accéder aux groupes.',
+      noGroupsCreate: 'Aucun groupe — créez-en un pour commencer.',
+      noGroupsWait: 'Aucun groupe — attendez une invitation Pro.',
+    },
+    errors: {
+      uploadFailed: 'Upload impossible',
+    },
+    collaborators: 'Collaborateurs',
+  },
+  en: {
+    title: 'Groups',
+    creditsTitle: 'AI credits · Click to buy more',
+    creditsLabel: '{count} credits',
+    filters: {
+      all: 'All',
+      owned: 'Created by me',
+      member: 'Member',
+    },
+    tabs: {
+      aria: 'Groups',
+    },
+    settings: 'Settings',
+    newGroup: 'New group',
+    close: 'Close',
+    newTask: 'New task',
+    taskShort: 'Task',
+    taskCount: '{count} task',
+    taskCountPlural: '{count} tasks',
+    filtered: 'filtered',
+    create: {
+      namePlaceholder: 'Group name',
+      submit: 'Create',
+    },
+    settingsPanel: {
+      rename: 'Rename',
+      changeLogo: 'Change logo',
+      delete: 'Delete',
+      deleteConfirm: 'Delete this group?',
+      members: 'Members',
+    },
+    empty: {
+      loginRequired: 'Sign in to access groups.',
+      noGroupsCreate: 'No groups yet — create one to get started.',
+      noGroupsWait: 'No groups yet — wait for a Pro invitation.',
+    },
+    errors: {
+      uploadFailed: 'Upload failed',
+    },
+    collaborators: 'Collaborators',
+  },
+} as const;

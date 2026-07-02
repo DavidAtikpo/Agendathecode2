@@ -15,7 +15,7 @@ export type UserPreferences = {
 
 export const DEFAULT_USER_PREFERENCES: UserPreferences = {
   density: 'comfortable',
-  locale: 'fr',
+  locale: 'en',
   notesShowWhatsApp: true,
 };
 

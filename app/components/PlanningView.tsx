@@ -2,6 +2,11 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { Note, Task, TaskStatus, TrainingSession } from '../types';
+import { useI18n } from '@/app/lib/i18n';
+import {
+  sessionRoleLabel,
+  sessionStatusLabel,
+} from '../lib/session-labels';
 import {
   PLANNING_DAY_MS,
   addPlanningDays,
@@ -13,6 +18,14 @@ import { IconCalendar } from './icons';
 
 type PlanningKind = 'task' | 'note' | 'session';
 
+type NoteStatusKey = 'ideaNote' | 'reminderOverdue' | 'reminderUpcoming';
+type SessionStatusKey =
+  | 'noAssignees'
+  | 'reassign'
+  | 'confirmed'
+  | 'partiallyConfirmed'
+  | 'pendingValidation';
+
 interface PlanningRow {
   id: string;
   kind: PlanningKind;
@@ -20,9 +33,8 @@ interface PlanningRow {
   startMs: number;
   endMs: number;
   progressPct: number | null;
-  statusLabel: string;
-  typeLabel: string;
-  priorityLabel?: string;
+  statusKey: TaskStatus | NoteStatusKey | SessionStatusKey;
+  priorityKey?: string;
 }
 
 function addDays(ms: number, days: number) {
@@ -36,24 +48,19 @@ function clampDateOrder(startMs: number, endMs: number) {
   return { startMs, endMs: startMs + DAY_MS };
 }
 
-function taskStatusMeta(status: TaskStatus): { pct: number; label: string } {
-  const m: Record<TaskStatus, { pct: number; label: string }> = {
-    todo: { pct: 0, label: 'À faire' },
-    urgent: { pct: 12, label: 'Urgence / bug' },
-    doing: { pct: 45, label: 'En cours' },
-    testing: { pct: 72, label: 'En cours de test' },
-    review: { pct: 88, label: 'Révision' },
-    done: { pct: 100, label: 'Terminé' },
+function taskStatusMeta(status: TaskStatus): { pct: number; key: TaskStatus } {
+  const m: Record<TaskStatus, { pct: number; key: TaskStatus }> = {
+    todo: { pct: 0, key: 'todo' },
+    urgent: { pct: 12, key: 'urgent' },
+    doing: { pct: 45, key: 'doing' },
+    testing: { pct: 72, key: 'testing' },
+    review: { pct: 88, key: 'review' },
+    done: { pct: 100, key: 'done' },
   };
   return m[status];
 }
 
-const PRIORITY_LABEL: Record<string, string> = {
-  low: 'Basse',
-  medium: 'Moyenne',
-  high: 'Haute',
-  urgent: 'Urgent',
-};
+const PRIORITY_KEYS = ['low', 'medium', 'high', 'urgent'] as const;
 
 const PRIORITY_COLOR: Record<string, string> = {
   low: 'bg-slate-500/30 text-slate-300',
@@ -62,35 +69,44 @@ const PRIORITY_COLOR: Record<string, string> = {
   urgent: 'bg-rose-500/25 text-rose-300',
 };
 
-function formatShort(iso: string) {
+function formatShort(iso: string, dateLocale: string) {
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return '—';
-  return d.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' });
+  return d.toLocaleDateString(dateLocale, { day: 'numeric', month: 'short' });
 }
 
-function formatFull(iso: string) {
+function formatFull(iso: string, dateLocale: string) {
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return '—';
-  return d.toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' });
+  return d.toLocaleDateString(dateLocale, { day: 'numeric', month: 'long', year: 'numeric' });
 }
 
-function formatMonthYear(d: Date) {
-  return d.toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' });
+function formatMonthYear(d: Date, dateLocale: string) {
+  return d.toLocaleDateString(dateLocale, { month: 'long', year: 'numeric' });
 }
 
 function startOfDay(ms: number) {
   return startOfPlanningDay(ms);
 }
 
-function sessionStatusMeta(session: TrainingSession): { pct: number; label: string } {
+function sessionStatusMeta(session: TrainingSession): { pct: number; key: SessionStatusKey } {
   const assignments = session.assignments;
-  if (assignments.length === 0) return { pct: 0, label: 'Sans intervenants' };
+  if (assignments.length === 0) return { pct: 0, key: 'noAssignees' };
   const accepted = assignments.filter(a => a.status === 'accepted').length;
   const declined = assignments.some(a => a.status === 'declined');
-  if (declined) return { pct: Math.round((accepted / assignments.length) * 100), label: 'À réassigner' };
-  if (accepted === assignments.length) return { pct: 100, label: 'Confirmée' };
-  if (accepted > 0) return { pct: Math.round((accepted / assignments.length) * 100), label: 'Partiellement confirmée' };
-  return { pct: 0, label: 'En attente de validation' };
+  if (declined) return { pct: Math.round((accepted / assignments.length) * 100), key: 'reassign' };
+  if (accepted === assignments.length) return { pct: 100, key: 'confirmed' };
+  if (accepted > 0) return { pct: Math.round((accepted / assignments.length) * 100), key: 'partiallyConfirmed' };
+  return { pct: 0, key: 'pendingValidation' };
+}
+
+function planningStatusLabel(
+  row: PlanningRow,
+  t: (key: string, params?: Record<string, string | number>) => string,
+): string {
+  if (row.kind === 'task') return t(`planning.taskStatus.${row.statusKey}`);
+  if (row.kind === 'session') return t(`planning.sessionStatus.${row.statusKey}`);
+  return t(`planning.labels.${row.statusKey}`);
 }
 
 function buildRows(notes: Note[], tasks: Task[], sessions: TrainingSession[] = []): PlanningRow[] {
@@ -110,8 +126,7 @@ function buildRows(notes: Note[], tasks: Task[], sessions: TrainingSession[] = [
       startMs: sMs,
       endMs: eMs,
       progressPct: meta.pct,
-      statusLabel: meta.label,
-      typeLabel: 'Session',
+      statusKey: meta.key,
     });
   }
 
@@ -125,13 +140,14 @@ function buildRows(notes: Note[], tasks: Task[], sessions: TrainingSession[] = [
     out.push({
       id: `task:${t.id}`,
       kind: 'task',
-      title: t.title || 'Sans titre',
+      title: t.title,
       startMs: s,
       endMs: e,
       progressPct: meta.pct,
-      statusLabel: meta.label,
-      typeLabel: 'Tâche',
-      priorityLabel: PRIORITY_LABEL[t.priority] ?? t.priority,
+      statusKey: meta.key,
+      priorityKey: PRIORITY_KEYS.includes(t.priority as (typeof PRIORITY_KEYS)[number])
+        ? t.priority
+        : undefined,
     });
   }
 
@@ -143,13 +159,13 @@ function buildRows(notes: Note[], tasks: Task[], sessions: TrainingSession[] = [
     const updatedMs = parsePlanningDateMs(n.updatedAt) ?? startMs;
     const endMs = remindMs ?? startOfDay(Math.max(updatedMs, startMs + DAY_MS));
     const { startMs: s, endMs: e } = clampDateOrder(startMs, endMs);
-    let statusLabel = 'Idée / note';
+    let statusKey: NoteStatusKey = 'ideaNote';
     let progressPct: number | null = null;
     if (remindMs != null) {
       const now = Date.now();
       if (remindMs <= now) {
         progressPct = 100;
-        statusLabel = 'Rappel échu';
+        statusKey = 'reminderOverdue';
       } else {
         const denom = remindMs - s;
         if (denom > 0) {
@@ -157,24 +173,22 @@ function buildRows(notes: Note[], tasks: Task[], sessions: TrainingSession[] = [
         } else {
           progressPct = null;
         }
-        statusLabel = 'Rappel à venir';
+        statusKey = 'reminderUpcoming';
       }
     }
     out.push({
       id: `note:${n.id}`,
       kind: 'note',
-      title: n.title || 'Sans titre',
+      title: n.title,
       startMs: s,
       endMs: e,
       progressPct,
-      statusLabel,
-      typeLabel: 'Note',
+      statusKey,
     });
   }
 
-  /* Tâches actives en haut, terminées en bas ; au sein de chaque groupe : plus récent d'abord. */
   const doneGroup = (r: PlanningRow) =>
-    r.kind === 'task' && r.statusLabel === 'Terminé' ? 1 : 0;
+    r.kind === 'task' && r.statusKey === 'done' ? 1 : 0;
   out.sort((a, b) => {
     const gd = doneGroup(a) - doneGroup(b);
     if (gd !== 0) return gd;
@@ -191,10 +205,10 @@ function durationDays(startMs: number, endMs: number) {
 
 function barPalette(r: PlanningRow): { track: string; fillStrong: string } {
   if (r.kind === 'session') {
-    if (r.statusLabel === 'Confirmée') {
+    if (r.statusKey === 'confirmed') {
       return { track: 'bg-teal-950/80', fillStrong: 'bg-teal-400/95' };
     }
-    if (r.statusLabel === 'À réassigner') {
+    if (r.statusKey === 'reassign') {
       return { track: 'bg-rose-950/80', fillStrong: 'bg-rose-400/90' };
     }
     return { track: 'bg-cyan-950/80', fillStrong: 'bg-cyan-400/90' };
@@ -202,32 +216,32 @@ function barPalette(r: PlanningRow): { track: string; fillStrong: string } {
   if (r.kind === 'note') {
     return { track: 'bg-sky-950/80', fillStrong: 'bg-sky-400/90' };
   }
-  if (r.statusLabel === 'Terminé') {
+  if (r.statusKey === 'done') {
     return { track: 'bg-emerald-950/80', fillStrong: 'bg-emerald-400/95' };
   }
-  if (r.statusLabel === 'Révision') {
+  if (r.statusKey === 'review') {
     return { track: 'bg-violet-950/80', fillStrong: 'bg-violet-400/90' };
   }
-  if (r.statusLabel === 'En cours' || r.statusLabel === 'En cours de test') {
+  if (r.statusKey === 'doing' || r.statusKey === 'testing') {
     return { track: 'bg-amber-950/80', fillStrong: 'bg-amber-400/95' };
   }
-  if (r.statusLabel === 'Urgence / bug') {
+  if (r.statusKey === 'urgent') {
     return { track: 'bg-rose-950/80', fillStrong: 'bg-rose-400/95' };
   }
   return { track: 'bg-indigo-950/80', fillStrong: 'bg-indigo-400/90' };
 }
 
-function statusBadgeColor(statusLabel: string, kind: PlanningKind) {
-  if (kind === 'session') {
-    if (statusLabel === 'Confirmée') return 'bg-teal-500/20 text-teal-300';
-    if (statusLabel === 'À réassigner') return 'bg-rose-500/20 text-rose-300';
+function statusBadgeColor(row: PlanningRow) {
+  if (row.kind === 'session') {
+    if (row.statusKey === 'confirmed') return 'bg-teal-500/20 text-teal-300';
+    if (row.statusKey === 'reassign') return 'bg-rose-500/20 text-rose-300';
     return 'bg-cyan-500/20 text-cyan-300';
   }
-  if (kind === 'note') return 'bg-sky-500/20 text-sky-300';
-  if (statusLabel === 'Terminé') return 'bg-emerald-500/20 text-emerald-300';
-  if (statusLabel === 'Révision') return 'bg-violet-500/20 text-violet-300';
-  if (statusLabel === 'En cours' || statusLabel === 'En cours de test') return 'bg-amber-500/20 text-amber-300';
-  if (statusLabel === 'Urgence / bug') return 'bg-rose-500/20 text-rose-300';
+  if (row.kind === 'note') return 'bg-sky-500/20 text-sky-300';
+  if (row.statusKey === 'done') return 'bg-emerald-500/20 text-emerald-300';
+  if (row.statusKey === 'review') return 'bg-violet-500/20 text-violet-300';
+  if (row.statusKey === 'doing' || row.statusKey === 'testing') return 'bg-amber-500/20 text-amber-300';
+  if (row.statusKey === 'urgent') return 'bg-rose-500/20 text-rose-300';
   return 'bg-indigo-500/20 text-indigo-300';
 }
 
@@ -262,6 +276,9 @@ function DetailPanel({
   currentUserId,
   onRespondSession,
   onClose,
+  t,
+  locale,
+  dateLocale,
 }: {
   row: PlanningRow;
   task: Task | undefined;
@@ -275,9 +292,19 @@ function DetailPanel({
     status: 'accepted' | 'declined',
   ) => Promise<void>;
   onClose: () => void;
+  t: (key: string, params?: Record<string, string | number>) => string;
+  locale: import('@/app/lib/i18n/types').AppLocale;
+  dateLocale: string;
 }) {
   const pal = barPalette(row);
   const pct = row.progressPct ?? 0;
+  const statusLabel = planningStatusLabel(row, t);
+  const displayTitle = row.title || t('planning.labels.untitled');
+  const priorityLabel =
+    row.priorityKey && PRIORITY_KEYS.includes(row.priorityKey as (typeof PRIORITY_KEYS)[number])
+      ? t(`planning.priorities.${row.priorityKey}`)
+      : undefined;
+  const dayCount = durationDays(row.startMs, row.endMs);
 
   return (
     <div
@@ -296,24 +323,28 @@ function DetailPanel({
                     : 'bg-sky-500/20 text-sky-200'
               }`}
             >
-              {row.kind === 'task' ? 'Tâche' : row.kind === 'session' ? 'Session' : 'Note'}
+              {row.kind === 'task'
+                ? t('planning.types.task')
+                : row.kind === 'session'
+                  ? t('planning.types.session')
+                  : t('planning.types.note')}
             </span>
-            <span className={`rounded px-1.5 py-0.5 text-[9px] font-semibold uppercase leading-none ${statusBadgeColor(row.statusLabel, row.kind)}`}>
-              {row.statusLabel}
+            <span className={`rounded px-1.5 py-0.5 text-[9px] font-semibold uppercase leading-none ${statusBadgeColor(row)}`}>
+              {statusLabel}
             </span>
-            {row.priorityLabel && task && (
+            {priorityLabel && task && (
               <span className={`rounded px-1.5 py-0.5 text-[9px] font-semibold uppercase leading-none ${PRIORITY_COLOR[task.priority] ?? 'bg-slate-500/30 text-slate-300'}`}>
-                {row.priorityLabel}
+                {priorityLabel}
               </span>
             )}
           </div>
-          <p className="text-sm font-semibold leading-snug text-slate-100">{row.title}</p>
+          <p className="text-sm font-semibold leading-snug text-slate-100">{displayTitle}</p>
         </div>
         <button
           type="button"
           onClick={onClose}
           className="mt-0.5 shrink-0 rounded p-1 text-slate-500 transition-colors hover:bg-slate-700/60 hover:text-slate-200"
-          aria-label="Fermer"
+          aria-label={t('planning.detail.close')}
         >
           <svg className="h-4 w-4" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2">
             <path d="M4 4l8 8M12 4l-8 8" strokeLinecap="round" />
@@ -342,36 +373,38 @@ function DetailPanel({
         {/* Dates */}
         <div className="grid grid-cols-2 gap-2">
           <div className="rounded-lg bg-slate-800/60 px-3 py-2">
-            <p className="mb-0.5 text-[10px] font-medium uppercase tracking-wide text-slate-500">Début</p>
-            <p className="text-xs font-medium text-slate-200">{formatFull(new Date(row.startMs).toISOString())}</p>
+            <p className="mb-0.5 text-[10px] font-medium uppercase tracking-wide text-slate-500">{t('common.labels.start')}</p>
+            <p className="text-xs font-medium text-slate-200">{formatFull(new Date(row.startMs).toISOString(), dateLocale)}</p>
           </div>
           <div className="rounded-lg bg-slate-800/60 px-3 py-2">
             <p className="mb-0.5 text-[10px] font-medium uppercase tracking-wide text-slate-500">
-              {row.kind === 'task' ? 'Échéance' : row.kind === 'session' ? 'Fin' : 'Rappel'}
+              {row.kind === 'task'
+                ? t('planning.labels.deadline')
+                : row.kind === 'session'
+                  ? t('common.labels.end')
+                  : t('planning.labels.reminder')}
             </p>
-            <p className="text-xs font-medium text-slate-200">{formatFull(new Date(row.endMs).toISOString())}</p>
+            <p className="text-xs font-medium text-slate-200">{formatFull(new Date(row.endMs).toISOString(), dateLocale)}</p>
           </div>
         </div>
 
         {session?.examDate ? (
           <div className="rounded-lg bg-teal-500/10 px-3 py-2">
-            <p className="mb-0.5 text-[10px] font-medium uppercase tracking-wide text-teal-400/80">Examen</p>
-            <p className="text-xs font-medium text-teal-100">{formatFull(`${session.examDate}T12:00:00.000Z`)}</p>
+            <p className="mb-0.5 text-[10px] font-medium uppercase tracking-wide text-teal-400/80">{t('sessions.organizer.exam')}</p>
+            <p className="text-xs font-medium text-teal-100">{formatFull(`${session.examDate}T12:00:00.000Z`, dateLocale)}</p>
           </div>
         ) : null}
 
-        {/* Durée */}
         <div className="rounded-lg bg-slate-800/60 px-3 py-2">
-          <p className="mb-0.5 text-[10px] font-medium uppercase tracking-wide text-slate-500">Durée</p>
+          <p className="mb-0.5 text-[10px] font-medium uppercase tracking-wide text-slate-500">{t('common.labels.duration')}</p>
           <p className="text-xs font-medium text-slate-200">
-            {durationDays(row.startMs, row.endMs)} jour{durationDays(row.startMs, row.endMs) > 1 ? 's' : ''}
+            {dayCount} {t('common.labels.days')}
           </p>
         </div>
 
-        {/* Description (tâche) */}
         {task && task.description && (
           <div>
-            <p className="mb-1.5 text-[10px] font-medium uppercase tracking-wide text-slate-500">Description</p>
+            <p className="mb-1.5 text-[10px] font-medium uppercase tracking-wide text-slate-500">{t('common.labels.content')}</p>
             <p className="whitespace-pre-wrap text-xs leading-relaxed text-slate-300">{task.description}</p>
           </div>
         )}
@@ -379,7 +412,7 @@ function DetailPanel({
         {/* Contenu (note) */}
         {note && note.content && (
           <div>
-            <p className="mb-1.5 text-[10px] font-medium uppercase tracking-wide text-slate-500">Contenu</p>
+            <p className="mb-1.5 text-[10px] font-medium uppercase tracking-wide text-slate-500">{t('common.labels.content')}</p>
             <p className="whitespace-pre-wrap text-xs leading-relaxed text-slate-300 line-clamp-[12]">{note.content}</p>
           </div>
         )}
@@ -410,14 +443,10 @@ function DetailPanel({
                   </span>
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-xs text-slate-200">
-                      {a.role === 'formateur' ? 'Formateur' : 'Assessor'} · {a.user.name}
+                      {sessionRoleLabel(a.role, locale)} · {a.user.name}
                     </p>
                     <p className="text-[10px] text-slate-500">
-                      {a.status === 'accepted'
-                        ? 'Disponible'
-                        : a.status === 'declined'
-                          ? 'Indisponible'
-                          : 'En attente'}
+                      {sessionStatusLabel(a.status, locale)}
                     </p>
                   </div>
                 </div>
@@ -436,7 +465,7 @@ function DetailPanel({
                 .map(a => (
                   <div key={a.id} className="flex w-full flex-col gap-2">
                     <p className="text-[10px] text-slate-500">
-                      Votre réponse ({a.role === 'formateur' ? 'Formateur' : 'Assessor'})
+                      {sessionRoleLabel(a.role, locale)}
                     </p>
                     <div className="flex gap-2">
                       <button
@@ -444,14 +473,14 @@ function DetailPanel({
                         onClick={() => void onRespondSession(session.id, a.role, 'accepted')}
                         className="flex-1 rounded-lg bg-emerald-600 py-2 text-xs font-medium text-white hover:bg-emerald-500"
                       >
-                        Disponible
+                        {t('planning.detail.respondAvailable')}
                       </button>
                       <button
                         type="button"
                         onClick={() => void onRespondSession(session.id, a.role, 'declined')}
                         className="flex-1 rounded-lg border border-slate-600 py-2 text-xs text-slate-300 hover:bg-slate-700"
                       >
-                        Indisponible
+                        {t('planning.detail.respondUnavailable')}
                       </button>
                     </div>
                   </div>
@@ -569,22 +598,22 @@ function DetailPanel({
         <div className="border-t border-slate-700/60 pt-3 space-y-1">
           {task && (
             <p className="text-[10px] text-slate-600">
-              Créé le {formatFull(task.createdAt)}
+              {formatFull(task.createdAt, dateLocale)}
             </p>
           )}
           {task && task.updatedAt !== task.createdAt && (
             <p className="text-[10px] text-slate-600">
-              Mis à jour le {formatFull(task.updatedAt)}
+              {formatFull(task.updatedAt, dateLocale)}
             </p>
           )}
           {note && (
             <p className="text-[10px] text-slate-600">
-              Créé le {formatFull(note.createdAt)}
+              {formatFull(note.createdAt, dateLocale)}
             </p>
           )}
           {note && note.updatedAt !== note.createdAt && (
             <p className="text-[10px] text-slate-600">
-              Mis à jour le {formatFull(note.updatedAt)}
+              {formatFull(note.updatedAt, dateLocale)}
             </p>
           )}
         </div>
@@ -603,6 +632,7 @@ export default function PlanningView({
   compactLayout,
   onRespondSession,
 }: PlanningViewProps) {
+  const { t, dateLocale, locale } = useI18n();
   const [filter, setFilter] = useState<'all' | 'tasks' | 'notes' | 'sessions'>('all');
   const [selectedId, setSelectedId] = useState<string | null>(null);
   /** Frise un peu plus compacte sur mobile pour que les barres tiennent mieux en largeur utile */
@@ -712,13 +742,13 @@ export default function PlanningView({
       segs.push({
         startMs: cursor,
         endMs: segEnd,
-        label: formatMonthYear(new Date(cursor)),
+        label: formatMonthYear(new Date(cursor), dateLocale),
         widthPx: days * pxPerDay,
       });
       cursor = segEnd;
     }
     return segs;
-  }, [rangeMin, rangeMax, pxPerDay]);
+  }, [rangeMin, rangeMax, pxPerDay, dateLocale]);
 
   const timelineWidthPx = useMemo(
     () => Math.round(monthSegments.reduce((sum, seg) => sum + seg.widthPx, 0)),
@@ -789,16 +819,16 @@ export default function PlanningView({
             <IconCalendar className="h-5 w-5 shrink-0 text-indigo-400" />
             <div className="min-w-0">
               <h2 className={`font-semibold tracking-tight text-white ${compactLayout ? 'text-sm' : 'text-base'}`}>
-                Planning
+                {t('planning.title')}
               </h2>
-              <p className="text-[11px] text-slate-500">Diagramme de Gantt — tableau et frise synchronisés.</p>
+              <p className="text-[11px] text-slate-500">{t('planning.subtitle')}</p>
             </div>
           </div>
           <button
             type="button"
             onClick={() => setTaskGridVisible(v => !v)}
             aria-pressed={taskGridVisible}
-            title={taskGridVisible ? 'Masquer le tableau (colonnes Tâche, Début, Fin…)' : 'Afficher le tableau'}
+            title={taskGridVisible ? t('planning.toggleGridHide') : t('planning.toggleGridShowTitle')}
             className={`flex shrink-0 items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-medium transition-colors touch-manipulation sm:ml-0 ${
               taskGridVisible
                 ? 'border-slate-600/60 bg-slate-800/90 text-slate-200 hover:bg-slate-800'
@@ -818,21 +848,23 @@ export default function PlanningView({
                 </>
               )}
             </svg>
-            <span className="max-[380px]:sr-only">{taskGridVisible ? 'Masquer tableau' : 'Tableau'}</span>
+            <span className="max-[380px]:sr-only">
+              {taskGridVisible ? t('planning.toggleGridHideShort') : t('planning.toggleGridShowShort')}
+            </span>
           </button>
           <div
             className="ml-auto flex shrink-0 rounded-lg border border-slate-600/60 bg-slate-800/90 p-0.5 shadow-inner"
             role="group"
-            aria-label="Filtrer le planning"
+            aria-label={t('planning.filterAria')}
           >
             {(
               [
-                ['all', 'Tout'],
-                ['tasks', 'Tâches'],
-                ['notes', 'Notes'],
-                ['sessions', 'Sessions'],
+                ['all', 'planning.filters.all'],
+                ['tasks', 'planning.filters.tasks'],
+                ['notes', 'planning.filters.notes'],
+                ['sessions', 'planning.filters.sessions'],
               ] as const
-            ).map(([key, label]) => (
+            ).map(([key, labelKey]) => (
               <button
                 key={key}
                 type="button"
@@ -841,7 +873,7 @@ export default function PlanningView({
                   filter === key ? 'bg-indigo-500/30 text-indigo-100 shadow-sm' : 'text-slate-400 hover:text-slate-200'
                 }`}
               >
-                {label}
+                {t(labelKey)}
               </button>
             ))}
           </div>
@@ -851,7 +883,7 @@ export default function PlanningView({
       {rows.length === 0 ? (
         <div className="flex flex-1 flex-col items-center justify-center gap-2 px-6 py-20 text-center text-slate-500">
           <IconCalendar className="h-10 w-10 opacity-40" />
-          <p className="text-sm">Aucune entrée à afficher pour ce filtre.</p>
+          <p className="text-sm">{t('planning.empty')}</p>
         </div>
       ) : (
         <div className="relative flex min-h-0 min-w-0 flex-1 border-t border-slate-800/80">
@@ -868,21 +900,21 @@ export default function PlanningView({
                 <div
                   className="grid min-h-0 min-w-0 flex-1 grid-cols-[minmax(0,1fr)_46px_46px_26px_28px_minmax(0,72px)] items-center gap-x-0.5 px-1.5 py-2"
                 >
-                  <span className="pl-1">Tâche</span>
-                  <span className="text-center">Début</span>
-                  <span className="text-center">Fin</span>
-                  <span className="text-center" title="Durée (jours)">
-                    J.
+                  <span className="pl-1">{t('planning.grid.task')}</span>
+                  <span className="text-center">{t('planning.grid.start')}</span>
+                  <span className="text-center">{t('planning.grid.end')}</span>
+                  <span className="text-center" title={t('planning.grid.durationTitle')}>
+                    {t('planning.grid.duration')}
                   </span>
-                  <span className="text-center">%</span>
-                  <span className="truncate pr-0.5 text-center">État</span>
+                  <span className="text-center">{t('common.labels.percent')}</span>
+                  <span className="truncate pr-0.5 text-center">{t('planning.grid.state')}</span>
                 </div>
                 <button
                   type="button"
                   onClick={() => setTaskGridVisible(false)}
                   className="flex w-8 shrink-0 items-center justify-center border-l border-slate-200 text-black hover:bg-slate-100 touch-manipulation"
-                  title="Masquer le tableau"
-                  aria-label="Masquer le tableau des tâches"
+                  title={t('planning.toggleGridHideShort')}
+                  aria-label={t('planning.toggleGridHideAria')}
                 >
                   <svg className="h-4 w-4" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden>
                     <path strokeLinecap="round" strokeLinejoin="round" d="M10 12L6 8l4-4" />
@@ -894,7 +926,14 @@ export default function PlanningView({
                 className="min-h-0 flex-1 overflow-y-auto overflow-x-auto overscroll-x-contain sm:overflow-x-hidden"
                 onScroll={onLeftScroll}
               >
-                {rows.map((r, i) => (
+                {rows.map((r, i) => {
+                  const rowTitle = r.title || t('planning.labels.untitled');
+                  const rowStatus = planningStatusLabel(r, t);
+                  const rowPriority =
+                    r.priorityKey && PRIORITY_KEYS.includes(r.priorityKey as (typeof PRIORITY_KEYS)[number])
+                      ? t(`planning.priorities.${r.priorityKey}`)
+                      : undefined;
+                  return (
                   <button
                     key={r.id}
                     type="button"
@@ -915,27 +954,28 @@ export default function PlanningView({
                             r.kind === 'task' ? 'bg-indigo-100 text-indigo-900' : 'bg-sky-100 text-sky-900'
                           }`}
                         >
-                          {r.kind === 'task' ? 'T' : 'N'}
+                          {r.kind === 'task' ? t('planning.grid.taskBadge') : t('planning.grid.noteBadge')}
                         </span>
-                        <span className="truncate font-medium leading-tight text-black" title={r.title}>
-                          {r.title}
-                          {r.priorityLabel && !compactLayout ? (
-                            <span className="font-normal text-black/60"> · {r.priorityLabel}</span>
+                        <span className="truncate font-medium leading-tight text-black" title={rowTitle}>
+                          {rowTitle}
+                          {rowPriority && !compactLayout ? (
+                            <span className="font-normal text-black/60"> · {rowPriority}</span>
                           ) : null}
                         </span>
                       </div>
                     </div>
-                    <span className="text-center tabular-nums text-black">{formatShort(new Date(r.startMs).toISOString())}</span>
-                    <span className="text-center tabular-nums text-black">{formatShort(new Date(r.endMs).toISOString())}</span>
+                    <span className="text-center tabular-nums text-black">{formatShort(new Date(r.startMs).toISOString(), dateLocale)}</span>
+                    <span className="text-center tabular-nums text-black">{formatShort(new Date(r.endMs).toISOString(), dateLocale)}</span>
                     <span className="text-center tabular-nums text-black/80">{durationDays(r.startMs, r.endMs)}</span>
                     <span className="text-center tabular-nums text-black">
-                      {r.progressPct != null ? `${r.progressPct}` : '—'}
+                      {r.progressPct != null ? `${r.progressPct}` : t('common.labels.none')}
                     </span>
-                    <span className="truncate text-center text-[10px] leading-tight text-black/80" title={r.statusLabel}>
-                      {r.statusLabel}
+                    <span className="truncate text-center text-[10px] leading-tight text-black/80" title={rowStatus}>
+                      {rowStatus}
                     </span>
                   </button>
-                ))}
+                  );
+                })}
               </div>
             </div>
           ) : (
@@ -943,13 +983,15 @@ export default function PlanningView({
               type="button"
               onClick={() => setTaskGridVisible(true)}
               className="flex w-9 shrink-0 flex-col items-center justify-center gap-0.5 border-r border-slate-700/80 bg-slate-900/95 py-2 text-slate-400 shadow-[4px_0_12px_-4px_rgba(0,0,0,0.4)] hover:bg-slate-800/90 hover:text-slate-200 touch-manipulation"
-              title="Afficher le tableau (Tâche, Début, Fin…)"
-              aria-label="Afficher le tableau des tâches"
+              title={t('planning.toggleGridShowTitle')}
+              aria-label={t('planning.toggleGridShowAria')}
             >
               <svg className="h-4 w-4 shrink-0" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M6 12l4-4-4-4" />
               </svg>
-              <span className="px-0.5 text-[8px] font-bold uppercase leading-none tracking-tight">Tab.</span>
+              <span className="px-0.5 text-[8px] font-bold uppercase leading-none tracking-tight">
+                {t('planning.toggleGridShowShort')}
+              </span>
             </button>
           )}
 
@@ -995,7 +1037,7 @@ export default function PlanningView({
                     aria-hidden
                   >
                     <span className="absolute -top-1 left-1/2 z-30 -translate-x-1/2 whitespace-nowrap rounded bg-rose-600/95 px-1 py-0.5 text-[9px] font-bold uppercase tracking-wide text-white shadow-md">
-                      Auj.
+                      {t('planning.today')}
                     </span>
                   </div>
                 ) : null}
@@ -1010,6 +1052,8 @@ export default function PlanningView({
                   );
                   const pal = barPalette(r);
                   const pct = r.progressPct ?? 0;
+                  const rowTitle = r.title || t('planning.labels.untitled');
+                  const rowStatus = planningStatusLabel(r, t);
 
                   return (
                     <button
@@ -1028,7 +1072,7 @@ export default function PlanningView({
                       <div
                         className={`relative h-[22px] max-w-full overflow-hidden rounded-md shadow-md ring-1 ring-black/25 ${pal.track}`}
                         style={{ marginLeft: leftPx, width: barW }}
-                        title={`${r.title} — ${r.statusLabel}`}
+                        title={`${rowTitle} — ${rowStatus}`}
                       >
                         {r.progressPct != null ? (
                           <div
@@ -1055,7 +1099,7 @@ export default function PlanningView({
               <button
                 type="button"
                 className="fixed inset-0 z-40 bg-black/55 md:hidden"
-                aria-label="Fermer le détail"
+                aria-label={t('planning.detail.close')}
                 onClick={() => setSelectedId(null)}
               />
               <div className="fixed inset-y-0 right-0 z-50 flex h-full max-md:box-border max-md:pt-[env(safe-area-inset-top)] max-md:pb-[calc(4.5rem+env(safe-area-inset-bottom))] md:static md:z-auto md:h-full md:max-w-none md:shrink-0 md:pb-0">
@@ -1068,6 +1112,9 @@ export default function PlanningView({
                   currentUserId={currentUserId}
                   onRespondSession={onRespondSession}
                   onClose={() => setSelectedId(null)}
+                  t={t}
+                  locale={locale}
+                  dateLocale={dateLocale}
                 />
               </div>
             </>

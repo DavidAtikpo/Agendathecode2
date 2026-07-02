@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { User } from '../types';
+import { useI18n } from '../lib/i18n/context';
 import styles from './Sidebar.module.css';
 import { IconX } from './icons';
 
@@ -24,6 +25,7 @@ export default function CollaboratorsModal({
   onAddContact,
   onRemoveContact,
 }: CollaboratorsModalProps) {
+  const { t } = useI18n();
   const [emailInput, setEmailInput] = useState('');
   const [addError, setAddError] = useState<string | null>(null);
   const [addBusy, setAddBusy] = useState(false);
@@ -46,7 +48,7 @@ export default function CollaboratorsModal({
       await onAddContact(emailInput.trim());
       setEmailInput('');
     } catch (err: unknown) {
-      setAddError(err instanceof Error ? err.message : 'Erreur');
+      setAddError(err instanceof Error ? err.message : t('common.errors.generic'));
     } finally {
       setAddBusy(false);
     }
@@ -68,7 +70,7 @@ export default function CollaboratorsModal({
         <button
           type="button"
           className="absolute inset-0 cursor-default"
-          aria-label="Fermer"
+          aria-label={t('common.aria.close')}
           onClick={onClose}
         />
         <div
@@ -77,13 +79,13 @@ export default function CollaboratorsModal({
         >
           <div className="flex shrink-0 items-center justify-between border-b border-slate-700 px-4 py-3 sm:px-5">
             <h2 id="collaborators-title" className="text-lg font-semibold text-white">
-              Collaborateurs
+              {t('modals.collaborators.title')}
             </h2>
             <button
               type="button"
               onClick={onClose}
               className="rounded-lg p-2 text-slate-400 hover:bg-slate-700 hover:text-white"
-              aria-label="Fermer"
+              aria-label={t('common.aria.close')}
             >
               <IconX className="h-5 w-5" />
             </button>
@@ -91,13 +93,11 @@ export default function CollaboratorsModal({
 
           <div className="min-h-0 flex-1 overflow-y-auto px-4 py-3 sm:px-5">
             {isGuest ? (
-              <p className="text-sm text-slate-400">
-                Connectez-vous pour inviter des collègues par e-mail et leur assigner des tâches.
-              </p>
+              <p className="text-sm text-slate-400">{t('modals.collaborators.guestHint')}</p>
             ) : (
               <>
                 <p className="mb-3 text-[13px] leading-snug text-slate-400">
-                  Saisissez l&apos;e-mail d&apos;un compte Neurix existant pour pouvoir lui assigner des tâches.
+                  {t('modals.collaborators.intro')}
                 </p>
                 <form onSubmit={handleAdd} className="mb-4 space-y-2">
                   <div className="flex gap-2">
@@ -108,7 +108,7 @@ export default function CollaboratorsModal({
                         setEmailInput(e.target.value);
                         setAddError(null);
                       }}
-                      placeholder="email@exemple.com"
+                      placeholder={t('modals.collaborators.emailPlaceholder')}
                       className="min-w-0 flex-1 rounded-lg border border-slate-600 bg-slate-700 px-3 py-2 text-sm text-slate-200 placeholder-slate-500 focus:border-indigo-500 focus:outline-none"
                       disabled={addBusy}
                       autoComplete="email"
@@ -118,7 +118,7 @@ export default function CollaboratorsModal({
                       disabled={addBusy || !emailInput.trim()}
                       className="shrink-0 rounded-lg bg-indigo-500 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-400 disabled:opacity-50"
                     >
-                      {addBusy ? '…' : 'Ajouter'}
+                      {addBusy ? t('common.status.busy') : t('modals.collaborators.add')}
                     </button>
                   </div>
                   {addError ? (
@@ -127,7 +127,7 @@ export default function CollaboratorsModal({
                 </form>
 
                 <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-slate-500">
-                  Équipe ({assignableUsers.length})
+                  {t('modals.collaborators.team', { count: assignableUsers.length })}
                 </p>
                 <ul className="space-y-1">
                   {assignableUsers.map(user => (
@@ -143,14 +143,16 @@ export default function CollaboratorsModal({
                         <p className="truncate text-xs text-slate-500">{user.email}</p>
                       </div>
                       {currentUser.id === user.id ? (
-                        <span className="shrink-0 text-[11px] text-indigo-400">vous</span>
+                        <span className="shrink-0 text-[11px] text-indigo-400">
+                          {t('modals.collaborators.you')}
+                        </span>
                       ) : (
                         <button
                           type="button"
                           onClick={() => onRemoveContact(user.id)}
                           className="shrink-0 rounded-lg px-2 py-1 text-xs text-slate-500 hover:bg-red-950/50 hover:text-red-400"
                         >
-                          Retirer
+                          {t('modals.collaborators.remove')}
                         </button>
                       )}
                     </li>

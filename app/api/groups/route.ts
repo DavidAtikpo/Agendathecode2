@@ -5,12 +5,21 @@ import { groupsVisibleToUser } from '@/app/lib/group-access';
 import { assertGroupMembersAllowed } from '@/app/lib/group-assign';
 import { GROUP_WITH_MEMBERS_INCLUDE, serializeGroup } from '@/app/lib/group-serialize';
 import { assertUserIsPro, proRequiredMessage } from '@/app/lib/pro-plan';
+import { canAccessGroups, groupsForbiddenForRoleMessage } from '@/app/lib/user-roles';
 
 /** Liste des groupes dont l'utilisateur est membre. */
 export async function GET() {
   const sessionId = await getSessionUserId();
   if (!sessionId) {
     return NextResponse.json({ error: 'Non autorisé' }, { status: 401 });
+  }
+
+  const user = await prisma.user.findUnique({
+    where: { id: sessionId },
+    select: { role: true },
+  });
+  if (!user || !canAccessGroups(user.role)) {
+    return NextResponse.json([]);
   }
 
   const groups = await prisma.group.findMany({
@@ -44,6 +53,14 @@ export async function POST(request: Request) {
   }
   if (memberIds.length > 20) {
     return NextResponse.json({ error: 'Maximum 20 membres par groupe' }, { status: 400 });
+  }
+
+  const creator = await prisma.user.findUnique({
+    where: { id: sessionId },
+    select: { role: true },
+  });
+  if (!creator || !canAccessGroups(creator.role)) {
+    return NextResponse.json({ error: groupsForbiddenForRoleMessage() }, { status: 403 });
   }
 
   try {

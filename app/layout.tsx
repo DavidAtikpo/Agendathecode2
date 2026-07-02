@@ -15,16 +15,16 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Neurix — Idées & Tâches | Gestion d'équipe alimentée par l'IA",
-  description: "Capturez vos idées et gérez vos tâches en équipe avec l'aide de l'IA. Collaboration intelligente, productivité accrue.",
-  keywords: ["neurix", "agenda", "tâches", "gestion de projet", "collaboration", "équipe", "IA"],
+  title: "Neurix — Ideas & Tasks | AI-powered team management",
+  description: "Capture your ideas and manage team tasks with AI assistance. Smart collaboration, better productivity.",
+  keywords: ["neurix", "agenda", "tasks", "project management", "collaboration", "team", "AI"],
   authors: [{ name: "Neurix" }],
   icons: {
     icon: "/logo (1).png",
   },
   openGraph: {
-    title: "Neurix — Idées & Tâches",
-    description: "Capturez vos idées et gérez vos tâches en équipe avec l'aide de l'IA",
+    title: "Neurix — Ideas & Tasks",
+    description: "Capture your ideas and manage team tasks with AI assistance",
     url: "https://neurix.qrthecode2.com",
     siteName: "Neurix",
     images: [
@@ -32,16 +32,16 @@ export const metadata: Metadata = {
         url: "/logo (1).png",
         width: 1200,
         height: 630,
-        alt: "Neurix - Gestion de tâches",
+        alt: "Neurix - Task management",
       },
     ],
-    locale: "fr_FR",
+    locale: "en_US",
     type: "website",
   },
   twitter: {
     card: "summary_large_image",
-    title: "Neurix — Idées & Tâches",
-    description: "Capturez vos idées et gérez vos tâches en équipe avec l'aide de l'IA",
+    title: "Neurix — Ideas & Tasks",
+    description: "Capture your ideas and manage team tasks with AI assistance",
     images: ["/logo (1).png"],
   },
   alternates: {
@@ -95,7 +95,7 @@ export default function RootLayout({
 }>) {
   return (
     <html
-      lang="fr"
+      lang="en"
       suppressHydrationWarning
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >

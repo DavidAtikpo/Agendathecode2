@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { useI18n } from '../lib/i18n/context';
 import { User } from '../types';
 import styles from './Sidebar.module.css';
 import {
@@ -100,6 +101,7 @@ export default function Sidebar({
   showGroups = false,
   groupCount = 0,
 }: SidebarProps) {
+  const { t, dateLocale } = useI18n();
   const [accountOpen, setAccountOpen] = useState(false);
   /** Réduit par défaut ; invité ou tiroir mobile : toujours large. */
   const [sidebarCollapsed, setSidebarCollapsed] = useState(true);
@@ -121,7 +123,7 @@ export default function Sidebar({
     if (!lastDataUpdatedAt?.trim()) return null;
     const d = new Date(lastDataUpdatedAt);
     if (Number.isNaN(d.getTime())) return null;
-    return d.toLocaleString('fr-FR', { dateStyle: 'short', timeStyle: 'short' });
+    return d.toLocaleString(dateLocale, { dateStyle: 'short', timeStyle: 'short' });
   })();
 
   return (
@@ -131,7 +133,7 @@ export default function Sidebar({
         className={`flex h-full min-h-0 flex-shrink-0 flex-col border-r border-slate-700 bg-slate-800 transition-[width] duration-200 ease-out ${
           expanded ? 'w-64' : 'w-[4.5rem]'
         } ${className}`.trim()}
-        aria-label="Menu principal"
+        aria-label={t('sidebar.aria.mainMenu')}
       >
         <header className={`shrink-0 border-b border-slate-700 ${expanded ? 'p-4' : 'px-2 py-3'}`}>
           <div className={`flex items-center ${expanded ? 'gap-3' : 'flex-col gap-2'}`}>
@@ -145,7 +147,7 @@ export default function Sidebar({
             {expanded ? (
               <div className="min-w-0">
                 <h1 className="text-base font-bold leading-tight tracking-tight text-white">{BRAND_NAME}</h1>
-                <p className="mt-0.5 text-[11px] text-slate-500">Idées & collaboration</p>
+                <p className="mt-0.5 text-[11px] text-slate-500">{t('sidebar.brand.tagline')}</p>
               </div>
             ) : null}
           </div>
@@ -154,8 +156,8 @@ export default function Sidebar({
         {isGuest && (
           <div className="shrink-0 mx-3 mt-3 p-3 rounded-xl bg-amber-500/10 border border-amber-500/25">
             <p className="text-[11px] text-amber-200/90 leading-snug mb-2">
-              <span className="font-semibold text-amber-300">Mode essai</span> — données locales. Connectez-vous pour
-              sauvegarder dans le cloud.
+              <span className="font-semibold text-amber-300">{t('sidebar.guest.trialMode')}</span>{' '}
+              {t('sidebar.guest.trialDescription')}
             </p>
             <div className="flex flex-col gap-1.5">
               <button
@@ -166,7 +168,7 @@ export default function Sidebar({
                 }}
                 className="w-full bg-indigo-500 hover:bg-indigo-400 text-white text-xs font-medium py-2 rounded-lg touch-manipulation"
               >
-                Se connecter
+                {t('sidebar.guest.signIn')}
               </button>
               <button
                 type="button"
@@ -176,15 +178,15 @@ export default function Sidebar({
                 }}
                 className="w-full bg-slate-700 hover:bg-slate-600 text-slate-200 text-xs font-medium py-2 rounded-lg border border-slate-600 touch-manipulation"
               >
-                Créer un compte
+                {t('sidebar.guest.createAccount')}
               </button>
             </div>
           </div>
         )}
 
         <div className={`flex min-h-0 flex-1 flex-col pt-3 ${expanded ? 'px-3' : 'px-1.5'}`}>
-          {expanded ? <SectionLabel>Navigation</SectionLabel> : null}
-          <nav className="min-h-0 flex-1 space-y-1 overflow-y-auto pb-2" aria-label="Vues et assistant">
+          {expanded ? <SectionLabel>{t('sidebar.sections.navigation')}</SectionLabel> : null}
+          <nav className="min-h-0 flex-1 space-y-1 overflow-y-auto pb-2" aria-label={t('sidebar.aria.viewsAndAssistant')}>
             <button
               type="button"
               onClick={() => {
@@ -192,19 +194,19 @@ export default function Sidebar({
                 afterNav();
               }}
               className={navBtn(activeView === 'notes', 'bg-indigo-500/20 text-indigo-300')}
-              title={expanded ? undefined : 'Idées & notes'}
+              title={expanded ? undefined : t('sidebar.nav.notes')}
             >
               <IconLightBulb
                 className={`h-5 w-5 shrink-0 ${activeView === 'notes' ? 'text-indigo-300' : 'text-slate-400'}`}
               />
-              {expanded ? <span className="min-w-0 truncate">Idées & notes</span> : null}
+              {expanded ? <span className="min-w-0 truncate">{t('sidebar.nav.notes')}</span> : null}
               {expanded && noteCount > 0 ? (
                 <span className="ml-auto min-w-[1.25rem] rounded-full bg-slate-700 px-2 py-0.5 text-center text-xs tabular-nums text-slate-300">
                   {noteCount}
                 </span>
               ) : null}
               {!expanded && noteCount > 0 ? (
-                <span className="absolute right-1 top-1.5 h-2 w-2 rounded-full bg-slate-400" aria-label={`${noteCount} notes`} />
+                <span className="absolute right-1 top-1.5 h-2 w-2 rounded-full bg-slate-400" aria-label={t('sidebar.badges.notesCount', { count: noteCount })} />
               ) : null}
             </button>
 
@@ -215,16 +217,16 @@ export default function Sidebar({
                 afterNav();
               }}
               className={navBtn(activeView === 'tasks', 'bg-indigo-500/20 text-indigo-300')}
-              title={expanded ? undefined : 'Tableau des tâches'}
+              title={expanded ? undefined : t('sidebar.nav.tasks')}
             >
               <IconClipboardList
                 className={`h-5 w-5 shrink-0 ${activeView === 'tasks' ? 'text-indigo-300' : 'text-slate-400'}`}
               />
-              {expanded ? <span className="min-w-0 truncate">Tableau des tâches</span> : null}
+              {expanded ? <span className="min-w-0 truncate">{t('sidebar.nav.tasks')}</span> : null}
               {expanded && assignedTaskBadgeCount > 0 ? (
                 <span
                   className="ml-auto min-w-[1.25rem] rounded-full bg-rose-500/25 px-2 py-0.5 text-center text-xs font-semibold tabular-nums text-rose-300"
-                  title="Tâches qui vous sont assignées"
+                  title={t('sidebar.badges.assignedTasksTitle')}
                 >
                   {assignedTaskBadgeCount > 99 ? '99+' : assignedTaskBadgeCount}
                 </span>
@@ -232,7 +234,7 @@ export default function Sidebar({
               {!expanded && assignedTaskBadgeCount > 0 ? (
                 <span
                   className="absolute right-0.5 top-1.5 flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-rose-500 px-0.5 text-[10px] font-bold leading-none text-white"
-                  aria-label={`${assignedTaskBadgeCount} tâches assignées`}
+                  aria-label={t('sidebar.badges.assignedTasks', { count: assignedTaskBadgeCount })}
                 >
                   {assignedTaskBadgeCount > 9 ? '9+' : assignedTaskBadgeCount}
                 </span>
@@ -246,15 +248,15 @@ export default function Sidebar({
                 afterNav();
               }}
               className={navBtn(activeView === 'planning', 'bg-indigo-500/20 text-indigo-300')}
-              title={expanded ? undefined : 'Planning'}
+              title={expanded ? undefined : t('sidebar.nav.planning')}
             >
               <IconCalendar
                 className={`h-5 w-5 shrink-0 ${activeView === 'planning' ? 'text-indigo-300' : 'text-slate-400'}`}
               />
-              {expanded ? <span className="min-w-0 truncate">Planning</span> : null}
+              {expanded ? <span className="min-w-0 truncate">{t('sidebar.nav.planning')}</span> : null}
             </button>
 
-            {showGroups && expanded ? <SectionLabel>Équipe</SectionLabel> : null}
+            {showGroups && expanded ? <SectionLabel>{t('sidebar.sections.team')}</SectionLabel> : null}
 
             {showGroups ? (
               <button
@@ -264,7 +266,7 @@ export default function Sidebar({
                   afterNav();
                 }}
                 className={navBtn(activeView === 'groups', 'bg-violet-500/20 text-violet-300')}
-                title={expanded ? undefined : 'Groupes'}
+                title={expanded ? undefined : t('sidebar.nav.groups')}
               >
                 <svg
                   className={`h-5 w-5 shrink-0 ${activeView === 'groups' ? 'text-violet-300' : 'text-slate-400'}`}
@@ -276,7 +278,7 @@ export default function Sidebar({
                 >
                   <path strokeLinecap="round" strokeLinejoin="round" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
                 </svg>
-                {expanded ? <span className="min-w-0 truncate">Groupes</span> : null}
+                {expanded ? <span className="min-w-0 truncate">{t('sidebar.nav.groups')}</span> : null}
                 {expanded && groupCount > 0 ? (
                   <span className="ml-auto min-w-[1.25rem] rounded-full bg-violet-500/25 px-2 py-0.5 text-center text-xs tabular-nums text-violet-200">
                     {groupCount}
@@ -291,7 +293,7 @@ export default function Sidebar({
             ) : null}
 
             {(showSessionsOrganizer || showSessionsAssignee) && expanded ? (
-              <SectionLabel>Formation</SectionLabel>
+              <SectionLabel>{t('sidebar.sections.training')}</SectionLabel>
             ) : null}
 
             {showSessionsOrganizer ? (
@@ -305,7 +307,7 @@ export default function Sidebar({
                   activeView === 'sessions-organizer',
                   'bg-teal-500/20 text-teal-300',
                 )}
-                title={expanded ? undefined : 'Gestion sessions'}
+                title={expanded ? undefined : t('sidebar.nav.sessionsOrganizer')}
               >
                 <svg
                   className={`h-5 w-5 shrink-0 ${activeView === 'sessions-organizer' ? 'text-teal-300' : 'text-slate-400'}`}
@@ -317,7 +319,7 @@ export default function Sidebar({
                 >
                   <path strokeLinecap="round" strokeLinejoin="round" d="M4 19V5m0 14h16M8 11v8m4-8v8m4-8v8M8 7V5m4 2V5m4 2V5" />
                 </svg>
-                {expanded ? <span className="min-w-0 truncate">Gestion sessions</span> : null}
+                {expanded ? <span className="min-w-0 truncate">{t('sidebar.nav.sessionsOrganizer')}</span> : null}
               </button>
             ) : null}
 
@@ -332,7 +334,7 @@ export default function Sidebar({
                   activeView === 'sessions-assignee',
                   'bg-indigo-500/20 text-indigo-300',
                 )}
-                title={expanded ? undefined : 'Mes propositions'}
+                title={expanded ? undefined : t('sidebar.nav.sessionsAssignee')}
               >
                 <svg
                   className={`h-5 w-5 shrink-0 ${activeView === 'sessions-assignee' ? 'text-indigo-300' : 'text-slate-400'}`}
@@ -344,7 +346,7 @@ export default function Sidebar({
                 >
                   <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4M7.5 4.5l1.5 1.5M16.5 4.5L15 6M12 3v2M5 20h14a2 2 0 002-2V8a2 2 0 00-2-2h-3.5l-1-1.5h-3L9 6H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
                 </svg>
-                {expanded ? <span className="min-w-0 truncate">Mes propositions</span> : null}
+                {expanded ? <span className="min-w-0 truncate">{t('sidebar.nav.sessionsAssignee')}</span> : null}
                 {expanded && sessionPendingCount > 0 ? (
                   <span className="ml-auto min-w-[1.25rem] rounded-full bg-amber-500/25 px-2 py-0.5 text-center text-xs font-semibold tabular-nums text-amber-200">
                     {sessionPendingCount > 99 ? '99+' : sessionPendingCount}
@@ -365,15 +367,15 @@ export default function Sidebar({
                 afterNav();
               }}
               className={navBtn(chatOpen, 'bg-violet-500/20 text-violet-300')}
-              title={expanded ? undefined : 'Assistant IA'}
+              title={expanded ? undefined : t('sidebar.nav.aiAssistant')}
             >
               <IconSparkles className={`h-5 w-5 shrink-0 ${chatOpen ? 'text-violet-300' : 'text-slate-400'}`} />
-              {expanded ? <span className="min-w-0 truncate">Assistant IA</span> : null}
+              {expanded ? <span className="min-w-0 truncate">{t('sidebar.nav.aiAssistant')}</span> : null}
               {expanded && chatOpen ? (
-                <span className="ml-auto h-2 w-2 animate-pulse rounded-full bg-violet-400" title="Ouvert" />
+                <span className="ml-auto h-2 w-2 animate-pulse rounded-full bg-violet-400" title={t('sidebar.badges.open')} />
               ) : null}
               {!expanded && chatOpen ? (
-                <span className="absolute right-1 top-1.5 h-2 w-2 animate-pulse rounded-full bg-violet-400" title="Assistant ouvert" />
+                <span className="absolute right-1 top-1.5 h-2 w-2 animate-pulse rounded-full bg-violet-400" title={t('sidebar.badges.assistantOpen')} />
               ) : null}
             </button>
           </nav>
@@ -392,7 +394,7 @@ export default function Sidebar({
               }}
               className="flex w-full touch-manipulation items-center justify-center rounded-lg py-2 text-slate-500 transition-colors hover:bg-slate-700/50 hover:text-slate-300"
               aria-expanded={expanded}
-              title={expanded ? 'Réduire le menu' : 'Agrandir le menu'}
+              title={expanded ? t('sidebar.collapse.collapse') : t('sidebar.collapse.expand')}
             >
               <IconChevronRight
                 className={`h-5 w-5 transition-transform ${expanded ? 'rotate-180' : ''}`}
@@ -404,18 +406,18 @@ export default function Sidebar({
         {lastUpdateLabel ? (
           <div
             className={`shrink-0 border-t border-slate-700/80 ${expanded ? 'px-3 py-2.5' : 'flex justify-center px-1 py-2'}`}
-            title={expanded ? undefined : `Dernière modification des données : ${lastUpdateLabel}`}
+            title={expanded ? undefined : t('sidebar.lastUpdate.title', { date: lastUpdateLabel })}
           >
             {expanded ? (
               <p className="text-[10px] leading-snug text-slate-500">
                 <span className="flex items-center gap-1.5 font-semibold uppercase tracking-wide text-slate-400">
                   <IconClock className="h-3.5 w-3.5 shrink-0 text-slate-500" />
-                  Dernière modification
+                  {t('sidebar.lastUpdate.label')}
                 </span>
                 <span className="mt-1 block text-slate-400">{lastUpdateLabel}</span>
               </p>
             ) : (
-              <span className="inline-flex text-slate-500" aria-label={`Dernière modification : ${lastUpdateLabel}`}>
+              <span className="inline-flex text-slate-500" aria-label={t('sidebar.lastUpdate.aria', { date: lastUpdateLabel })}>
                 <IconClock className="h-4 w-4" />
               </span>
             )}
@@ -425,12 +427,12 @@ export default function Sidebar({
         <footer className={`shrink-0 border-t border-slate-700 ${expanded ? 'p-3' : 'p-2'}`}>
           {isGuest ? (
             <div className="space-y-2">
-              <SectionLabel>Compte</SectionLabel>
+              <SectionLabel>{t('sidebar.sections.account')}</SectionLabel>
               <div className="flex items-center gap-2.5 px-1">
                 <div className={`${styles.currentUserAvatar} avatar-current`}>{currentUser.initials}</div>
                 <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium text-slate-200 truncate">{currentUser.name}</p>
-                  <p className="text-xs text-slate-500 truncate">Données locales uniquement</p>
+                  <p className="text-sm font-medium text-slate-200 truncate">{t('sidebar.guest.guestName')}</p>
+                  <p className="text-xs text-slate-500 truncate">{t('sidebar.guest.localDataOnly')}</p>
                 </div>
               </div>
               {onOpenSettings ? (
@@ -443,7 +445,7 @@ export default function Sidebar({
                   className="flex w-full items-center gap-2 rounded-xl border border-slate-600/80 bg-slate-800/50 px-3 py-2.5 text-left text-sm text-slate-300 hover:bg-slate-700/60 touch-manipulation"
                 >
                   <IconSettings className="h-4 w-4 text-slate-400" />
-                  Paramètres
+                  {t('sidebar.account.settings')}
                 </button>
               ) : null}
             </div>
@@ -460,7 +462,7 @@ export default function Sidebar({
                   setAccountOpen(o => !o);
                 }}
                 aria-expanded={accountOpen}
-                title={expanded ? undefined : 'Compte — agrandit le menu'}
+                title={expanded ? undefined : t('sidebar.account.expandTitle')}
                 className={`flex w-full touch-manipulation items-center text-left transition-colors hover:bg-slate-700/40 ${
                   expanded ? 'gap-2.5 px-2.5 py-2.5' : 'justify-center px-0 py-2'
                 }`}
@@ -469,12 +471,12 @@ export default function Sidebar({
                 {expanded ? (
                   <>
                     <div className="min-w-0 flex-1">
-                      <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">Compte</p>
+                      <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">{t('sidebar.account.label')}</p>
                       <p className="truncate text-sm font-medium text-slate-200">{currentUser.name}</p>
                     </div>
                     {currentUser.plan === 'pro' ? (
                       <span className="shrink-0 rounded-md bg-amber-500/20 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-300">
-                        Pro
+                        {t('common.labels.pro')}
                       </span>
                     ) : null}
                     <IconChevronDown
@@ -488,7 +490,7 @@ export default function Sidebar({
                 <div className="space-y-1 border-t border-slate-700/60 px-2 py-2">
                   <p className="truncate px-1 text-xs text-slate-500">{currentUser.email}</p>
                   {currentUser.plan === 'pro' ? (
-                    <p className="px-1 text-[10px] leading-tight text-amber-500/85">IA étendue · rappels e-mail</p>
+                    <p className="px-1 text-[10px] leading-tight text-amber-500/85">{t('sidebar.account.proPerks')}</p>
                   ) : null}
                   {currentUser.plan === 'pro' ? (
                     <button
@@ -499,7 +501,7 @@ export default function Sidebar({
                       }}
                       className="w-full rounded-lg px-2 py-2 text-left text-xs text-slate-300 hover:bg-slate-700/50 touch-manipulation"
                     >
-                      Facturation
+                      {t('sidebar.account.billing')}
                     </button>
                   ) : onUpgrade ? (
                     <button
@@ -510,7 +512,7 @@ export default function Sidebar({
                       }}
                       className="flex w-full items-center justify-between gap-2 rounded-lg px-2 py-2 text-left text-xs text-amber-200/95 hover:bg-slate-700/50 touch-manipulation"
                     >
-                      <span>Passer à Pro</span>
+                      <span>{t('sidebar.account.upgradeToPro')}</span>
                       <span className="flex shrink-0 items-center gap-1">
                         {proPriceLabel ? (
                           <span className="text-[10px] font-medium text-amber-400/90">{proPriceLabel}</span>
@@ -529,7 +531,7 @@ export default function Sidebar({
                       className="flex w-full items-center gap-2 rounded-lg px-2 py-2 text-left text-xs text-slate-400 hover:bg-slate-700/50 hover:text-amber-200/90 touch-manipulation"
                     >
                       <IconSparkles className="h-3.5 w-3.5 shrink-0 text-amber-500/80" />
-                      Fonctionnalités Pro & feuille de route
+                      {t('sidebar.account.proFeatures')}
                     </button>
                   ) : null}
                   {onOpenSettings ? (
@@ -542,7 +544,7 @@ export default function Sidebar({
                       className="flex w-full items-center gap-2 rounded-lg px-2 py-2 text-left text-xs text-slate-300 hover:bg-slate-700/50 touch-manipulation"
                     >
                       <IconSettings className="h-3.5 w-3.5 shrink-0 text-slate-500" />
-                      Paramètres
+                      {t('sidebar.account.settings')}
                     </button>
                   ) : null}
                   {currentUser.role === 'admin' && (
@@ -555,7 +557,7 @@ export default function Sidebar({
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.066 2.573c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.573 1.066c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.066-2.573c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
                       </svg>
-                      Administration
+                      {t('sidebar.account.admin')}
                     </a>
                   )}
                   <button
@@ -566,7 +568,7 @@ export default function Sidebar({
                     }}
                     className="w-full rounded-lg px-2 py-2 text-left text-xs text-slate-500 hover:bg-slate-700/50 hover:text-red-400 touch-manipulation"
                   >
-                    Se déconnecter
+                    {t('sidebar.account.signOut')}
                   </button>
                 </div>
               )}

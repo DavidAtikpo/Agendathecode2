@@ -5,6 +5,7 @@ import type { User } from '../types';
 import type { UserPreferences } from '../lib/user-preferences';
 import { DEFAULT_USER_PREFERENCES, mergePreferences } from '../lib/user-preferences';
 import { USER_AVATAR_COLORS } from '../lib/user-display';
+import { useI18n } from '../lib/i18n/context';
 import { IconX } from './icons';
 
 type SettingsModalProps = {
@@ -17,6 +18,7 @@ type SettingsModalProps = {
 };
 
 export default function SettingsModal({ open, onClose, user, onSaved, isGuest = false }: SettingsModalProps) {
+  const { t } = useI18n();
   const base = user.preferences ?? DEFAULT_USER_PREFERENCES;
   const [density, setDensity] = useState<UserPreferences['density']>(base.density);
   const [locale, setLocale] = useState<UserPreferences['locale']>(base.locale);
@@ -82,13 +84,13 @@ export default function SettingsModal({ open, onClose, user, onSaved, isGuest = 
 
       if (wantsPasswordChange && canChangePassword) {
         if (!currentPassword) {
-          throw new Error('Saisissez votre mot de passe actuel');
+          throw new Error(t('settings.password.errors.currentRequired'));
         }
         if (newPassword.length < 8) {
-          throw new Error('Le nouveau mot de passe doit contenir au moins 8 caractères');
+          throw new Error(t('settings.password.errors.minLength'));
         }
         if (newPassword !== confirmPassword) {
-          throw new Error('La confirmation ne correspond pas au nouveau mot de passe');
+          throw new Error(t('settings.password.errors.mismatch'));
         }
       }
 
@@ -111,7 +113,7 @@ export default function SettingsModal({ open, onClose, user, onSaved, isGuest = 
         });
         const data = (await res.json()) as User & { error?: string };
         if (!res.ok) {
-          throw new Error(typeof data.error === 'string' ? data.error : 'Mot de passe impossible à modifier');
+          throw new Error(typeof data.error === 'string' ? data.error : t('settings.password.errors.changeFailed'));
         }
         merged = { ...merged, ...data };
         setCurrentPassword('');
@@ -130,7 +132,7 @@ export default function SettingsModal({ open, onClose, user, onSaved, isGuest = 
           }),
         });
         const data = (await res.json()) as User & { error?: string };
-        if (!res.ok) throw new Error(typeof data.error === 'string' ? data.error : 'Profil impossible à enregistrer');
+        if (!res.ok) throw new Error(typeof data.error === 'string' ? data.error : t('settings.errors.profileSaveFailed'));
         merged = { ...merged, ...data };
       }
 
@@ -147,7 +149,7 @@ export default function SettingsModal({ open, onClose, user, onSaved, isGuest = 
         });
         const data = (await res.json()) as User & { error?: string };
         if (!res.ok) {
-          throw new Error(typeof data.error === 'string' ? data.error : 'Enregistrement impossible');
+          throw new Error(typeof data.error === 'string' ? data.error : t('settings.errors.saveFailed'));
         }
         merged = data as User;
       }
@@ -155,7 +157,7 @@ export default function SettingsModal({ open, onClose, user, onSaved, isGuest = 
       onSaved(merged);
       onClose();
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : 'Erreur');
+      setError(err instanceof Error ? err.message : t('common.status.error'));
     } finally {
       setSaving(false);
     }
@@ -168,20 +170,20 @@ export default function SettingsModal({ open, onClose, user, onSaved, isGuest = 
       aria-modal="true"
       aria-labelledby="settings-title"
     >
-      <button type="button" className="absolute inset-0 cursor-default" aria-label="Fermer" onClick={onClose} />
+      <button type="button" className="absolute inset-0 cursor-default" aria-label={t('common.actions.close')} onClick={onClose} />
       <div
         className="relative z-10 flex h-[min(92dvh,36rem)] w-full max-w-md flex-col overflow-hidden rounded-t-2xl border border-slate-700 bg-slate-800 shadow-2xl sm:h-[min(88vh,36rem)] sm:rounded-2xl"
         onClick={ev => ev.stopPropagation()}
       >
         <div className="flex shrink-0 items-center justify-between border-b border-slate-700 px-5 py-4">
           <h2 id="settings-title" className="text-lg font-semibold text-white">
-            Paramètres personnels
+            {t('settings.title')}
           </h2>
           <button
             type="button"
             onClick={onClose}
             className="rounded-lg p-2 text-slate-400 hover:bg-slate-700 hover:text-white"
-            aria-label="Fermer"
+            aria-label={t('common.actions.close')}
           >
             <IconX className="h-5 w-5" />
           </button>
@@ -191,17 +193,15 @@ export default function SettingsModal({ open, onClose, user, onSaved, isGuest = 
           <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 py-4">
             <div className="space-y-5">
               <p className="text-sm text-slate-400">
-                {isGuest
-                  ? 'En mode essai, les réglages sont stockés sur cet appareil uniquement.'
-                  : 'Ces réglages sont enregistrés sur votre compte et s’appliquent sur cet appareil.'}
+                {isGuest ? t('settings.introGuest') : t('settings.introUser')}
               </p>
 
               {!isGuest ? (
                 <div className="space-y-4 rounded-xl border border-slate-600/60 bg-slate-800/40 p-4">
-                  <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">Profil</p>
+                  <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">{t('settings.profile.section')}</p>
                   <div>
                     <label htmlFor="settings-profile-name" className="mb-2 block text-xs text-slate-400">
-                      Nom affiché
+                      {t('settings.profile.displayName')}
                     </label>
                     <input
                       id="settings-profile-name"
@@ -211,11 +211,11 @@ export default function SettingsModal({ open, onClose, user, onSaved, isGuest = 
                       maxLength={80}
                       autoComplete="name"
                       className="w-full rounded-xl border border-slate-600 bg-slate-700 px-3 py-2.5 text-sm text-slate-100 placeholder:text-slate-500 focus:border-indigo-500 focus:outline-none"
-                      placeholder="Votre nom"
+                      placeholder={t('settings.profile.displayNamePlaceholder')}
                     />
                   </div>
                   <div>
-                    <span className="mb-2 block text-xs text-slate-400">E-mail</span>
+                    <span className="mb-2 block text-xs text-slate-400">{t('settings.profile.email')}</span>
                     <p className="rounded-xl border border-slate-700/80 bg-slate-900/40 px-3 py-2.5 text-sm text-slate-300">
                       {user.email}
                     </p>
@@ -223,16 +223,16 @@ export default function SettingsModal({ open, onClose, user, onSaved, isGuest = 
 
                   {user.hasPasswordLogin === false ? (
                     <p className="text-xs leading-relaxed text-slate-500">
-                      Connexion Google uniquement — il n’y a pas de mot de passe sur ce compte.
+                      {t('settings.profile.googleOnly')}
                     </p>
                   ) : canChangePassword ? (
                     <div className="space-y-3 border-t border-slate-700/60 pt-4">
                       <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">
-                        Mot de passe
+                        {t('settings.password.section')}
                       </p>
                       <div>
                         <label htmlFor="settings-current-pw" className="mb-2 block text-xs text-slate-400">
-                          Mot de passe actuel
+                          {t('settings.password.current')}
                         </label>
                         <input
                           id="settings-current-pw"
@@ -245,7 +245,7 @@ export default function SettingsModal({ open, onClose, user, onSaved, isGuest = 
                       </div>
                       <div>
                         <label htmlFor="settings-new-pw" className="mb-2 block text-xs text-slate-400">
-                          Nouveau mot de passe (min. 8 caractères)
+                          {t('settings.password.new')}
                         </label>
                         <input
                           id="settings-new-pw"
@@ -258,7 +258,7 @@ export default function SettingsModal({ open, onClose, user, onSaved, isGuest = 
                       </div>
                       <div>
                         <label htmlFor="settings-confirm-pw" className="mb-2 block text-xs text-slate-400">
-                          Confirmer le nouveau mot de passe
+                          {t('settings.password.confirm')}
                         </label>
                         <input
                           id="settings-confirm-pw"
@@ -273,7 +273,7 @@ export default function SettingsModal({ open, onClose, user, onSaved, isGuest = 
                   ) : null}
 
                   <div>
-                    <span className="mb-2 block text-xs text-slate-400">Couleur de l’avatar</span>
+                    <span className="mb-2 block text-xs text-slate-400">{t('settings.profile.avatarColor')}</span>
                     <div className="flex flex-wrap gap-2">
                       {avatarColorChoices.map(c => (
                         <button
@@ -287,7 +287,7 @@ export default function SettingsModal({ open, onClose, user, onSaved, isGuest = 
                               : 'border-transparent hover:scale-105 hover:border-slate-500'
                           }`}
                           style={{ backgroundColor: c }}
-                          aria-label={`Couleur ${c}`}
+                          aria-label={t('settings.profile.avatarColorAria', { color: c })}
                           aria-pressed={profileColor === c}
                         />
                       ))}
@@ -298,29 +298,29 @@ export default function SettingsModal({ open, onClose, user, onSaved, isGuest = 
 
               <div>
                 <label className="mb-2 block text-xs font-semibold uppercase tracking-wider text-slate-500">
-                  Densité d’affichage
+                  {t('settings.display.density')}
                 </label>
                 <select
                   value={density}
                   onChange={e => setDensity(e.target.value as UserPreferences['density'])}
                   className="w-full rounded-xl border border-slate-600 bg-slate-700 px-3 py-2.5 text-sm text-slate-200 focus:border-indigo-500 focus:outline-none"
                 >
-                  <option value="comfortable">Confortable (espacements standards)</option>
-                  <option value="compact">Compact (plus de contenu visible)</option>
+                  <option value="comfortable">{t('settings.display.densityComfortable')}</option>
+                  <option value="compact">{t('settings.display.densityCompact')}</option>
                 </select>
               </div>
 
               <div>
                 <label className="mb-2 block text-xs font-semibold uppercase tracking-wider text-slate-500">
-                  Langue
+                  {t('settings.display.language')}
                 </label>
                 <select
                   value={locale}
                   onChange={e => setLocale(e.target.value as UserPreferences['locale'])}
                   className="w-full rounded-xl border border-slate-600 bg-slate-700 px-3 py-2.5 text-sm text-slate-200 focus:border-indigo-500 focus:outline-none"
                 >
-                  <option value="fr">Français</option>
-                  <option value="en">English (interface progressive)</option>
+                  <option value="fr">{t('settings.display.localeFr')}</option>
+                  <option value="en">{t('settings.display.localeEn')}</option>
                 </select>
               </div>
 
@@ -332,8 +332,7 @@ export default function SettingsModal({ open, onClose, user, onSaved, isGuest = 
                   className="mt-0.5 rounded border-slate-600"
                 />
                 <span className="text-sm leading-snug text-slate-300">
-                  Afficher la section <span className="text-slate-200">Rappels via WhatsApp</span> sous les notes
-                  (réglages du numéro et options).
+                  {t('settings.whatsapp.checkbox')}
                 </span>
               </label>
 
@@ -351,14 +350,14 @@ export default function SettingsModal({ open, onClose, user, onSaved, isGuest = 
               onClick={onClose}
               className="rounded-lg px-4 py-2 text-sm text-slate-400 hover:bg-slate-700 hover:text-slate-200"
             >
-              Annuler
+              {t('settings.actions.cancel')}
             </button>
             <button
               type="submit"
               disabled={saving}
               className="rounded-xl bg-indigo-500 px-5 py-2 text-sm font-medium text-white hover:bg-indigo-400 disabled:opacity-50"
             >
-              {saving ? 'Enregistrement…' : 'Enregistrer'}
+              {saving ? t('settings.actions.saving') : t('settings.actions.save')}
             </button>
           </div>
         </form>

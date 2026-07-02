@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Group, Task, TaskStatus, User } from '../types';
+import { useI18n } from '../lib/i18n/context';
 import TaskBoard, { TaskAssigneeFilters, type AssigneeFilter } from './TaskBoard';
 import { IconPlus } from './icons';
 import styles from './Sidebar.module.css';
@@ -35,9 +36,13 @@ type GroupFilter = 'all' | 'owned' | 'member';
 function CreditWidget({
   credits,
   onBuy,
+  title,
+  creditsLabel,
 }: {
   credits: number;
   onBuy: () => void;
+  title: string;
+  creditsLabel: string;
 }) {
   const low = credits <= 0;
   const warn = credits > 0 && credits < 100;
@@ -52,14 +57,14 @@ function CreditWidget({
             ? 'border-amber-500/40 bg-amber-500/10 text-amber-400'
             : 'border-violet-500/30 bg-violet-500/10 text-violet-300'
       }`}
-      title="Crédits IA · Cliquez pour en acheter"
+      title={title}
     >
       <span
         className={`h-1.5 w-1.5 rounded-full ${
           low ? 'bg-red-400' : warn ? 'bg-amber-400' : 'bg-violet-400'
         }`}
       />
-      {credits.toLocaleString('fr-FR')} crédits
+      {creditsLabel}
       <span className="opacity-60">+</span>
     </button>
   );
@@ -88,6 +93,7 @@ export default function GroupsView({
   onOpenCollaborators,
   collaboratorTeamSize = 0,
 }: GroupsViewProps) {
+  const { t, dateLocale } = useI18n();
   const [listFilter, setListFilter] = useState<GroupFilter>('all');
   const [selectedGroupId, setSelectedGroupId] = useState<string | null>(null);
   const [assigneeFilter, setAssigneeFilter] = useState<AssigneeFilter>('all');
@@ -164,6 +170,12 @@ export default function GroupsView({
     [groups, currentUser.id],
   );
 
+  const filterLabels: Record<GroupFilter, string> = {
+    all: t('groups.filters.all'),
+    owned: t('groups.filters.owned'),
+    member: t('groups.filters.member'),
+  };
+
   const toggleMember = (id: string) => {
     setSelectedMembers(prev => {
       const next = new Set(prev);
@@ -185,7 +197,7 @@ export default function GroupsView({
       setShowCreate(false);
       setSelectedGroupId(g.id);
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : 'Erreur');
+      setError(err instanceof Error ? err.message : t('common.errors.generic'));
     } finally {
       setBusy(false);
     }
@@ -199,6 +211,11 @@ export default function GroupsView({
     .join('\n');
 
   const isOwner = selectedGroup?.createdBy === currentUser.id;
+
+  const taskCountLabel =
+    groupTasks.length === 1
+      ? t('groups.taskCount', { count: groupTasks.length })
+      : t('groups.taskCountPlural', { count: groupTasks.length });
 
   return (
     <div className="flex h-full min-h-0 flex-col bg-[#0f1419]">
@@ -216,26 +233,19 @@ export default function GroupsView({
           try {
             await onUploadGroupLogo(selectedGroup.id, file);
           } catch (err: unknown) {
-            setError(err instanceof Error ? err.message : 'Upload impossible');
+            setError(err instanceof Error ? err.message : t('groups.errors.uploadFailed'));
           } finally {
             setBusy(false);
           }
         }}
       />
 
-      {/* Header unifié : groupes + filtres + crédits + actions */}
       <header className="shrink-0 border-b border-slate-800 bg-slate-900/95">
         <div className={`flex flex-wrap items-center gap-2 ${pad}`}>
           <div className="flex min-w-0 flex-1 items-center gap-2 overflow-x-auto [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
             {!isGuest ? (
               <>
-                {(
-                  [
-                    ['all', 'Tous'],
-                    ['owned', 'Créés par moi'],
-                    ['member', 'Membre'],
-                  ] as const
-                ).map(([key, label]) => (
+                {(['all', 'owned', 'member'] as const).map(key => (
                   <button
                     key={key}
                     type="button"
@@ -244,7 +254,7 @@ export default function GroupsView({
                       listFilter === key ? 'bg-violet-500/25 text-violet-200' : 'bg-slate-800 text-slate-400'
                     }`}
                   >
-                    {label} ({counts[key]})
+                    {filterLabels[key]} ({counts[key]})
                   </button>
                 ))}
                 <span className="mx-0.5 h-4 w-px shrink-0 bg-slate-600" aria-hidden />
@@ -252,7 +262,7 @@ export default function GroupsView({
             ) : null}
 
             {filteredGroups.length > 0 ? (
-              <div className="flex gap-1.5" role="tablist" aria-label="Groupes">
+              <div className="flex gap-1.5" role="tablist" aria-label={t('groups.tabs.aria')}>
                 {filteredGroups.map(g => {
                   const active = g.id === selectedGroupId;
                   const taskCount = tasks.filter(t => t.groupId === g.id).length;
@@ -291,7 +301,7 @@ export default function GroupsView({
                 })}
               </div>
             ) : (
-              <span className="text-xs text-slate-500">Groupes</span>
+              <span className="text-xs text-slate-500">{t('groups.title')}</span>
             )}
           </div>
 
@@ -306,7 +316,7 @@ export default function GroupsView({
                     : 'border-slate-600 text-slate-300 hover:bg-slate-800'
                 }`}
               >
-                Paramètres
+                {t('groups.settings')}
               </button>
             ) : null}
             {canCreateGroups ? (
@@ -315,12 +325,19 @@ export default function GroupsView({
                 onClick={() => setShowCreate(v => !v)}
                 className="rounded-lg border border-slate-600 bg-slate-800 px-2.5 py-1.5 text-xs font-medium text-slate-200 hover:bg-slate-700 touch-manipulation"
               >
-                {showCreate ? 'Fermer' : 'Nouveau groupe'}
+                {showCreate ? t('groups.close') : t('groups.newGroup')}
               </button>
             ) : null}
             {!isGuest && onBuyCredits ? (
               <span className="hidden md:inline-flex">
-                <CreditWidget credits={chatCredits} onBuy={onBuyCredits} />
+                <CreditWidget
+                  credits={chatCredits}
+                  onBuy={onBuyCredits}
+                  title={t('groups.creditsTitle')}
+                  creditsLabel={t('groups.creditsLabel', {
+                    count: chatCredits.toLocaleString(dateLocale),
+                  })}
+                />
               </span>
             ) : null}
             {onOpenCollaborators ? (
@@ -337,7 +354,7 @@ export default function GroupsView({
                     d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"
                   />
                 </svg>
-                <span className="hidden lg:inline">Collaborateurs</span>
+                <span className="hidden lg:inline">{t('groups.collaborators')}</span>
                 {collaboratorTeamSize > 1 ? (
                   <span className="rounded-full bg-indigo-500/25 px-1.5 py-0.5 text-[10px] font-semibold tabular-nums text-indigo-200">
                     {collaboratorTeamSize}
@@ -352,8 +369,8 @@ export default function GroupsView({
                 className="inline-flex shrink-0 touch-manipulation items-center justify-center gap-1.5 rounded-xl bg-indigo-500 px-3 py-1.5 text-xs font-medium text-white shadow-md shadow-indigo-500/20 transition-all hover:bg-indigo-400"
               >
                 <IconPlus className="h-4 w-4 shrink-0" />
-                <span className="hidden sm:inline">Nouvelle tâche</span>
-                <span className="sm:hidden">Tâche</span>
+                <span className="hidden sm:inline">{t('groups.newTask')}</span>
+                <span className="sm:hidden">{t('groups.taskShort')}</span>
               </button>
             ) : null}
           </div>
@@ -364,9 +381,9 @@ export default function GroupsView({
             <div className="min-w-0 shrink-0">
               <p className="truncate text-sm font-semibold text-white">{selectedGroup.name}</p>
               <p className="text-[10px] text-slate-500 tabular-nums">
-                {groupTasks.length} tâche{groupTasks.length !== 1 ? 's' : ''}
+                {taskCountLabel}
                 {assigneeFilter !== 'all' ? (
-                  <span className="text-indigo-400/90"> · filtré</span>
+                  <span className="text-indigo-400/90"> · {t('groups.filtered')}</span>
                 ) : null}
               </p>
             </div>
@@ -389,7 +406,7 @@ export default function GroupsView({
             <input
               value={name}
               onChange={e => setName(e.target.value)}
-              placeholder="Nom du groupe"
+              placeholder={t('groups.create.namePlaceholder')}
               className="w-full rounded-lg border border-slate-600 bg-slate-700 px-3 py-2 text-sm text-slate-200"
             />
             {contacts.length > 0 ? (
@@ -415,7 +432,7 @@ export default function GroupsView({
               disabled={busy || name.trim().length < 2}
               className="rounded-lg bg-indigo-600 px-3 py-1.5 text-xs text-white disabled:opacity-50"
             >
-              Créer
+              {t('groups.create.submit')}
             </button>
           </form>
         ) : null}
@@ -438,36 +455,38 @@ export default function GroupsView({
                       try {
                         await onUpdateGroupName(selectedGroup.id, renameDraft.trim());
                       } catch (err: unknown) {
-                        setError(err instanceof Error ? err.message : 'Erreur');
+                        setError(err instanceof Error ? err.message : t('common.errors.generic'));
                       } finally {
                         setBusy(false);
                       }
                     }}
                     className="rounded-lg bg-slate-600 px-3 py-1.5 text-xs text-white"
                   >
-                    Renommer
+                    {t('groups.settingsPanel.rename')}
                   </button>
                 </div>
                 <div className="flex flex-wrap gap-3 text-xs">
                   <button type="button" onClick={() => logoInputRef.current?.click()} className="text-indigo-400">
-                    Changer le logo
+                    {t('groups.settingsPanel.changeLogo')}
                   </button>
                   <button
                     type="button"
                     onClick={async () => {
-                      if (!confirm('Supprimer ce groupe ?')) return;
+                      if (!confirm(t('groups.settingsPanel.deleteConfirm'))) return;
                       await onDeleteGroup(selectedGroup.id);
                       setShowSettings(false);
                     }}
                     className="text-red-400"
                   >
-                    Supprimer
+                    {t('groups.settingsPanel.delete')}
                   </button>
                 </div>
               </>
             ) : null}
             <div>
-              <p className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-slate-500">Membres</p>
+              <p className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-slate-500">
+                {t('groups.settingsPanel.members')}
+              </p>
               <ul className="flex flex-wrap gap-2">
                 {selectedGroup.members.map(m => (
                   <li key={m.id} className="flex items-center gap-1.5 rounded-lg bg-slate-900/50 px-2 py-1">
@@ -510,12 +529,10 @@ export default function GroupsView({
 
       <div className="min-h-0 flex-1">
         {isGuest ? (
-          <p className={`text-sm text-slate-400 ${pad} pt-3`}>Connectez-vous pour accéder aux groupes.</p>
+          <p className={`text-sm text-slate-400 ${pad} pt-3`}>{t('groups.empty.loginRequired')}</p>
         ) : filteredGroups.length === 0 ? (
           <p className={`text-sm text-slate-400 ${pad} pt-3`}>
-            {canCreateGroups
-              ? 'Aucun groupe — créez-en un pour commencer.'
-              : 'Aucun groupe — attendez une invitation Pro.'}
+            {canCreateGroups ? t('groups.empty.noGroupsCreate') : t('groups.empty.noGroupsWait')}
           </p>
         ) : selectedGroup ? (
           <TaskBoard

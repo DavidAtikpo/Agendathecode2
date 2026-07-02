@@ -20,7 +20,9 @@ body {
   min-height: 100dvh;
   min-height: 100vh;
   overflow-x: hidden;
-  overflow-y: hidden;
+  /* Laisser le scroll vertical pour admin, privacy, download, etc.
+     L’app principale gère son propre scroll interne (100dvh + overflow-hidden). */
+  overflow-y: auto;
 }
 
 body {

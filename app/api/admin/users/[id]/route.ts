@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/app/lib/prisma';
 import { requireAdmin } from '@/app/lib/admin';
+import { ADMIN_USER_SELECT, serializeAdminUser } from '@/app/lib/admin-user-serialize';
 
 export const runtime = 'nodejs';
 
@@ -43,7 +44,15 @@ export async function PATCH(
   const data: Record<string, unknown> = {};
 
   if (body.plan === 'free' || body.plan === 'pro') data.plan = body.plan;
-  if (body.role === 'admin' || body.role === 'user') data.role = body.role;
+  if (
+    body.role === 'admin' ||
+    body.role === 'user' ||
+    body.role === 'organizer' ||
+    body.role === 'formateur' ||
+    body.role === 'assessor'
+  ) {
+    data.role = body.role;
+  }
 
   if (typeof body.active === 'boolean') data.active = body.active;
 
@@ -65,27 +74,10 @@ export async function PATCH(
     const updated = await prisma.user.update({
       where: { id },
       data,
-      select: {
-        id: true, name: true, email: true, plan: true, role: true, active: true,
-        aiCredits: true, aiCreditsExpiresAt: true, createdAt: true, googleId: true,
-        _count: { select: { notes: true, tasksCreated: true } },
-      },
+      select: ADMIN_USER_SELECT,
     });
 
-    return NextResponse.json({
-      id: updated.id,
-      name: updated.name,
-      email: updated.email,
-      plan: updated.plan,
-      role: updated.role,
-      active: updated.active,
-      aiCredits: updated.aiCredits,
-      aiCreditsExpiresAt: updated.aiCreditsExpiresAt?.toISOString() ?? null,
-      createdAt: updated.createdAt.toISOString(),
-      hasGoogle: !!updated.googleId,
-      notesCount: updated._count.notes,
-      tasksCount: updated._count.tasksCreated,
-    });
+    return NextResponse.json(serializeAdminUser(updated));
   } catch {
     return NextResponse.json({ error: 'Utilisateur introuvable' }, { status: 404 });
   }

@@ -1,3 +1,5 @@
+import { messages, t } from './i18n';
+import type { AppLocale } from './i18n/types';
 import type {
   SessionAssignmentRole,
   SessionAssignmentStatus,
@@ -5,21 +7,21 @@ import type {
   TrainingSession,
 } from '../types';
 
-export const ROLE_LABEL: Record<SessionAssignmentRole, string> = {
-  formateur: 'Formateur',
-  assessor: 'Assessor',
-};
+const msg = messages as unknown as Parameters<typeof t>[0];
 
-export const STATUS_LABEL: Record<SessionAssignmentStatus, string> = {
-  pending: 'En attente',
-  accepted: 'Disponible',
-  declined: 'Indisponible',
-};
+export function sessionRoleLabel(role: SessionAssignmentRole, locale: AppLocale): string {
+  return t(msg, locale, `sessions.roles.${role}`);
+}
 
-export function formatSessionDate(iso: string) {
+export function sessionStatusLabel(status: SessionAssignmentStatus, locale: AppLocale): string {
+  return t(msg, locale, `sessions.status.${status}`);
+}
+
+export function formatSessionDate(iso: string, locale: AppLocale) {
   const d = new Date(`${iso}T12:00:00`);
   if (Number.isNaN(d.getTime())) return iso;
-  return d.toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' });
+  const dateLocale = locale === 'en' ? 'en-US' : 'fr-FR';
+  return d.toLocaleDateString(dateLocale, { day: 'numeric', month: 'long', year: 'numeric' });
 }
 
 export function assignmentFor(
@@ -29,13 +31,13 @@ export function assignmentFor(
   return session.assignments.find(a => a.role === role);
 }
 
-export function sessionConfirmLabel(session: TrainingSession): string {
+export function sessionConfirmLabel(session: TrainingSession, locale: AppLocale): string {
   const roles = session.assignments;
-  if (roles.length === 0) return 'Sans intervenants';
-  if (roles.some(a => a.status === 'declined')) return 'À réassigner';
-  if (roles.every(a => a.status === 'accepted')) return 'Confirmée';
-  if (roles.some(a => a.status === 'pending')) return 'En attente';
-  return 'Partielle';
+  if (roles.length === 0) return t(msg, locale, 'sessions.confirm.noAssignees');
+  if (roles.some(a => a.status === 'declined')) return t(msg, locale, 'sessions.confirm.reassign');
+  if (roles.every(a => a.status === 'accepted')) return t(msg, locale, 'sessions.confirm.confirmed');
+  if (roles.some(a => a.status === 'pending')) return t(msg, locale, 'sessions.confirm.pending');
+  return t(msg, locale, 'sessions.confirm.partial');
 }
 
 export type OrganizerStatusFilter = 'all' | 'pending' | 'accepted' | 'declined' | 'confirmed';

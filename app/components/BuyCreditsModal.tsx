@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { useI18n } from '../lib/i18n/context';
 import { IconX, IconSparkles } from './icons';
 
 const PACK_PRICE = 5; // USD
@@ -15,6 +16,7 @@ interface BuyCreditsModalProps {
 }
 
 export default function BuyCreditsModal({ currentCredits, onClose, onBuy }: BuyCreditsModalProps) {
+  const { t, dateLocale } = useI18n();
   const [quantity, setQuantity] = useState(1);
   const [customInput, setCustomInput] = useState('');
   const [buying, setBuying] = useState(false);
@@ -44,67 +46,66 @@ export default function BuyCreditsModal({ currentCredits, onClose, onBuy }: BuyC
     }
   };
 
+  const creditWord =
+    currentCredits === 1 ? t('modals.buyCredits.credit') : t('modals.buyCredits.credits');
+
   return (
     <div className="fixed inset-0 z-[80] flex items-center justify-center p-4" role="dialog" aria-modal="true">
-      {/* Backdrop */}
       <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
 
       <div className="relative z-10 w-full max-w-sm rounded-2xl border border-slate-700 bg-slate-800 shadow-2xl">
-        {/* Header */}
         <div className="flex items-center justify-between border-b border-slate-700 px-5 py-4">
           <div className="flex items-center gap-2.5">
             <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-violet-500/20 ring-1 ring-violet-500/30">
               <IconSparkles className="h-4 w-4 text-violet-400" />
             </div>
             <div>
-              <p className="text-sm font-semibold text-white">Acheter des crédits IA</p>
-              <p className="text-xs text-slate-500">Chat · Réunions · Notes assistées</p>
+              <p className="text-sm font-semibold text-white">{t('modals.buyCredits.title')}</p>
+              <p className="text-xs text-slate-500">{t('modals.buyCredits.subtitle')}</p>
             </div>
           </div>
           <button
             onClick={onClose}
             className="rounded-xl p-2 text-slate-500 hover:bg-slate-700 hover:text-slate-300 transition-colors"
-            aria-label="Fermer"
+            aria-label={t('common.aria.close')}
           >
             <IconX className="h-4 w-4" />
           </button>
         </div>
 
-        {/* Body */}
         <div className="px-5 py-4 space-y-4">
-          {/* Current balance */}
           {currentCredits > 0 && (
             <div className="rounded-xl bg-slate-700/50 px-4 py-2.5 flex items-center justify-between">
-              <span className="text-xs text-slate-400">Solde actuel</span>
+              <span className="text-xs text-slate-400">{t('modals.buyCredits.currentBalance')}</span>
               <span className="text-sm font-semibold text-white">
-                {currentCredits.toLocaleString('fr-FR')} crédit{currentCredits !== 1 ? 's' : ''}
+                {currentCredits.toLocaleString(dateLocale)} {creditWord}
               </span>
             </div>
           )}
 
-          {/* Pricing info */}
           <div className="rounded-xl border border-violet-500/20 bg-violet-500/8 px-4 py-3 space-y-1.5">
             <div className="flex items-center justify-between text-xs">
-              <span className="text-slate-400">Prix par pack</span>
+              <span className="text-slate-400">{t('modals.buyCredits.pricePerPack')}</span>
               <span className="font-semibold text-white">{PACK_PRICE} $ USD</span>
             </div>
             <div className="flex items-center justify-between text-xs">
-              <span className="text-slate-400">Crédits par pack</span>
-              <span className="font-semibold text-violet-300">{CREDITS_PER_PACK.toLocaleString('fr-FR')} crédits</span>
+              <span className="text-slate-400">{t('modals.buyCredits.creditsPerPack')}</span>
+              <span className="font-semibold text-violet-300">
+                {CREDITS_PER_PACK.toLocaleString(dateLocale)} {t('modals.buyCredits.credits')}
+              </span>
             </div>
             <div className="flex items-center justify-between text-xs">
-              <span className="text-slate-400">Validité</span>
-              <span className="text-slate-300">1 an à partir de l'achat</span>
+              <span className="text-slate-400">{t('modals.buyCredits.validity')}</span>
+              <span className="text-slate-300">{t('modals.buyCredits.validityValue')}</span>
             </div>
             <div className="flex items-center justify-between text-xs pt-1 border-t border-violet-500/15">
-              <span className="text-slate-500">Coût moyen</span>
-              <span className="text-slate-500">1 msg = 1 cr. · 1 réunion = 5 cr.</span>
+              <span className="text-slate-500">{t('modals.buyCredits.averageCost')}</span>
+              <span className="text-slate-500">{t('modals.buyCredits.averageCostValue')}</span>
             </div>
           </div>
 
-          {/* Quantity selector */}
           <div className="space-y-2">
-            <p className="text-xs font-medium text-slate-400">Nombre de packs</p>
+            <p className="text-xs font-medium text-slate-400">{t('modals.buyCredits.packCount')}</p>
             <div className="flex gap-2">
               {QUICK_OPTIONS.map(q => (
                 <button
@@ -134,28 +135,26 @@ export default function BuyCreditsModal({ currentCredits, onClose, onBuy }: BuyC
             </div>
           </div>
 
-          {/* Summary */}
           <div className="rounded-xl bg-slate-700/60 px-4 py-3 space-y-1.5">
             <div className="flex items-center justify-between">
-              <span className="text-xs text-slate-400">Crédits obtenus</span>
+              <span className="text-xs text-slate-400">{t('modals.buyCredits.creditsGained')}</span>
               <span className="text-sm font-bold text-violet-300">
-                +{totalCredits.toLocaleString('fr-FR')} crédits
+                +{totalCredits.toLocaleString(dateLocale)} {t('modals.buyCredits.credits')}
               </span>
             </div>
             <div className="flex items-center justify-between">
-              <span className="text-xs text-slate-400">Nouveau solde</span>
+              <span className="text-xs text-slate-400">{t('modals.buyCredits.newBalance')}</span>
               <span className="text-xs text-slate-300">
-                {(currentCredits + totalCredits).toLocaleString('fr-FR')} crédits
+                {(currentCredits + totalCredits).toLocaleString(dateLocale)} {t('modals.buyCredits.credits')}
               </span>
             </div>
             <div className="flex items-center justify-between border-t border-slate-600 pt-1.5 mt-1.5">
-              <span className="text-sm font-semibold text-white">Total</span>
+              <span className="text-sm font-semibold text-white">{t('modals.buyCredits.total')}</span>
               <span className="text-lg font-bold text-white">{totalPrice} $</span>
             </div>
           </div>
         </div>
 
-        {/* Footer */}
         <div className="border-t border-slate-700 px-5 py-4 flex flex-col gap-2">
           <button
             onClick={handleBuy}
@@ -163,12 +162,10 @@ export default function BuyCreditsModal({ currentCredits, onClose, onBuy }: BuyC
             className="w-full rounded-xl bg-violet-500 hover:bg-violet-400 disabled:opacity-50 text-white font-semibold py-3 transition-colors shadow-lg shadow-violet-500/20"
           >
             {buying
-              ? 'Redirection vers le paiement…'
-              : `Payer ${totalPrice} $ · Obtenir ${totalCredits.toLocaleString('fr-FR')} crédits`}
+              ? t('modals.buyCredits.redirecting')
+              : t('modals.buyCredits.pay', { price: totalPrice, credits: totalCredits.toLocaleString(dateLocale) })}
           </button>
-          <p className="text-center text-xs text-slate-600">
-            Paiement sécurisé par Stripe · Aucun abonnement
-          </p>
+          <p className="text-center text-xs text-slate-600">{t('modals.buyCredits.stripeNote')}</p>
         </div>
       </div>
     </div>

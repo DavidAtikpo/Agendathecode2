@@ -1,0 +1,111 @@
+export const chatMessages = {
+  fr: {
+    aria: {
+      panel: 'Assistant IA',
+      clear: 'Effacer la conversation',
+      close: 'Fermer l\'assistant',
+      send: 'Envoyer',
+    },
+    header: {
+      title: 'Neurix IA',
+      guestHint: 'Connectez-vous pour utiliser l\'IA',
+      poweredBy: 'Powered by Claude',
+    },
+    credits: {
+      label: '{count} crédit',
+      labelPlural: '{count} crédits',
+      expires: 'exp. {date}',
+      depletedTitle: 'Crédits épuisés',
+      depletedBody:
+        'Achetez des crédits pour continuer à discuter avec l\'assistant IA Claude.',
+      pack: 'Pack crédits',
+      packPrice: '5 $',
+      packMessages: '2 500 messages',
+      packValidity: 'Validité 1 an',
+      buyFrom: 'Acheter des crédits — à partir de 5 $',
+      lowRemaining: 'Il ne vous reste que {count} crédit.',
+      lowRemainingPlural: 'Il ne vous reste que {count} crédits.',
+      recharge: 'Recharger',
+    },
+    welcome: {
+      greeting: 'Bonjour',
+      intro: 'Je suis votre assistant IA. Je connais vos notes et tâches, et je peux vous aider à :',
+      bullets: {
+        develop: 'Développer et enrichir vos idées',
+        manage: 'Gérer et prioriser vos tâches',
+        connect: 'Trouver des connexions entre vos notes',
+        recall: 'Rappeler des idées passées',
+      },
+    },
+    suggestions: {
+      title: 'Questions suggérées',
+      recentIdeas: 'Quelles sont mes idées les plus récentes ?',
+      summarizeTasks: 'Résume-moi les tâches en cours',
+      suggestIdeas: 'Suggère des idées liées à mes notes',
+      reviewTasks: 'Quelles tâches sont en révision ?',
+      organizeTasks: 'Comment mieux organiser mes tâches ?',
+    },
+    input: {
+      placeholder: 'Posez une question…',
+      hint: 'Entrée pour envoyer · Maj+Entrée pour une nouvelle ligne',
+      guestBlocked: 'Connectez-vous pour utiliser l\'assistant IA.',
+    },
+    errors: {
+      prefix: 'Erreur : {message}',
+    },
+  },
+  en: {
+    aria: {
+      panel: 'AI assistant',
+      clear: 'Clear conversation',
+      close: 'Close assistant',
+      send: 'Send',
+    },
+    header: {
+      title: 'Neurix AI',
+      guestHint: 'Sign in to use AI',
+      poweredBy: 'Powered by Claude',
+    },
+    credits: {
+      label: '{count} credit',
+      labelPlural: '{count} credits',
+      expires: 'exp. {date}',
+      depletedTitle: 'Out of credits',
+      depletedBody: 'Buy credits to keep chatting with the Claude AI assistant.',
+      pack: 'Credit pack',
+      packPrice: '$5',
+      packMessages: '2,500 messages',
+      packValidity: 'Valid for 1 year',
+      buyFrom: 'Buy credits — from $5',
+      lowRemaining: 'You only have {count} credit left.',
+      lowRemainingPlural: 'You only have {count} credits left.',
+      recharge: 'Top up',
+    },
+    welcome: {
+      greeting: 'Hello',
+      intro: 'I am your AI assistant. I know your notes and tasks, and I can help you:',
+      bullets: {
+        develop: 'Develop and enrich your ideas',
+        manage: 'Manage and prioritize your tasks',
+        connect: 'Find connections between your notes',
+        recall: 'Recall past ideas',
+      },
+    },
+    suggestions: {
+      title: 'Suggested questions',
+      recentIdeas: 'What are my most recent ideas?',
+      summarizeTasks: 'Summarize my in-progress tasks',
+      suggestIdeas: 'Suggest ideas related to my notes',
+      reviewTasks: 'Which tasks are in review?',
+      organizeTasks: 'How can I organize my tasks better?',
+    },
+    input: {
+      placeholder: 'Ask a question…',
+      hint: 'Enter to send · Shift+Enter for a new line',
+      guestBlocked: 'Sign in to use the AI assistant.',
+    },
+    errors: {
+      prefix: 'Error: {message}',
+    },
+  },
+} as const;

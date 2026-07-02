@@ -1,7 +1,8 @@
 'use client';
 
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useMemo } from 'react';
 import { ChatMessage } from '../types';
+import { useI18n } from '@/app/lib/i18n';
 import { IconArrowRight, IconSparkles, IconTrash, IconX } from './icons';
 
 /** Même ressource que la sidebar / écran de chargement (`public/logo (1).png`). */
@@ -35,26 +36,41 @@ interface ChatPanelProps {
   onBuyCredits: () => void;
 }
 
-const SUGGESTIONS = [
-  'Quelles sont mes idées les plus récentes ?',
-  'Résume-moi les tâches en cours',
-  'Suggère des idées liées à mes notes',
-  'Quelles tâches sont en révision ?',
-  'Comment mieux organiser mes tâches ?',
-];
+const SUGGESTION_KEYS = [
+  'recentIdeas',
+  'summarizeTasks',
+  'suggestIdeas',
+  'reviewTasks',
+  'organizeTasks',
+] as const;
 
-function formatTime(iso: string) {
-  return new Date(iso).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+function formatTime(iso: string, dateLocale: string) {
+  return new Date(iso).toLocaleTimeString(dateLocale, { hour: '2-digit', minute: '2-digit' });
 }
 
-function CreditBadge({ credits, expiresAt }: { credits: number; expiresAt: string | null }) {
+function CreditBadge({
+  credits,
+  expiresAt,
+  t,
+  dateLocale,
+}: {
+  credits: number;
+  expiresAt: string | null;
+  t: ReturnType<typeof useI18n>['t'];
+  dateLocale: string;
+}) {
   const low = credits < 100;
   const empty = credits <= 0;
 
-  let label = `${credits.toLocaleString('fr-FR')} crédit${credits !== 1 ? 's' : ''}`;
+  let label =
+    credits === 1
+      ? t('chat.credits.label', { count: credits })
+      : t('chat.credits.labelPlural', { count: credits });
   if (expiresAt) {
     const d = new Date(expiresAt);
-    label += ` · exp. ${d.toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', year: '2-digit' })}`;
+    label += ` · ${t('chat.credits.expires', {
+      date: d.toLocaleDateString(dateLocale, { day: '2-digit', month: 'short', year: '2-digit' }),
+    })}`;
   }
 
   return (
@@ -83,6 +99,11 @@ export default function ChatPanel({
   chatCreditsExpiresAt,
   onBuyCredits,
 }: ChatPanelProps) {
+  const { t, dateLocale } = useI18n();
+  const suggestions = useMemo(
+    () => SUGGESTION_KEYS.map(key => t(`chat.suggestions.${key}`)),
+    [t],
+  );
   const [input, setInput] = useState('');
   const [sending, setSending] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -133,20 +154,20 @@ export default function ChatPanel({
       className="fixed inset-0 z-[60] flex min-h-0 flex-col bg-slate-800 pt-[env(safe-area-inset-top)] md:static md:inset-auto md:z-auto md:h-full md:w-80 md:flex-shrink-0 md:border-l md:border-slate-700 md:pt-0"
       role="dialog"
       aria-modal="true"
-      aria-label="Assistant IA"
+      aria-label={t('chat.aria.panel')}
     >
       {/* Header */}
       <div className="flex flex-shrink-0 items-center justify-between border-b border-slate-700 px-4 py-3.5">
         <div className="flex items-center gap-2.5 min-w-0">
           <AssistantLogoMark size="md" />
           <div className="min-w-0">
-            <p className="font-semibold text-sm text-white">Neurix IA</p>
+            <p className="font-semibold text-sm text-white">{t('chat.header.title')}</p>
             <div className="flex items-center gap-1.5 flex-wrap">
               {!isGuest && chatCredits !== null ? (
-                <CreditBadge credits={chatCredits} expiresAt={chatCreditsExpiresAt} />
+                <CreditBadge credits={chatCredits} expiresAt={chatCreditsExpiresAt} t={t} dateLocale={dateLocale} />
               ) : (
                 <p className="text-xs text-slate-500">
-                  {isGuest ? 'Connectez-vous pour utiliser l\'IA' : 'Powered by Claude'}
+                  {isGuest ? t('chat.header.guestHint') : t('chat.header.poweredBy')}
                 </p>
               )}
             </div>
@@ -157,8 +178,8 @@ export default function ChatPanel({
             <button
               onClick={onClear}
               className="text-slate-500 hover:text-slate-300 transition-colors p-2 rounded-lg hover:bg-slate-700"
-              title="Effacer la conversation"
-              aria-label="Effacer la conversation"
+              title={t('chat.aria.clear')}
+              aria-label={t('chat.aria.clear')}
             >
               <IconTrash className="h-4 w-4" />
             </button>
@@ -167,7 +188,7 @@ export default function ChatPanel({
             type="button"
             onClick={onClose}
             className="flex h-10 w-10 min-h-[44px] min-w-[44px] touch-manipulation items-center justify-center rounded-xl text-slate-500 transition-colors hover:bg-slate-700 hover:text-slate-300 md:h-7 md:w-7 md:min-h-0 md:min-w-0"
-            aria-label="Fermer l'assistant"
+            aria-label={t('chat.aria.close')}
           >
             <IconX className="h-5 w-5 md:h-4 md:w-4" />
           </button>
@@ -179,26 +200,26 @@ export default function ChatPanel({
         <div className="flex-shrink-0 mx-4 mt-4 rounded-2xl border border-amber-500/30 bg-amber-500/10 p-4">
           <p className="text-sm font-semibold text-amber-300 mb-1 flex items-center gap-2">
             <IconSparkles className="h-4 w-4 shrink-0" />
-            Crédits épuisés
+            {t('chat.credits.depletedTitle')}
           </p>
           <p className="text-xs text-slate-400 leading-relaxed mb-3">
-            Achetez des crédits pour continuer à discuter avec l'assistant IA Claude.
+            {t('chat.credits.depletedBody')}
           </p>
           <div className="rounded-xl bg-slate-700/50 p-3 mb-3 text-xs text-slate-300 space-y-1">
             <div className="flex items-center justify-between">
-              <span>Pack crédits</span>
-              <span className="font-semibold text-white">5 $</span>
+              <span>{t('chat.credits.pack')}</span>
+              <span className="font-semibold text-white">{t('chat.credits.packPrice')}</span>
             </div>
             <div className="flex items-center justify-between text-slate-400">
-              <span>2 500 messages</span>
-              <span>Validité 1 an</span>
+              <span>{t('chat.credits.packMessages')}</span>
+              <span>{t('chat.credits.packValidity')}</span>
             </div>
           </div>
           <button
             onClick={handleBuyCredits}
             className="w-full rounded-xl bg-violet-500 hover:bg-violet-400 text-white text-sm font-semibold py-2.5 transition-colors"
           >
-            Acheter des crédits — à partir de 5 $
+            {t('chat.credits.buyFrom')}
           </button>
         </div>
       )}
@@ -207,13 +228,15 @@ export default function ChatPanel({
       {!isGuest && hasCredits && chatCredits! < 100 && (
         <div className="flex-shrink-0 mx-4 mt-4 rounded-xl border border-amber-500/20 bg-amber-500/8 px-3 py-2 flex items-center justify-between gap-2">
           <p className="text-xs text-amber-400">
-            Il ne vous reste que <strong>{chatCredits}</strong> crédit{chatCredits !== 1 ? 's' : ''}.
+            {chatCredits === 1
+              ? t('chat.credits.lowRemaining', { count: chatCredits! })
+              : t('chat.credits.lowRemainingPlural', { count: chatCredits! })}
           </p>
           <button
             onClick={handleBuyCredits}
             className="flex-shrink-0 text-xs bg-amber-500 hover:bg-amber-400 text-slate-900 font-semibold rounded-lg px-2.5 py-1 transition-colors"
           >
-            Recharger
+            {t('chat.credits.recharge')}
           </button>
         </div>
       )}
@@ -226,20 +249,22 @@ export default function ChatPanel({
             <div className="bg-violet-500/10 border border-violet-500/20 rounded-2xl p-4">
               <p className="text-sm font-medium text-violet-300 mb-2 flex items-center gap-2">
                 <IconSparkles className="h-4 w-4 text-violet-400 shrink-0" />
-                Bonjour
+                {t('chat.welcome.greeting')}
               </p>
               <p className="text-xs text-slate-400 leading-relaxed">
-                Je suis votre assistant IA. Je connais vos notes et tâches, et je peux vous aider à :
+                {t('chat.welcome.intro')}
               </p>
               <ul className="mt-2 space-y-1.5">
-                {[
-                  ' Développer et enrichir vos idées',
-                  ' Gérer et prioriser vos tâches',
-                  ' Trouver des connexions entre vos notes',
-                  ' Rappeler des idées passées',
-                ].map(item => (
-                  <li key={item} className="text-xs text-slate-400 flex items-start gap-1.5">
-                    <span>{item}</span>
+                {(
+                  [
+                    'develop',
+                    'manage',
+                    'connect',
+                    'recall',
+                  ] as const
+                ).map(key => (
+                  <li key={key} className="text-xs text-slate-400 flex items-start gap-1.5">
+                    <span>{t(`chat.welcome.bullets.${key}`)}</span>
                   </li>
                 ))}
               </ul>
@@ -249,10 +274,10 @@ export default function ChatPanel({
             {canChat && (
               <div>
                 <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">
-                  Questions suggérées
+                  {t('chat.suggestions.title')}
                 </p>
                 <div className="space-y-1.5">
-                  {SUGGESTIONS.map((s, i) => (
+                  {suggestions.map((s, i) => (
                     <button
                       key={i}
                       onClick={() => handleSuggestion(s)}
@@ -288,7 +313,7 @@ export default function ChatPanel({
                       msg.role === 'user' ? 'text-indigo-200/70' : 'text-slate-500'
                     }`}
                   >
-                    {formatTime(msg.timestamp)}
+                    {formatTime(msg.timestamp, dateLocale)}
                   </p>
                 </div>
               </div>
@@ -321,7 +346,7 @@ export default function ChatPanel({
       {/* Quick suggestions when there are messages */}
       {messages.length > 0 && canChat && (
         <div className="px-4 pb-2 flex gap-1.5 overflow-x-auto flex-shrink-0">
-          {SUGGESTIONS.slice(0, 3).map((s, i) => (
+          {suggestions.slice(0, 3).map((s, i) => (
             <button
               key={i}
               onClick={() => handleSuggestion(s)}
@@ -344,7 +369,7 @@ export default function ChatPanel({
                 value={input}
                 onChange={e => setInput(e.target.value)}
                 onKeyDown={handleKeyDown}
-                placeholder="Posez une question…"
+                placeholder={t('chat.input.placeholder')}
                 rows={2}
                 disabled={sending}
                 className="flex-1 bg-slate-700 border border-slate-600 rounded-xl px-3 py-2.5 text-sm text-slate-200 placeholder-slate-500 focus:outline-none focus:border-violet-500 transition-colors resize-none disabled:opacity-50 min-h-0"
@@ -353,25 +378,25 @@ export default function ChatPanel({
                 onClick={handleSend}
                 disabled={!input.trim() || sending}
                 className="bg-violet-500 hover:bg-violet-400 disabled:opacity-40 disabled:cursor-not-allowed text-white w-9 h-9 flex items-center justify-center rounded-xl text-sm transition-all flex-shrink-0 shadow-lg shadow-violet-500/20"
-                aria-label="Envoyer"
+                aria-label={t('chat.aria.send')}
               >
                 <IconArrowRight className="h-5 w-5" />
               </button>
             </div>
             <p className="text-xs text-slate-600 mt-1.5 text-center">
-              Entrée pour envoyer · Maj+Entrée pour une nouvelle ligne
+              {t('chat.input.hint')}
             </p>
           </>
         ) : (
           <div className="text-center">
             {isGuest ? (
-              <p className="text-xs text-slate-500">Connectez-vous pour utiliser l'assistant IA.</p>
+              <p className="text-xs text-slate-500">{t('chat.input.guestBlocked')}</p>
             ) : (
               <button
                 onClick={handleBuyCredits}
                 className="w-full rounded-xl bg-violet-500 hover:bg-violet-400 text-white text-sm font-semibold py-2.5 transition-colors"
               >
-                Acheter des crédits — à partir de 5 $
+                {t('chat.credits.buyFrom')}
               </button>
             )}
           </div>

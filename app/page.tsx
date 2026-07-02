@@ -31,11 +31,20 @@ import {
   normalizePreferences,
   type UserPreferences,
 } from './lib/user-preferences';
+import {
+  canAccessGroups,
+  canManageTrainingSessions,
+  canViewSessionProposals,
+} from './lib/user-roles';
 import SettingsModal from './components/SettingsModal';
 import BuyCreditsModal from './components/BuyCreditsModal';
 import { PRO_SUBSCRIPTION_SALES_ENABLED } from './lib/feature-flags';
 import { countUnreadAssignedTasks } from './lib/assigned-task-badge';
 import { myAssignment } from './lib/session-labels';
+import { I18nProvider, useI18n, messages, t as translate } from './lib/i18n';
+import type { AppLocale } from './lib/i18n/types';
+
+const i18nMessages = messages as unknown as Parameters<typeof translate>[0];
 
 const fetchOpts: RequestInit = { credentials: 'include', cache: 'no-store' };
 
@@ -47,9 +56,9 @@ const GUEST_USER_ID = '__guest__';
 const GUEST_USER: User = {
   id: GUEST_USER_ID,
   email: 'mode-essai@local',
-  name: 'Mode essai',
+  name: 'Guest',
   color: '#64748b',
-  initials: 'M',
+  initials: 'G',
   plan: 'free',
   preferences: DEFAULT_USER_PREFERENCES,
 };
@@ -136,34 +145,26 @@ async function migrateGuestDataToServer(): Promise<void> {
 }
 
 /* ── Modale connexion / inscription ── */
-const AUTH_ERROR_MESSAGES: Record<string, string> = {
-  google_config: 'Connexion Google non configurée sur le serveur (variables GOOGLE_* et AUTH_URL).',
-  google_state: 'Session expirée ou invalide. Réessayez.',
-  google_denied: 'Connexion Google annulée.',
-  google_unverified: 'Votre compte Google doit avoir un e-mail vérifié.',
-  google_conflict: 'Ce compte e-mail est déjà lié à un autre compte Google.',
-  google_failed: 'La connexion Google a échoué.',
-  google_secret:
-    'Client secret Google incorrect. Dans Google Cloud Console, copiez le secret du client Web Firebase (835035102273-...) dans GOOGLE_CLIENT_SECRET.',
-  google_redirect:
-    'URI de redirection non autorisée. Ajoutez {votre-domaine}/api/auth/google/callback dans Google Cloud Console > Credentials > client Web.',
-  google_missing: 'Réponse Google incomplète.',
-  google_oauth: 'Erreur OAuth Google.',
-};
+function authOauthMessage(code: string, t: (key: string, params?: Record<string, string | number>) => string) {
+  const key = `auth.oauth.${code}`;
+  const msg = t(key);
+  return msg === key ? t('auth.oauth.connectionError', { code }) : msg;
+}
 
 function AuthModal({
   open,
   initialTab,
   onClose,
   onAuthenticated,
-  oauthError,
+  oauthErrorCode,
 }: {
   open: boolean;
   initialTab: 'login' | 'register';
   onClose: () => void;
   onAuthenticated: (user: User) => Promise<void>;
-  oauthError: string | null;
+  oauthErrorCode: string | null;
 }) {
+  const { t } = useI18n();
   const [tab, setTab] = useState<'login' | 'register'>(initialTab);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -181,6 +182,8 @@ function AuthModal({
 
   if (!open) return null;
 
+  const oauthError = oauthErrorCode ? authOauthMessage(oauthErrorCode, t) : null;
+
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
@@ -193,11 +196,11 @@ function AuthModal({
         body: JSON.stringify({ email: email.trim(), password }),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error ?? 'Connexion impossible');
+      if (!res.ok) throw new Error(data.error ?? t('auth.login.failed'));
       await onAuthenticated(data as User);
       onClose();
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : 'Erreur');
+      setError(err instanceof Error ? err.message : t('common.status.error'));
     } finally {
       setBusy(false);
     }
@@ -219,11 +222,11 @@ function AuthModal({
         }),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error ?? 'Inscription impossible');
+      if (!res.ok) throw new Error(data.error ?? t('auth.register.failed'));
       await onAuthenticated(data as User);
       onClose();
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : 'Erreur');
+      setError(err instanceof Error ? err.message : t('common.status.error'));
     } finally {
       setBusy(false);
     }
@@ -244,7 +247,7 @@ function AuthModal({
           className="text-slate-500 hover:text-slate-300 text-sm mb-4 flex items-center gap-1.5 transition-colors"
         >
           <IconArrowLeft className="h-4 w-4" />
-          Fermer
+          {t('auth.modal.close')}
         </button>
         <div className="flex flex-col items-center mx-auto mb-5">
           <img
@@ -256,9 +259,9 @@ function AuthModal({
           />
           <p className="mt-3 text-lg font-bold tracking-tight text-white">{BRAND_NAME}</p>
         </div>
-        <h2 className="text-xl font-bold text-white text-center mb-1">Sauvegarder sur le cloud</h2>
+        <h2 className="text-xl font-bold text-white text-center mb-1">{t('auth.modal.title')}</h2>
         <p className="text-slate-400 text-sm text-center mb-6">
-          {tab === 'login' ? 'Connectez-vous à votre compte' : 'Créez votre compte'}
+          {tab === 'login' ? t('auth.modal.subtitleLogin') : t('auth.modal.subtitleRegister')}
         </p>
 
         {(error || oauthError) && (
@@ -289,7 +292,7 @@ function AuthModal({
               d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"
             />
           </svg>
-          Continuer avec Google
+          {t('auth.modal.continueWithGoogle')}
         </a>
 
         <div className="relative mb-5">
@@ -297,7 +300,7 @@ function AuthModal({
             <div className="w-full border-t border-slate-600" />
           </div>
           <div className="relative flex justify-center text-xs uppercase">
-            <span className="bg-slate-800 px-2 text-slate-500">ou e-mail</span>
+            <span className="bg-slate-800 px-2 text-slate-500">{t('auth.modal.orEmail')}</span>
           </div>
         </div>
 
@@ -305,26 +308,34 @@ function AuthModal({
           <>
             <form onSubmit={handleLogin} className="space-y-3">
               <div>
-                <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5">Email</label>
+                <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5">{t('auth.fields.email')}</label>
                 <input
                   type="email"
                   value={email}
                   onChange={e => setEmail(e.target.value)}
                   autoComplete="email"
                   className="w-full bg-slate-700 border border-slate-600 rounded-xl px-4 py-2.5 text-sm text-slate-200 placeholder-slate-500 focus:outline-none focus:border-indigo-500"
-                  placeholder="vous@exemple.com"
+                  placeholder={t('auth.fields.emailPlaceholder')}
                   required
                 />
               </div>
               <div>
-                <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5">Mot de passe</label>
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider">{t('auth.fields.password')}</label>
+                  <a
+                    href="/forgot-password"
+                    className="text-xs text-indigo-400 hover:text-indigo-300 font-medium"
+                  >
+                    {t('auth.login.forgotPassword')}
+                  </a>
+                </div>
                 <input
                   type="password"
                   value={password}
                   onChange={e => setPassword(e.target.value)}
                   autoComplete="current-password"
                   className="w-full bg-slate-700 border border-slate-600 rounded-xl px-4 py-2.5 text-sm text-slate-200 placeholder-slate-500 focus:outline-none focus:border-indigo-500"
-                  placeholder="••••••••"
+                  placeholder={t('auth.fields.passwordPlaceholder')}
                   required
                 />
               </div>
@@ -333,13 +344,13 @@ function AuthModal({
                 disabled={busy}
                 className="w-full bg-indigo-500 hover:bg-indigo-400 disabled:opacity-50 text-white py-3 rounded-xl text-sm font-semibold shadow-lg shadow-indigo-500/20 mt-2"
               >
-                {busy ? 'Connexion…' : 'Se connecter'}
+                {busy ? t('auth.login.submitting') : t('auth.login.submit')}
               </button>
             </form>
             <p className="text-center text-sm text-slate-500 mt-6">
-              Pas encore de compte ?{' '}
+              {t('auth.login.noAccount')}{' '}
               <button type="button" onClick={() => switchTo('register')} className="text-indigo-400 hover:text-indigo-300 font-medium">
-                Créer un compte
+                {t('auth.login.createAccountLink')}
               </button>
             </p>
           </>
@@ -347,31 +358,31 @@ function AuthModal({
           <>
             <form onSubmit={handleRegister} className="space-y-3">
               <div>
-                <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5">Nom affiché</label>
+                <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5">{t('auth.fields.displayName')}</label>
                 <input
                   type="text"
                   value={name}
                   onChange={e => setName(e.target.value)}
                   autoComplete="name"
                   className="w-full bg-slate-700 border border-slate-600 rounded-xl px-4 py-2.5 text-sm text-slate-200 placeholder-slate-500 focus:outline-none focus:border-indigo-500"
-                  placeholder="Votre prénom ou pseudo"
+                  placeholder={t('auth.fields.displayNamePlaceholder')}
                   required
                 />
               </div>
               <div>
-                <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5">Email</label>
+                <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5">{t('auth.fields.email')}</label>
                 <input
                   type="email"
                   value={email}
                   onChange={e => setEmail(e.target.value)}
                   autoComplete="email"
                   className="w-full bg-slate-700 border border-slate-600 rounded-xl px-4 py-2.5 text-sm text-slate-200 placeholder-slate-500 focus:outline-none focus:border-indigo-500"
-                  placeholder="vous@exemple.com"
+                  placeholder={t('auth.fields.emailPlaceholder')}
                   required
                 />
               </div>
               <div>
-                <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5">Mot de passe (min. 8 caractères)</label>
+                <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5">{t('auth.fields.passwordMinHint')}</label>
                 <input
                   type="password"
                   value={password}
@@ -379,7 +390,7 @@ function AuthModal({
                   autoComplete="new-password"
                   minLength={8}
                   className="w-full bg-slate-700 border border-slate-600 rounded-xl px-4 py-2.5 text-sm text-slate-200 placeholder-slate-500 focus:outline-none focus:border-indigo-500"
-                  placeholder="••••••••"
+                  placeholder={t('auth.fields.passwordPlaceholder')}
                   required
                 />
               </div>
@@ -388,13 +399,13 @@ function AuthModal({
                 disabled={busy}
                 className="w-full bg-indigo-500 hover:bg-indigo-400 disabled:opacity-50 text-white py-3 rounded-xl text-sm font-semibold shadow-lg shadow-indigo-500/20 mt-2"
               >
-                {busy ? 'Création…' : 'Créer mon compte'}
+                {busy ? t('auth.register.submitting') : t('auth.register.submit')}
               </button>
             </form>
             <p className="text-center text-sm text-slate-500 mt-6">
-              Déjà un compte ?{' '}
+              {t('auth.register.hasAccount')}{' '}
               <button type="button" onClick={() => switchTo('login')} className="text-indigo-400 hover:text-indigo-300 font-medium">
-                Se connecter
+                {t('auth.register.signInLink')}
               </button>
             </p>
           </>
@@ -405,13 +416,14 @@ function AuthModal({
 }
 
 function ErrorScreen({ message }: { message: string }) {
+  const { t } = useI18n();
   return (
     <div className="flex items-center justify-center min-h-screen bg-slate-900">
       <div className="bg-slate-800 border border-red-500/30 rounded-2xl p-8 w-full max-w-md text-center">
         <div className="mb-4 flex justify-center">
           <IconAlertTriangle className="h-12 w-12 text-red-400/90" aria-hidden />
         </div>
-        <h2 className="text-lg font-semibold text-red-400 mb-2">Erreur</h2>
+        <h2 className="text-lg font-semibold text-red-400 mb-2">{t('page.errorTitle')}</h2>
         <p className="text-slate-400 text-sm">{message}</p>
       </div>
     </div>
@@ -419,6 +431,7 @@ function ErrorScreen({ message }: { message: string }) {
 }
 
 function LoadingScreen() {
+  const { t } = useI18n();
   return (
     <div className="flex items-center justify-center min-h-screen bg-slate-900">
       <div className="flex flex-col items-center gap-4 px-6">
@@ -430,45 +443,46 @@ function LoadingScreen() {
           className="h-[4.5rem] w-[4.5rem] object-contain animate-pulse"
         />
         <p className="text-xl font-bold tracking-tight text-white">{BRAND_NAME}</p>
-        <p className="text-slate-500 text-sm">Chargement…</p>
+        <p className="text-slate-500 text-sm">{t('page.loading')}</p>
       </div>
     </div>
   );
 }
 
-async function loadAppData(): Promise<{
+async function loadAppData(locale: AppLocale): Promise<{
   contacts: User[];
   notes: Note[];
   tasks: Task[];
   groups: Group[];
   sessions: TrainingSession[];
 }> {
-  const [c, n, t, g, s] = await Promise.all([
+  const tx = (key: string) => translate(i18nMessages, locale, key);
+  const [c, n, tasksData, g, s] = await Promise.all([
     fetch('/api/contacts', fetchOpts).then(r => {
-      if (!r.ok) throw new Error('Impossible de charger les collaborateurs');
+      if (!r.ok) throw new Error(tx('page.loadErrors.contacts'));
       return r.json();
     }),
     fetch('/api/notes', fetchOpts).then(r => {
-      if (!r.ok) throw new Error('Impossible de charger les notes');
+      if (!r.ok) throw new Error(tx('page.loadErrors.notes'));
       return r.json();
     }),
     fetch('/api/tasks', fetchOpts).then(r => {
-      if (!r.ok) throw new Error('Impossible de charger les tâches');
+      if (!r.ok) throw new Error(tx('page.loadErrors.tasks'));
       return r.json();
     }),
     fetch('/api/groups', fetchOpts).then(r => {
-      if (!r.ok) throw new Error('Impossible de charger les groupes');
+      if (!r.ok) throw new Error(tx('page.loadErrors.groups'));
       return r.json();
     }),
     fetch('/api/sessions', fetchOpts).then(r => {
-      if (!r.ok) throw new Error('Impossible de charger les sessions');
+      if (!r.ok) throw new Error(tx('page.loadErrors.sessions'));
       return r.json();
     }),
   ]);
   return {
     contacts: c,
     notes: n,
-    tasks: (t as Task[]).map(migrateLegacyTaskStatus),
+    tasks: (tasksData as Task[]).map(migrateLegacyTaskStatus),
     groups: g as Group[],
     sessions: s as TrainingSession[],
   };
@@ -490,7 +504,7 @@ export default function HomePage() {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [authModalOpen, setAuthModalOpen] = useState(false);
   const [authTab, setAuthTab] = useState<'login' | 'register'>('login');
-  const [authOauthError, setAuthOauthError] = useState<string | null>(null);
+  const [authOauthErrorCode, setAuthOauthErrorCode] = useState<string | null>(null);
   const [chatOpen, setChatOpen] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [collaboratorsModalOpen, setCollaboratorsModalOpen] = useState(false);
@@ -539,6 +553,13 @@ export default function HomePage() {
     () => displayUser.preferences ?? DEFAULT_USER_PREFERENCES,
     [displayUser],
   );
+
+  const appLocale = layoutPreferences.locale;
+  const tx = useCallback(
+    (key: string, params?: Record<string, string | number>) => translate(i18nMessages, appLocale, key, params),
+    [appLocale],
+  );
+  const dateLocale = appLocale === 'en' ? 'en-US' : 'fr-FR';
 
   const assignedTaskBadgeCount = useMemo(
     () =>
@@ -590,15 +611,15 @@ export default function HomePage() {
     if (prev === 0 && assignedTaskBadgeCount > 0) {
       const msg =
         assignedTaskBadgeCount === 1
-          ? 'Une nouvelle tâche vous est assignée.'
-          : `${assignedTaskBadgeCount} nouvelles tâches vous sont assignées.`;
+          ? tx('page.assignedTasks.one')
+          : tx('page.assignedTasks.many', { count: assignedTaskBadgeCount });
       setAssignedInAppNotice(msg);
       const t = window.setTimeout(() => setAssignedInAppNotice(null), 9000);
       prevAssignedBadgeRef.current = assignedTaskBadgeCount;
       return () => window.clearTimeout(t);
     }
     prevAssignedBadgeRef.current = assignedTaskBadgeCount;
-  }, [loading, isGuest, assignedTaskBadgeCount]);
+  }, [loading, isGuest, assignedTaskBadgeCount, tx]);
 
   const chatTier = useMemo(() => {
     if (isGuest) return 'guest' as const;
@@ -639,10 +660,23 @@ export default function HomePage() {
   }, [isGuest, trainingSessions, displayUser.id]);
 
   useEffect(() => {
+    if (isGuest) return;
+    if (activeView === 'groups' && !canAccessGroups(displayUser.role)) {
+      setActiveView(
+        canViewSessionProposals(displayUser.role) ? 'sessions-assignee' : 'planning',
+      );
+    } else if (activeView === 'sessions-organizer' && !canManageTrainingSessions(displayUser.role)) {
+      setActiveView('planning');
+    } else if (activeView === 'sessions-assignee' && !canViewSessionProposals(displayUser.role)) {
+      setActiveView('planning');
+    }
+  }, [isGuest, activeView, displayUser.role]);
+
+  useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const code = params.get('auth_error');
     if (!code) return;
-    setAuthOauthError(AUTH_ERROR_MESSAGES[code] ?? `Erreur de connexion (${code}).`);
+    setAuthOauthErrorCode(code);
     setAuthTab('login');
     setAuthModalOpen(true);
     router.replace('/', { scroll: false });
@@ -650,7 +684,8 @@ export default function HomePage() {
 
   const hydrateFromSession = useCallback(async (me: User) => {
     setCurrentUser(me);
-    const data = await loadAppData();
+    const locale = me.preferences?.locale ?? DEFAULT_USER_PREFERENCES.locale;
+    const data = await loadAppData(locale);
     setContacts(data.contacts);
     setGroups(data.groups);
     setTrainingSessions(data.sessions);
@@ -702,7 +737,7 @@ export default function HomePage() {
   const refreshData = useCallback(async () => {
     if (!currentUser) return;
     try {
-      const data = await loadAppData();
+      const data = await loadAppData(appLocale);
       setNotes(prev => {
         const json = JSON.stringify(data.notes);
         return JSON.stringify(prev) === json ? prev : data.notes;
@@ -726,7 +761,7 @@ export default function HomePage() {
     } catch {
       /* silently ignore — next poll will retry */
     }
-  }, [currentUser]);
+  }, [currentUser, appLocale]);
 
   useEffect(() => {
     if (!currentUser) return;
@@ -776,10 +811,10 @@ export default function HomePage() {
         await migrateGuestDataToServer();
         await hydrateFromSession(user);
       } catch (e: unknown) {
-        setDbError(e instanceof Error ? e.message : 'Erreur');
+        setDbError(e instanceof Error ? e.message : tx('common.status.error'));
       }
     },
-    [hydrateFromSession]
+    [hydrateFromSession, tx]
   );
 
   const addContactByEmail = useCallback(async (email: string) => {
@@ -790,12 +825,12 @@ export default function HomePage() {
       body: JSON.stringify({ email }),
     });
     const data = await res.json();
-    if (!res.ok) throw new Error(data.error ?? 'Impossible d’ajouter le collaborateur');
+    if (!res.ok) throw new Error(data.error ?? tx('page.apiErrors.addContact'));
     setContacts(prev => {
       const rest = prev.filter(u => u.id !== data.id);
       return [...rest, data as User];
     });
-  }, []);
+  }, [tx]);
 
   const removeContact = useCallback(async (memberId: string) => {
     await fetch(`/api/contacts/${memberId}`, { method: 'DELETE', ...fetchOpts });
@@ -810,10 +845,10 @@ export default function HomePage() {
       body: JSON.stringify({ name, memberIds }),
     });
     const data = await res.json();
-    if (!res.ok) throw new Error(data.error ?? 'Impossible de créer le groupe');
+    if (!res.ok) throw new Error(data.error ?? tx('page.apiErrors.createGroup'));
     setGroups(prev => [data as Group, ...prev.filter(g => g.id !== data.id)]);
     return data as Group;
-  }, []);
+  }, [tx]);
 
   const updateGroupName = useCallback(async (groupId: string, name: string) => {
     const res = await fetch(`/api/groups/${groupId}`, {
@@ -823,19 +858,19 @@ export default function HomePage() {
       body: JSON.stringify({ name }),
     });
     const data = await res.json();
-    if (!res.ok) throw new Error(data.error ?? 'Erreur');
+    if (!res.ok) throw new Error(data.error ?? tx('common.status.error'));
     setGroups(prev => prev.map(g => (g.id === groupId ? (data as Group) : g)));
-  }, []);
+  }, [tx]);
 
   const deleteGroup = useCallback(async (groupId: string) => {
     const res = await fetch(`/api/groups/${groupId}`, { method: 'DELETE', ...fetchOpts });
     if (!res.ok) {
       const data = await res.json();
-      throw new Error(data.error ?? 'Erreur');
+      throw new Error(data.error ?? tx('common.status.error'));
     }
     setGroups(prev => prev.filter(g => g.id !== groupId));
     setTasks(prev => prev.map(t => (t.groupId === groupId ? { ...t, groupId: undefined, group: undefined } : t)));
-  }, []);
+  }, [tx]);
 
   const addGroupMember = useCallback(async (groupId: string, userId: string) => {
     const res = await fetch(`/api/groups/${groupId}`, {
@@ -845,23 +880,23 @@ export default function HomePage() {
       body: JSON.stringify({ userId }),
     });
     const data = await res.json();
-    if (!res.ok) throw new Error(data.error ?? 'Erreur');
+    if (!res.ok) throw new Error(data.error ?? tx('common.status.error'));
     setGroups(prev => prev.map(g => (g.id === groupId ? (data as Group) : g)));
-  }, []);
+  }, [tx]);
 
   const removeGroupMember = useCallback(async (groupId: string, userId: string) => {
     const res = await fetch(`/api/groups/${groupId}/members/${userId}`, { method: 'DELETE', ...fetchOpts });
     const data = await res.json();
-    if (!res.ok) throw new Error(data.error ?? 'Erreur');
+    if (!res.ok) throw new Error(data.error ?? tx('common.status.error'));
     setGroups(prev => prev.map(g => (g.id === groupId ? (data as Group) : g)));
-  }, []);
+  }, [tx]);
 
   const uploadGroupLogo = useCallback(async (groupId: string, file: File) => {
     const result = await uploadWithProgress<Group>(`/api/groups/${groupId}/logo`, file);
-    if (!result.ok || !result.data) throw new Error(result.error ?? 'Upload impossible');
+    if (!result.ok || !result.data) throw new Error(result.error ?? tx('common.upload.uploadFailed'));
     setGroups(prev => prev.map(g => (g.id === groupId ? result.data! : g)));
     return result.data;
-  }, []);
+  }, [tx]);
 
   const createSession = useCallback(
     async (payload: {
@@ -878,11 +913,11 @@ export default function HomePage() {
         body: JSON.stringify(payload),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error ?? 'Impossible de créer la session');
+      if (!res.ok) throw new Error(data.error ?? tx('page.apiErrors.createSession'));
       setTrainingSessions(prev => [data as TrainingSession, ...prev.filter(s => s.id !== data.id)]);
       return data as TrainingSession;
     },
-    [],
+    [tx],
   );
 
   const updateSession = useCallback(
@@ -903,20 +938,20 @@ export default function HomePage() {
         body: JSON.stringify(payload),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error ?? 'Erreur');
+      if (!res.ok) throw new Error(data.error ?? tx('common.status.error'));
       setTrainingSessions(prev => prev.map(s => (s.id === sessionId ? (data as TrainingSession) : s)));
     },
-    [],
+    [tx],
   );
 
   const deleteSession = useCallback(async (sessionId: string) => {
     const res = await fetch(`/api/sessions/${sessionId}`, { method: 'DELETE', ...fetchOpts });
     if (!res.ok) {
       const data = await res.json();
-      throw new Error(data.error ?? 'Erreur');
+      throw new Error(data.error ?? tx('common.status.error'));
     }
     setTrainingSessions(prev => prev.filter(s => s.id !== sessionId));
-  }, []);
+  }, [tx]);
 
   const respondSession = useCallback(
     async (sessionId: string, role: SessionAssignmentRole, status: 'accepted' | 'declined') => {
@@ -927,10 +962,10 @@ export default function HomePage() {
         body: JSON.stringify({ role, status }),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error ?? 'Erreur');
+      if (!res.ok) throw new Error(data.error ?? tx('common.status.error'));
       setTrainingSessions(prev => prev.map(s => (s.id === sessionId ? (data as TrainingSession) : s)));
     },
-    [],
+    [tx],
   );
 
   const logout = useCallback(async () => {
@@ -970,23 +1005,23 @@ export default function HomePage() {
     try {
       const res = await fetch('/api/billing/checkout', { method: 'POST', ...fetchOpts });
       const data = (await res.json()) as { error?: string; url?: string };
-      if (!res.ok) throw new Error(data.error ?? 'Impossible d’ouvrir le paiement');
+      if (!res.ok) throw new Error(data.error ?? tx('page.billing.checkoutFailed'));
       if (data.url) window.location.href = data.url;
     } catch (e: unknown) {
-      setBillingFlash(e instanceof Error ? e.message : 'Erreur de paiement');
+      setBillingFlash(e instanceof Error ? e.message : tx('page.billing.paymentError'));
     }
-  }, []);
+  }, [tx]);
 
   const openBillingPortal = useCallback(async () => {
     try {
       const res = await fetch('/api/billing/portal', { method: 'POST', ...fetchOpts });
       const data = (await res.json()) as { error?: string; url?: string };
-      if (!res.ok) throw new Error(data.error ?? 'Portail indisponible');
+      if (!res.ok) throw new Error(data.error ?? tx('page.billing.portalUnavailable'));
       if (data.url) window.location.href = data.url;
     } catch (e: unknown) {
-      setBillingFlash(e instanceof Error ? e.message : 'Erreur facturation');
+      setBillingFlash(e instanceof Error ? e.message : tx('page.billing.billingError'));
     }
-  }, []);
+  }, [tx]);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -1008,7 +1043,7 @@ export default function HomePage() {
         }
         await hydrateFromSession(me);
         if (!cancelled) {
-          setBillingFlash('Merci ! Neurix Pro est activé sur votre compte.');
+          setBillingFlash(tx('page.billing.proActivated'));
         }
         router.replace('/', { scroll: false });
         return;
@@ -1018,9 +1053,7 @@ export default function HomePage() {
         setTimeout(() => void trySyncPro(), delayMs);
       } else if (!cancelled) {
         await hydrateFromSession(me);
-        setBillingFlash(
-          'Paiement enregistré. Le statut Pro peut prendre quelques secondes : actualisez la page si le badge Pro n’apparaît pas.',
-        );
+        setBillingFlash(tx('page.billing.proPending'));
         router.replace('/', { scroll: false });
       }
     };
@@ -1029,14 +1062,14 @@ export default function HomePage() {
     return () => {
       cancelled = true;
     };
-  }, [router, hydrateFromSession]);
+  }, [router, hydrateFromSession, tx]);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     if (params.get('billing') !== 'cancel') return;
-    setBillingFlash('Paiement annulé.');
+    setBillingFlash(tx('page.billing.cancelled'));
     router.replace('/', { scroll: false });
-  }, [router]);
+  }, [router, tx]);
 
   // Handle credits purchase success — poll until aiCredits > 0 (webhook may be slightly delayed)
   useEffect(() => {
@@ -1054,7 +1087,7 @@ export default function HomePage() {
       if ((me.aiCredits ?? 0) > 0) {
         setCurrentUser(prev => prev ? { ...prev, aiCredits: me.aiCredits, aiCreditsExpiresAt: me.aiCreditsExpiresAt } : me);
         if (!cancelled) {
-          setBillingFlash('Merci ! Vos 2 500 crédits IA ont été ajoutés à votre compte.');
+          setBillingFlash(tx('page.billing.creditsAdded'));
           setChatOpen(true);
         }
         router.replace('/', { scroll: false });
@@ -1065,14 +1098,14 @@ export default function HomePage() {
         setTimeout(() => void trySyncCredits(), delayMs);
       } else if (!cancelled) {
         setCurrentUser(prev => prev ? { ...prev, aiCredits: me.aiCredits, aiCreditsExpiresAt: me.aiCreditsExpiresAt } : me);
-        setBillingFlash('Paiement enregistré. Vos crédits apparaîtront d\'ici quelques instants.');
+        setBillingFlash(tx('page.billing.creditsPending'));
         router.replace('/', { scroll: false });
       }
     };
 
     void trySyncCredits();
     return () => { cancelled = true; };
-  }, [router]);
+  }, [router, tx]);
 
   const addNote = useCallback(
     async (data: Omit<Note, 'id' | 'createdAt' | 'updatedAt'>): Promise<Note | void> => {
@@ -1112,24 +1145,24 @@ export default function HomePage() {
       file: File,
       opts?: { onProgress?: (p: UploadProgress) => void; signal?: AbortSignal },
     ): Promise<Note> => {
-      if (isGuest) throw new Error('Connectez-vous pour ajouter une pièce jointe.');
+      if (isGuest) throw new Error(tx('common.errors.loginRequired'));
       const result = await uploadWithProgress<Note>(`/api/notes/${noteId}/assets`, file, {
         onProgress: opts?.onProgress,
         ...(opts?.signal ? { signal: opts.signal } : {}),
       });
       if (!result.ok || !result.data) {
-        throw new Error(result.error ?? `Upload impossible (${result.status})`);
+        throw new Error(result.error ?? tx('common.upload.uploadFailedStatus', { status: result.status ?? '?' }));
       }
       const updated = result.data;
       setNotes(prev => prev.map(n => (n.id === updated.id ? updated : n)));
       return updated;
     },
-    [isGuest]
+    [isGuest, tx]
   );
 
   const deleteNoteAsset = useCallback(
     async (noteId: string, assetId: string): Promise<Note> => {
-      if (isGuest) throw new Error('Connectez-vous pour gérer les pièces jointes.');
+      if (isGuest) throw new Error(tx('common.errors.loginRequired'));
       const res = await fetch(`/api/notes/${noteId}/assets/${assetId}`, {
         method: 'DELETE',
         ...fetchOpts,
@@ -1138,31 +1171,31 @@ export default function HomePage() {
       try {
         payload = await res.json();
       } catch {
-        throw new Error(`Réponse invalide du serveur (${res.status})`);
+        throw new Error(tx('common.errors.invalidServerResponse', { status: res.status }));
       }
       if (!res.ok) {
         const msg =
           typeof payload === 'object' && payload !== null && 'error' in payload && typeof (payload as { error: unknown }).error === 'string'
             ? (payload as { error: string }).error
-            : `Suppression impossible (${res.status})`;
+            : tx('common.errors.deleteFailed', { status: res.status });
         throw new Error(msg);
       }
       const updated = payload as Note;
       setNotes(prev => prev.map(n => (n.id === updated.id ? updated : n)));
       return updated;
     },
-    [isGuest]
+    [isGuest, tx]
   );
 
   const convertNoteToTask = useCallback(
     async (noteId: string, opts: { deleteOriginal: boolean }): Promise<Task> => {
       if (isGuest) {
         const note = notes.find(n => n.id === noteId);
-        if (!note) throw new Error('Note introuvable');
+        if (!note) throw new Error(tx('notes.errors.notFound'));
         const now = new Date().toISOString();
         const task: Task = {
           id: genId(),
-          title: note.title || 'Sans titre',
+          title: note.title || tx('page.guest.untitledNote'),
           description: note.content ?? '',
           status: 'todo',
           assignedTo: [GUEST_USER_ID],
@@ -1203,13 +1236,13 @@ export default function HomePage() {
       try {
         payload = await res.json();
       } catch {
-        throw new Error(`Réponse invalide du serveur (${res.status})`);
+        throw new Error(tx('common.errors.invalidServerResponse', { status: res.status }));
       }
       if (!res.ok) {
         const msg =
           typeof payload === 'object' && payload !== null && 'error' in payload && typeof (payload as { error: unknown }).error === 'string'
             ? (payload as { error: string }).error
-            : `Conversion impossible (${res.status})`;
+            : tx('notes.errors.convertFailed', { status: res.status });
         throw new Error(msg);
       }
       const data = payload as { task: Task; noteDeleted: boolean; noteId: string };
@@ -1223,7 +1256,7 @@ export default function HomePage() {
       setActiveView('tasks');
       return data.task;
     },
-    [isGuest, notes]
+    [isGuest, notes, tx]
   );
 
   const updateNote = useCallback(
@@ -1281,20 +1314,20 @@ export default function HomePage() {
       try {
         payload = await res.json();
       } catch {
-        throw new Error(`Réponse invalide du serveur (${res.status})`);
+        throw new Error(tx('common.errors.invalidServerResponse', { status: res.status }));
       }
       if (!res.ok) {
         const msg =
           typeof payload === 'object' && payload !== null && 'error' in payload && typeof (payload as { error: unknown }).error === 'string'
             ? (payload as { error: string }).error
-            : `Impossible de créer la tâche (${res.status})`;
+            : tx('page.apiErrors.createTask', { status: res.status });
         throw new Error(msg);
       }
       const created = payload as Task;
       setTasks(prev => [created, ...prev]);
       return created;
     },
-    [isGuest]
+    [isGuest, tx]
   );
 
   const updateTask = useCallback(
@@ -1314,18 +1347,18 @@ export default function HomePage() {
       try {
         payload = await res.json();
       } catch {
-        throw new Error(`Réponse invalide du serveur (${res.status})`);
+        throw new Error(tx('common.errors.invalidServerResponse', { status: res.status }));
       }
       if (!res.ok) {
         const msg =
           typeof payload === 'object' && payload !== null && 'error' in payload && typeof (payload as { error: unknown }).error === 'string'
             ? (payload as { error: string }).error
-            : `Impossible de mettre à jour la tâche (${res.status})`;
+            : tx('page.apiErrors.updateTask', { status: res.status });
         throw new Error(msg);
       }
       setTasks(prev => prev.map(t => (t.id === id ? (payload as Task) : t)));
     },
-    [isGuest]
+    [isGuest, tx]
   );
 
   const deleteTask = useCallback(
@@ -1340,17 +1373,17 @@ export default function HomePage() {
         try {
           payload = await res.json();
         } catch {
-          throw new Error(`Erreur ${res.status}`);
+          throw new Error(tx('page.apiErrors.generic', { status: res.status }));
         }
         const msg =
           typeof payload === 'object' && payload !== null && 'error' in payload && typeof (payload as { error: unknown }).error === 'string'
             ? (payload as { error: string }).error
-            : `Impossible de supprimer (${res.status})`;
+            : tx('page.apiErrors.deleteTask', { status: res.status });
         throw new Error(msg);
       }
       setTasks(prev => prev.filter(t => t.id !== id));
     },
-    [isGuest]
+    [isGuest, tx]
   );
 
   const moveTask = useCallback(
@@ -1370,18 +1403,18 @@ export default function HomePage() {
       try {
         payload = await res.json();
       } catch {
-        throw new Error(`Réponse invalide du serveur (${res.status})`);
+        throw new Error(tx('common.errors.invalidServerResponse', { status: res.status }));
       }
       if (!res.ok) {
         const msg =
           typeof payload === 'object' && payload !== null && 'error' in payload && typeof (payload as { error: unknown }).error === 'string'
             ? (payload as { error: string }).error
-            : `Impossible de déplacer la tâche (${res.status})`;
+            : tx('page.apiErrors.moveTask', { status: res.status });
         throw new Error(msg);
       }
       setTasks(prev => prev.map(t => (t.id === id ? (payload as Task) : t)));
     },
-    [isGuest]
+    [isGuest, tx]
   );
 
   const sendChatMessage = useCallback(
@@ -1402,7 +1435,7 @@ export default function HomePage() {
           ...fetchOpts,
           body: JSON.stringify({
             messages: history.map(m => ({ role: m.role, content: m.content })),
-            context: buildContext(notes, tasks, assignableUsers, displayUser),
+            context: buildContext(notes, tasks, assignableUsers, displayUser, appLocale),
           }),
         });
         const data = await res.json();
@@ -1422,14 +1455,14 @@ export default function HomePage() {
           { id: genId(), role: 'assistant', content: data.message, timestamp: new Date().toISOString() },
         ]);
       } catch (err: unknown) {
-        const msg = err instanceof Error ? err.message : 'Erreur inconnue';
+        const msg = err instanceof Error ? err.message : tx('common.errors.unknown');
         setChatMessages(prev => [
           ...prev,
-          { id: genId(), role: 'assistant', content: `Erreur : ${msg}`, timestamp: new Date().toISOString() },
+          { id: genId(), role: 'assistant', content: `${tx('common.status.error')} : ${msg}`, timestamp: new Date().toISOString() },
         ]);
       }
     },
-    [chatMessages, notes, tasks, assignableUsers, displayUser]
+    [chatMessages, notes, tasks, assignableUsers, displayUser, appLocale, tx]
   );
 
   const clearChat = useCallback(() => setChatMessages([]), []);
@@ -1446,12 +1479,12 @@ export default function HomePage() {
       if (data.url) {
         window.location.href = data.url;
       } else {
-        alert(data.error ?? 'Erreur lors du paiement.');
+        alert(data.error ?? tx('page.billing.paymentAlert'));
       }
     } catch {
-      alert('Erreur de connexion au service de paiement.');
+      alert(tx('page.billing.paymentConnectionAlert'));
     }
-  }, []);
+  }, [tx]);
 
   const openBuyCreditsModal = useCallback(() => setBuyCreditsModalOpen(true), []);
 
@@ -1472,10 +1505,22 @@ export default function HomePage() {
     } else {
       setCurrentUser(u);
     }
-  }, [currentUser]);
+  }, [currentUser, appLocale]);
 
-  if (loading) return <LoadingScreen />;
-  if (dbError) return <ErrorScreen message={dbError} />;
+  if (loading) {
+    return (
+      <I18nProvider locale={layoutPreferences.locale}>
+        <LoadingScreen />
+      </I18nProvider>
+    );
+  }
+  if (dbError) {
+    return (
+      <I18nProvider locale={layoutPreferences.locale}>
+        <ErrorScreen message={dbError} />
+      </I18nProvider>
+    );
+  }
 
   const openCollaboratorsPanel = () => {
     if (isGuest) {
@@ -1510,14 +1555,28 @@ export default function HomePage() {
     onOpenProFeatures: () => setProFeaturesModalOpen(true),
     onOpenSettings: () => setSettingsModalOpen(true),
     lastDataUpdatedAt,
-    showSessionsOrganizer: !isGuest && displayUser.plan === 'pro',
-    showSessionsAssignee: !isGuest,
+    showSessionsOrganizer: !isGuest && canManageTrainingSessions(displayUser.role),
+    showSessionsAssignee: !isGuest && canViewSessionProposals(displayUser.role),
     sessionPendingCount,
-    showGroups: !isGuest,
+    showGroups: !isGuest && canAccessGroups(displayUser.role),
     groupCount: groups.length,
   };
 
+  const activeViewTitle =
+    activeView === 'notes'
+      ? tx('page.views.notes')
+      : activeView === 'planning'
+        ? tx('page.views.planning')
+        : activeView === 'sessions-organizer'
+          ? tx('page.views.sessionsOrganizer')
+          : activeView === 'sessions-assignee'
+            ? tx('page.views.sessionsAssignee')
+            : activeView === 'groups'
+              ? tx('page.views.groups')
+              : tx('page.views.tasks');
+
   return (
+    <I18nProvider locale={layoutPreferences.locale}>
     <>
       {assignedInAppNotice && (
         <div className="fixed bottom-24 left-3 right-3 z-[94] flex items-center justify-between gap-3 rounded-xl border border-rose-500/35 bg-rose-950/95 px-4 py-3 text-sm text-rose-100 shadow-xl md:bottom-6 md:left-auto md:right-6 md:max-w-md">
@@ -1527,7 +1586,7 @@ export default function HomePage() {
             onClick={() => setAssignedInAppNotice(null)}
             className="shrink-0 rounded-lg px-2 py-1 text-rose-200 hover:bg-rose-900/80"
           >
-            OK
+            {tx('common.actions.ok')}
           </button>
         </div>
       )}
@@ -1539,7 +1598,7 @@ export default function HomePage() {
             onClick={() => setBillingFlash(null)}
             className="shrink-0 rounded-lg px-2 py-1 text-emerald-300 hover:bg-emerald-900/80"
           >
-            OK
+            {tx('common.actions.ok')}
           </button>
         </div>
       )}
@@ -1551,12 +1610,12 @@ export default function HomePage() {
           <div className="flex items-start gap-3">
             <IconBell className="h-6 w-6 shrink-0 text-amber-400/90" aria-hidden />
             <div className="min-w-0 flex-1">
-              <p className="text-sm font-semibold text-amber-100">Rappel : {inAppReminder.title}</p>
+              <p className="text-sm font-semibold text-amber-100">{tx('page.reminders.title', { title: inAppReminder.title })}</p>
               {inAppReminder.content?.trim() ? (
                 <p className="mt-1 line-clamp-3 text-xs text-amber-200/80">{inAppReminder.content}</p>
               ) : null}
               <p className="mt-1 text-[11px] text-amber-400/90">
-                Prévu le {formatReminderLabel(inAppReminder.remindAt!)}
+                {tx('page.reminders.scheduled', { date: formatReminderLabel(inAppReminder.remindAt!) })}
               </p>
             </div>
           </div>
@@ -1567,7 +1626,7 @@ export default function HomePage() {
                 onClick={() => openWhatsAppForNote(inAppReminder)}
                 className="touch-manipulation rounded-lg bg-emerald-600 px-3 py-2 text-xs font-medium text-white hover:bg-emerald-500"
               >
-                Ouvrir dans WhatsApp
+                {tx('page.reminders.openWhatsApp')}
               </button>
             ) : null}
             <button
@@ -1575,7 +1634,7 @@ export default function HomePage() {
               onClick={dismissInApp}
               className="rounded-lg px-3 py-2 text-xs text-amber-200 hover:bg-amber-900/80"
             >
-              OK
+              {tx('common.actions.ok')}
             </button>
           </div>
         </div>
@@ -1591,7 +1650,7 @@ export default function HomePage() {
             <button
               type="button"
               className="fixed inset-0 z-40 bg-black/60 md:hidden"
-              aria-label="Fermer le menu"
+              aria-label={tx('page.header.closeMenu')}
               onClick={() => setMobileMenuOpen(false)}
             />
             <div className="fixed bottom-0 left-0 top-0 z-50 flex w-[min(20rem,88vw)] flex-col shadow-2xl md:hidden">
@@ -1612,17 +1671,7 @@ export default function HomePage() {
             }`}
           >
             <h2 className="text-sm font-medium text-slate-300">
-              {activeView === 'notes'
-                ? 'Idées & notes'
-                : activeView === 'planning'
-                  ? 'Planning'
-                  : activeView === 'sessions-organizer'
-                    ? 'Gestion sessions'
-                    : activeView === 'sessions-assignee'
-                      ? 'Mes propositions'
-                      : activeView === 'groups'
-                        ? 'Groupes'
-                        : 'Tableau des tâches'}
+              {activeViewTitle}
             </h2>
             <div className="flex items-center gap-2">
               {/* Credit widget — desktop */}
@@ -1637,12 +1686,12 @@ export default function HomePage() {
                       ? 'border-amber-500/40 bg-amber-500/10 text-amber-400'
                       : 'border-violet-500/30 bg-violet-500/10 text-violet-300'
                   }`}
-                  title="Crédits IA · Cliquez pour en acheter"
+                  title={tx('page.header.creditsTitle')}
                 >
                   <span className={`h-1.5 w-1.5 rounded-full ${
                     (chatCredits ?? 0) <= 0 ? 'bg-red-400' : (chatCredits ?? 0) < 100 ? 'bg-amber-400' : 'bg-violet-400'
                   }`} />
-                  {(chatCredits ?? 0).toLocaleString('fr-FR')} crédits
+                  {(chatCredits ?? 0).toLocaleString(dateLocale)} {tx('common.labels.credits')}
                   <span className="opacity-60">+</span>
                 </button>
               )}
@@ -1659,7 +1708,7 @@ export default function HomePage() {
                     d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"
                   />
                 </svg>
-                Collaborateurs
+                {tx('page.header.collaborators')}
                 {!isGuest && assignableUsers.length > 1 ? (
                   <span className="rounded-full bg-indigo-500/25 px-1.5 py-0.5 text-[10px] font-semibold tabular-nums text-indigo-200">
                     {assignableUsers.length}
@@ -1673,7 +1722,7 @@ export default function HomePage() {
             <button
               type="button"
               className="-ml-1 touch-manipulation rounded-xl p-2.5 text-slate-300 hover:bg-slate-800 active:bg-slate-700"
-              aria-label="Ouvrir le menu"
+              aria-label={tx('page.header.openMenu')}
               onClick={() => setMobileMenuOpen(true)}
             >
               <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
@@ -1694,12 +1743,12 @@ export default function HomePage() {
                     ? 'border-amber-500/40 bg-amber-500/10 text-amber-400'
                     : 'border-violet-500/30 bg-violet-500/10 text-violet-300'
                 }`}
-                aria-label="Crédits IA"
+                aria-label={tx('page.header.creditsAria')}
               >
                 <span className={`h-1.5 w-1.5 rounded-full shrink-0 ${
                   (chatCredits ?? 0) <= 0 ? 'bg-red-400' : (chatCredits ?? 0) < 100 ? 'bg-amber-400' : 'bg-violet-400'
                 }`} />
-                {(chatCredits ?? 0).toLocaleString('fr-FR')}
+                {(chatCredits ?? 0).toLocaleString(dateLocale)}
                 <span className="opacity-60">+</span>
               </button>
             )}
@@ -1710,8 +1759,8 @@ export default function HomePage() {
               className="relative touch-manipulation rounded-xl p-2.5 text-slate-300 hover:bg-slate-800 active:bg-slate-700"
               aria-label={
                 !isGuest && assignableUsers.length > 1
-                  ? `Collaborateurs (${assignableUsers.length})`
-                  : 'Collaborateurs'
+                  ? tx('page.header.collaboratorsCount', { count: assignableUsers.length })
+                  : tx('page.header.collaborators')
               }
             >
               <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
@@ -1823,7 +1872,11 @@ export default function HomePage() {
                   onMove={moveTask}
                   compactLayout={layoutPreferences.density === 'compact'}
                   onOpenCollaborators={isGuest ? undefined : openCollaboratorsPanel}
-                  onOpenGroups={isGuest ? undefined : () => setActiveView('groups')}
+                  onOpenGroups={
+                    isGuest || !canAccessGroups(displayUser.role)
+                      ? undefined
+                      : () => setActiveView('groups')
+                  }
                   collaboratorTeamSize={assignableUsers.length}
                   initialGroupFilter={tasksGroupIntent?.groupId ?? null}
                   initialOpenCreate={tasksGroupIntent?.openCreate ?? false}
@@ -1835,7 +1888,7 @@ export default function HomePage() {
 
           <nav
             className="fixed bottom-0 left-0 right-0 z-30 flex items-stretch justify-around border-t border-slate-700 bg-slate-800/95 pb-[env(safe-area-inset-bottom)] pt-2 backdrop-blur-sm md:hidden"
-            aria-label="Navigation principale"
+            aria-label={tx('common.aria.mainNavigation')}
           >
             <button
               type="button"
@@ -1845,7 +1898,7 @@ export default function HomePage() {
               }`}
             >
               <IconLightBulb className="h-6 w-6" />
-              Notes
+              {tx('page.mobileNav.notes')}
             </button>
             <button
               type="button"
@@ -1862,7 +1915,7 @@ export default function HomePage() {
                   </span>
                 ) : null}
               </span>
-              Tâches
+              {tx('page.mobileNav.tasks')}
             </button>
             <button
               type="button"
@@ -1872,7 +1925,7 @@ export default function HomePage() {
               }`}
             >
               <IconCalendar className="h-6 w-6" />
-              Planning
+              {tx('page.mobileNav.planning')}
             </button>
             <button
               type="button"
@@ -1882,7 +1935,7 @@ export default function HomePage() {
               }`}
             >
               <IconSparkles className="h-6 w-6" />
-              IA
+              {tx('page.mobileNav.ai')}
             </button>
           </nav>
         </div>
@@ -1934,10 +1987,10 @@ export default function HomePage() {
         initialTab={authTab}
         onClose={() => {
           setAuthModalOpen(false);
-          setAuthOauthError(null);
+          setAuthOauthErrorCode(null);
         }}
         onAuthenticated={onAuthenticated}
-        oauthError={authOauthError}
+        oauthErrorCode={authOauthErrorCode}
       />
 
       {buyCreditsModalOpen && !isGuest && (
@@ -1951,19 +2004,32 @@ export default function HomePage() {
         />
       )}
     </>
+    </I18nProvider>
   );
 }
 
-function buildContext(notes: Note[], tasks: Task[], users: User[], currentUser: User): string {
+function buildContext(
+  notes: Note[],
+  tasks: Task[],
+  users: User[],
+  currentUser: User,
+  locale: AppLocale,
+): string {
+  const dateLocale = locale === 'en' ? 'en-US' : 'fr-FR';
+  const tx = (key: string, params?: Record<string, string | number>) =>
+    translate(i18nMessages, locale, key, params);
+
   const notesSummary =
     notes.length === 0
-      ? 'Aucune note'
+      ? tx('page.chatContext.noNotes')
       : notes
           .slice(0, 15)
           .map(n => {
             const r =
               n.remindAt != null
-                ? ` [rappel ${new Date(n.remindAt).toLocaleString('fr-FR')}]`
+                ? tx('page.chatContext.reminderSuffix', {
+                    date: new Date(n.remindAt).toLocaleString(dateLocale),
+                  })
                 : '';
             return `• "${n.title}"${r}: ${n.content.slice(0, 120)}`;
           })
@@ -1971,24 +2037,25 @@ function buildContext(notes: Note[], tasks: Task[], users: User[], currentUser: 
 
   const tasksSummary =
     tasks.length === 0
-      ? 'Aucune tâche'
+      ? tx('page.chatContext.noTasks')
       : tasks
           .slice(0, 20)
           .map(t => {
             const assignees = t.assignedTo
               .map(id => users.find(u => u.id === id)?.name)
               .filter((name): name is string => Boolean(name));
-            const assigneeLabel = assignees.length > 0 ? assignees.join(', ') : 'non assignée';
+            const assigneeLabel =
+              assignees.length > 0 ? assignees.join(', ') : tx('page.chatContext.unassigned');
             return `• [${t.status.toUpperCase()}] "${t.title}" (priorité: ${t.priority}, assignée à: ${assigneeLabel})`;
           })
           .join('\n');
 
-  return `Utilisateur actuel : ${currentUser.name} (${currentUser.email})
-Équipe : ${users.map(u => `${u.name} <${u.email}>`).join(', ')}
+  return `${tx('page.chatContext.currentUser', { name: currentUser.name, email: currentUser.email })}
+${tx('page.chatContext.team', { members: users.map(u => `${u.name} <${u.email}>`).join(', ') })}
 
-=== NOTES (${notes.length}) ===
+${tx('page.chatContext.notesHeader', { count: notes.length })}
 ${notesSummary}
 
-=== TÂCHES (${tasks.length}) ===
+${tx('page.chatContext.tasksHeader', { count: tasks.length })}
 ${tasksSummary}`;
 }

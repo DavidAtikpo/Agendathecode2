@@ -8,8 +8,8 @@ export interface User {
   initials: string;
   /** Abonnement Stripe — défaut free si absent (anciennes sessions) */
   plan?: 'free' | 'pro';
-  /** Rôle : admin ou user */
-  role?: 'admin' | 'user';
+  /** Rôle compte : user, admin, organizer, formateur, assessor */
+  role?: 'admin' | 'user' | 'organizer' | 'formateur' | 'assessor';
   /** Présent après login/register — utile clients mobiles (Bearer), ignoré par le web */
   token?: string;
   /** Préférences persistantes (API `/api/user/preferences`) — défaut côté client si absent */

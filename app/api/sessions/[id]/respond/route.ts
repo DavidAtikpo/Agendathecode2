@@ -7,6 +7,7 @@ import {
   serializeTrainingSession,
 } from '@/app/lib/session-serialize';
 import { sendPushToUser } from '@/app/lib/firebase-admin';
+import { canViewSessionProposals, normalizeAppUserRole } from '@/app/lib/user-roles';
 import { SessionAssignmentStatus } from '@prisma/client';
 
 type Ctx = { params: Promise<{ id: string }> };
@@ -25,6 +26,25 @@ export async function POST(request: Request, ctx: Ctx) {
 
   if (!decision || !role) {
     return NextResponse.json({ error: 'status (accepted|declined) et role requis' }, { status: 400 });
+  }
+
+  const account = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { role: true },
+  });
+  if (!canViewSessionProposals(account?.role)) {
+    return NextResponse.json(
+      { error: 'Seuls les comptes Formateur et Assessor peuvent répondre aux propositions.' },
+      { status: 403 },
+    );
+  }
+
+  const accountRole = normalizeAppUserRole(account?.role);
+  if (accountRole === 'formateur' && role !== 'formateur') {
+    return NextResponse.json({ error: 'Votre compte est Formateur uniquement.' }, { status: 403 });
+  }
+  if (accountRole === 'assessor' && role !== 'assessor') {
+    return NextResponse.json({ error: 'Votre compte est Assessor uniquement.' }, { status: 403 });
   }
 
   const session = await prisma.trainingSession.findFirst({

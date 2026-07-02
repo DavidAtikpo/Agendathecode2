@@ -1,4 +1,5 @@
 import { normalizePreferences, type UserPreferences } from '@/app/lib/user-preferences';
+import { normalizeAppUserRole, type AppUserRole } from '@/app/lib/user-roles';
 
 /** Sous-ensemble User DB — évite d'importer des types depuis `@prisma/client` (résolution fragile en build Next). */
 export type ToPublicUserInput = {
@@ -10,7 +11,7 @@ export type ToPublicUserInput = {
   createdAt: Date;
   /** Absent sur certains résultats Prisma inférés ; défaut : free */
   plan?: 'free' | 'pro';
-  role?: 'admin' | 'user';
+  role?: AppUserRole;
   /** JSON Prisma ou objet déjà parsé */
   preferences?: unknown;
   /** Présent sur le modèle Prisma User — ne jamais renvoyer au client */
@@ -33,7 +34,7 @@ export type PublicUser = {
   initials: string;
   createdAt: string;
   plan: 'free' | 'pro';
-  role: 'admin' | 'user';
+  role: AppUserRole;
   preferences: UserPreferences;
   /** Indique si le compte peut se connecter par mot de passe (exclut OAuth-only). Renseigné seulement quand demandé. */
   hasPasswordLogin?: boolean;
@@ -61,7 +62,7 @@ export function toPublicUser(u: ToPublicUserInput, opts?: ToPublicUserOptions): 
     initials: u.initials,
     createdAt: u.createdAt.toISOString(),
     plan: u.plan === 'pro' ? 'pro' : 'free',
-    role: u.role === 'admin' ? 'admin' : 'user',
+    role: normalizeAppUserRole(u.role),
     preferences: normalizePreferences(u.preferences ?? {}),
     aiCredits: u.aiCredits ?? 0,
     aiCreditsExpiresAt: u.aiCreditsExpiresAt ? u.aiCreditsExpiresAt.toISOString() : null,

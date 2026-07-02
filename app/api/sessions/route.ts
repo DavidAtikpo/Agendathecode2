@@ -1,9 +1,10 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/app/lib/prisma';
 import { getSessionUserId } from '@/app/lib/auth';
-import { assertUserIsPro, sessionsProRequiredMessage } from '@/app/lib/pro-plan';
+import { assertUserIsSessionOrganizer, sessionsOrganizerRequiredMessage } from '@/app/lib/pro-plan';
 import { sessionsVisibleToUser } from '@/app/lib/session-access';
-import { resolveUserIdByEmail } from '@/app/lib/session-assign';
+import { resolveUserIdByEmailForAssignment } from '@/app/lib/session-assign';
+import { sessionRoleMismatchMessage } from '@/app/lib/user-roles';
 import { buildSessionTitle, parseDateOnly } from '@/app/lib/session-title';
 import {
   SESSION_WITH_ASSIGNMENTS_INCLUDE,
@@ -34,10 +35,10 @@ export async function POST(request: Request) {
   }
 
   try {
-    await assertUserIsPro(userId);
+    await assertUserIsSessionOrganizer(userId);
   } catch (e: unknown) {
-    if (e instanceof Error && e.message === 'PRO_REQUIRED') {
-      return NextResponse.json({ error: sessionsProRequiredMessage() }, { status: 403 });
+    if (e instanceof Error && e.message === 'ORGANIZER_REQUIRED') {
+      return NextResponse.json({ error: sessionsOrganizerRequiredMessage() }, { status: 403 });
     }
     throw e;
   }
@@ -67,13 +68,19 @@ export async function POST(request: Request) {
 
   try {
     if (body.formateurEmail) {
-      formateurId = await resolveUserIdByEmail(body.formateurEmail);
+      formateurId = await resolveUserIdByEmailForAssignment(
+        body.formateurEmail,
+        SessionAssignmentRole.formateur,
+      );
       if (formateurId === userId) {
         return NextResponse.json({ error: 'Vous ne pouvez pas vous assigner comme formateur' }, { status: 400 });
       }
     }
     if (body.assessorEmail) {
-      assessorId = await resolveUserIdByEmail(body.assessorEmail);
+      assessorId = await resolveUserIdByEmailForAssignment(
+        body.assessorEmail,
+        SessionAssignmentRole.assessor,
+      );
       if (assessorId === userId) {
         return NextResponse.json({ error: 'Vous ne pouvez pas vous assigner comme assessor' }, { status: 400 });
       }
@@ -92,6 +99,16 @@ export async function POST(request: Request) {
       return NextResponse.json(
         { error: 'Aucun compte Agenda avec cet email. La personne doit d\'abord s\'inscrire.' },
         { status: 404 }
+      );
+    }
+    if (e instanceof Error && e.message === 'ROLE_MISMATCH') {
+      return NextResponse.json(
+        {
+          error: sessionRoleMismatchMessage(
+            body.formateurEmail && !formateurId ? 'formateur' : 'assessor',
+          ),
+        },
+        { status: 400 },
       );
     }
     throw e;

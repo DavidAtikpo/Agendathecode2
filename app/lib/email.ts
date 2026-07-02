@@ -8,6 +8,7 @@ import nodemailer from 'nodemailer';
 
 export type SendReminderResult = { ok: true } | { ok: false; error: string };
 export type SendTaskNotificationResult = { ok: true } | { ok: false; error: string };
+export type SendPasswordResetResult = { ok: true } | { ok: false; error: string };
 
 function getSmtpConfig() {
   const host = process.env.SMTP_HOST?.trim();
@@ -123,6 +124,63 @@ export async function sendTaskNotificationEmail(
 <p style="margin:12px 0 0;font-size:14px;color:#334155;">${intro}</p>
 ${statusLine}
 <p style="margin-top:24px;font-size:12px;color:#94a3b8;">— Agenda</p>
+</body></html>`,
+    });
+    return { ok: true };
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : String(e);
+    return { ok: false, error: msg };
+  }
+}
+
+export async function sendPasswordResetEmail(
+  to: string,
+  params: { name: string; resetUrl: string; locale?: 'fr' | 'en' },
+): Promise<SendPasswordResetResult> {
+  const transporter = getTransporter();
+  const from = buildFromHeader();
+
+  if (!transporter || !from) {
+    if (process.env.NODE_ENV === 'development') {
+      console.warn('[email] SMTP non configuré — e-mail de réinitialisation non envoyé');
+      console.info('[email] Lien reset (dev):', params.resetUrl);
+    }
+    return { ok: false, error: 'SMTP non configuré' };
+  }
+
+  const en = params.locale === 'en';
+  const safeName = escapeHtml(params.name.trim() || (en ? 'there' : 'utilisateur'));
+  const safeUrl = escapeHtml(params.resetUrl);
+
+  const subject = en
+    ? '🔑 Reset your Neurix password'
+    : '🔑 Réinitialisation de votre mot de passe Neurix';
+  const intro = en
+    ? `Hello ${safeName},`
+    : `Bonjour ${safeName},`;
+  const body = en
+    ? 'We received a request to reset your password. Click the button below — the link expires in 1 hour.'
+    : 'Nous avons reçu une demande de réinitialisation de mot de passe. Cliquez sur le bouton ci-dessous — le lien expire dans 1 heure.';
+  const cta = en ? 'Reset password' : 'Réinitialiser le mot de passe';
+  const ignore = en
+    ? 'If you did not request this, you can ignore this email.'
+    : 'Si vous n’êtes pas à l’origine de cette demande, ignorez cet e-mail.';
+  const footer = en ? '— Neurix' : '— Neurix';
+
+  try {
+    await transporter.sendMail({
+      from,
+      to,
+      subject,
+      html: `<!DOCTYPE html><html><body style="font-family:system-ui,sans-serif;line-height:1.5;color:#0f172a;">
+<p style="font-size:14px;color:#64748b;">${intro}</p>
+<p style="margin:12px 0;font-size:14px;color:#334155;">${body}</p>
+<p style="margin:24px 0;">
+  <a href="${safeUrl}" style="display:inline-block;background:#6366f1;color:#fff;text-decoration:none;padding:12px 20px;border-radius:10px;font-weight:600;font-size:14px;">${cta}</a>
+</p>
+<p style="font-size:12px;color:#64748b;word-break:break-all;">${safeUrl}</p>
+<p style="margin-top:24px;font-size:12px;color:#94a3b8;">${ignore}</p>
+<p style="margin-top:8px;font-size:12px;color:#94a3b8;">${footer}</p>
 </body></html>`,
     });
     return { ok: true };

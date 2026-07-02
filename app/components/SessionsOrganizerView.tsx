@@ -3,15 +3,16 @@
 import { Fragment, useMemo, useState } from 'react';
 import type { TrainingSession, User } from '../types';
 import {
-  ROLE_LABEL,
-  STATUS_LABEL,
   assignmentFor,
   formatSessionDate,
   matchesOrganizerFilter,
   sessionConfirmLabel,
+  sessionRoleLabel,
+  sessionStatusLabel,
   statusBadgeClass,
   type OrganizerStatusFilter,
 } from '../lib/session-labels';
+import { useI18n } from '@/app/lib/i18n';
 import styles from './Sidebar.module.css';
 
 interface SessionsOrganizerViewProps {
@@ -38,12 +39,12 @@ interface SessionsOrganizerViewProps {
   onDeleteSession: (sessionId: string) => Promise<void>;
 }
 
-const FILTERS: { key: OrganizerStatusFilter; label: string }[] = [
-  { key: 'all', label: 'Toutes' },
-  { key: 'pending', label: 'En attente' },
-  { key: 'accepted', label: 'Disponible' },
-  { key: 'declined', label: 'Indisponible' },
-  { key: 'confirmed', label: 'Confirmées' },
+const ORGANIZER_FILTER_KEYS: OrganizerStatusFilter[] = [
+  'all',
+  'pending',
+  'accepted',
+  'declined',
+  'confirmed',
 ];
 
 export default function SessionsOrganizerView({
@@ -54,6 +55,7 @@ export default function SessionsOrganizerView({
   onUpdateSession,
   onDeleteSession,
 }: SessionsOrganizerViewProps) {
+  const { locale, t } = useI18n();
   const [filter, setFilter] = useState<OrganizerStatusFilter>('all');
   const [showCreate, setShowCreate] = useState(false);
   const [startDate, setStartDate] = useState('');
@@ -121,7 +123,7 @@ export default function SessionsOrganizerView({
       setAssessorEmail('');
       setShowCreate(false);
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : 'Erreur');
+      setError(err instanceof Error ? err.message : t('common.status.error'));
     } finally {
       setBusy(false);
     }
@@ -141,7 +143,7 @@ export default function SessionsOrganizerView({
       });
       setEditId(null);
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : 'Erreur');
+      setError(err instanceof Error ? err.message : t('common.status.error'));
     } finally {
       setBusy(false);
     }
@@ -155,10 +157,10 @@ export default function SessionsOrganizerView({
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
             <h2 className={`font-semibold text-white ${compactLayout ? 'text-base' : 'text-lg'}`}>
-              Gestion des sessions
+              {t('sessions.organizer.title')}
             </h2>
             <p className="mt-0.5 text-xs text-slate-500">
-              Suivi formateurs et assessors — disponibilités et confirmations.
+              {t('sessions.organizer.subtitle')}
             </p>
           </div>
           <button
@@ -166,65 +168,65 @@ export default function SessionsOrganizerView({
             onClick={() => setShowCreate(v => !v)}
             className="rounded-lg bg-teal-600 px-4 py-2 text-sm font-medium text-white hover:bg-teal-500"
           >
-            {showCreate ? 'Fermer le formulaire' : 'Nouvelle session'}
+            {showCreate ? t('sessions.organizer.closeForm') : t('sessions.organizer.newSession')}
           </button>
         </div>
 
         {showCreate ? (
           <form onSubmit={handleCreate} className="mt-4 rounded-xl border border-slate-700 bg-slate-800/50 p-4 space-y-3">
-            <p className="text-xs text-slate-500">Titre généré automatiquement à partir des dates.</p>
+            <p className="text-xs text-slate-500">{t('sessions.organizer.autoTitleHint')}</p>
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
               <label className="block text-xs text-slate-400">
-                Début
+                {t('sessions.organizer.start')}
                 <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} required
                   className="mt-1 w-full rounded-lg border border-slate-600 bg-slate-700 px-2 py-2 text-sm text-slate-200" />
               </label>
               <label className="block text-xs text-slate-400">
-                Fin
+                {t('sessions.organizer.end')}
                 <input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} required
                   className="mt-1 w-full rounded-lg border border-slate-600 bg-slate-700 px-2 py-2 text-sm text-slate-200" />
               </label>
               <label className="block text-xs text-slate-400">
-                Examen (optionnel)
+                {t('sessions.organizer.examOptional')}
                 <input type="date" value={examDate} onChange={e => setExamDate(e.target.value)}
                   className="mt-1 w-full rounded-lg border border-slate-600 bg-slate-700 px-2 py-2 text-sm text-slate-200" />
               </label>
               <label className="block text-xs text-slate-400 sm:col-span-2 lg:col-span-1">
-                Email formateur
+                {t('sessions.organizer.formateurEmail')}
                 <input type="email" value={formateurEmail} onChange={e => setFormateurEmail(e.target.value)}
-                  placeholder="formateur@exemple.com"
+                  placeholder={t('sessions.organizer.formateurPlaceholder')}
                   className="mt-1 w-full rounded-lg border border-slate-600 bg-slate-700 px-2 py-2 text-sm text-slate-200" />
               </label>
               <label className="block text-xs text-slate-400 sm:col-span-2">
-                Email assessor
+                {t('sessions.organizer.assessorEmail')}
                 <input type="email" value={assessorEmail} onChange={e => setAssessorEmail(e.target.value)}
-                  placeholder="assessor@exemple.com"
+                  placeholder={t('sessions.organizer.assessorPlaceholder')}
                   className="mt-1 w-full rounded-lg border border-slate-600 bg-slate-700 px-2 py-2 text-sm text-slate-200" />
               </label>
             </div>
             <button type="submit" disabled={busy || !startDate || !endDate}
               className="rounded-lg bg-teal-600 px-4 py-2 text-sm font-medium text-white hover:bg-teal-500 disabled:opacity-50">
-              {busy ? 'Création…' : 'Proposer la session'}
+              {busy ? t('sessions.organizer.creating') : t('sessions.organizer.propose')}
             </button>
           </form>
         ) : null}
 
-        <div className="mt-4 flex flex-wrap gap-1.5" role="tablist" aria-label="Filtrer par statut">
-          {FILTERS.map(f => (
+        <div className="mt-4 flex flex-wrap gap-1.5" role="tablist" aria-label={t('sessions.organizer.filterAria')}>
+          {ORGANIZER_FILTER_KEYS.map(key => (
             <button
-              key={f.key}
+              key={key}
               type="button"
               role="tab"
-              aria-selected={filter === f.key}
-              onClick={() => setFilter(f.key)}
+              aria-selected={filter === key}
+              onClick={() => setFilter(key)}
               className={`rounded-lg px-3 py-1.5 text-xs font-medium transition-colors ${
-                filter === f.key
+                filter === key
                   ? 'bg-teal-500/25 text-teal-200'
                   : 'bg-slate-800 text-slate-400 hover:text-slate-200'
               }`}
             >
-              {f.label}
-              <span className="ml-1 tabular-nums opacity-70">({counts[f.key]})</span>
+              {t(`sessions.organizer.filters.${key}`)}
+              <span className="ml-1 tabular-nums opacity-70">({counts[key]})</span>
             </button>
           ))}
         </div>
@@ -235,9 +237,9 @@ export default function SessionsOrganizerView({
 
         {filtered.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-16 text-center text-slate-500">
-            <p className="text-sm">Aucune session pour ce filtre.</p>
+            <p className="text-sm">{t('sessions.organizer.emptyFilter')}</p>
             {owned.length === 0 ? (
-              <p className="mt-1 text-xs">Créez une session pour proposer un formateur et un assessor.</p>
+              <p className="mt-1 text-xs">{t('sessions.organizer.emptyOwned')}</p>
             ) : null}
           </div>
         ) : (
@@ -245,11 +247,11 @@ export default function SessionsOrganizerView({
             <table className="w-full min-w-[720px] border-collapse text-left text-sm">
               <thead>
                 <tr className="border-b border-slate-700 bg-slate-800/80 text-[10px] font-semibold uppercase tracking-wider text-slate-500">
-                  <th className="px-3 py-2.5">Session</th>
-                  <th className="px-3 py-2.5">Période</th>
-                  <th className="px-3 py-2.5">Formateur</th>
-                  <th className="px-3 py-2.5">Assessor</th>
-                  <th className="px-3 py-2.5">État global</th>
+                  <th className="px-3 py-2.5">{t('sessions.organizer.table.session')}</th>
+                  <th className="px-3 py-2.5">{t('sessions.organizer.table.period')}</th>
+                  <th className="px-3 py-2.5">{t('sessions.organizer.table.formateur')}</th>
+                  <th className="px-3 py-2.5">{t('sessions.organizer.table.assessor')}</th>
+                  <th className="px-3 py-2.5">{t('sessions.organizer.table.globalState')}</th>
                   <th className="px-3 py-2.5 w-24" />
                 </tr>
               </thead>
@@ -263,9 +265,11 @@ export default function SessionsOrganizerView({
                       <tr className="border-b border-slate-800/80 bg-slate-900/40 hover:bg-slate-800/30">
                         <td className="px-3 py-3 font-medium text-slate-100">{s.title}</td>
                         <td className="px-3 py-3 text-xs text-slate-400">
-                          {formatSessionDate(s.startDate)} → {formatSessionDate(s.endDate)}
+                          {formatSessionDate(s.startDate, locale)} → {formatSessionDate(s.endDate, locale)}
                           {s.examDate ? (
-                            <span className="mt-0.5 block text-teal-400/80">Examen {formatSessionDate(s.examDate)}</span>
+                            <span className="mt-0.5 block text-teal-400/80">
+                              {t('sessions.organizer.exam')} {formatSessionDate(s.examDate, locale)}
+                            </span>
                           ) : null}
                         </td>
                         <td className="px-3 py-3">
@@ -277,12 +281,12 @@ export default function SessionsOrganizerView({
                               <div className="min-w-0">
                                 <p className="truncate text-xs text-slate-200">{formateur.user.name}</p>
                                 <span className={`inline-block rounded px-1.5 py-0.5 text-[10px] ${statusBadgeClass(formateur.status)}`}>
-                                  {STATUS_LABEL[formateur.status]}
+                                  {sessionStatusLabel(formateur.status, locale)}
                                 </span>
                               </div>
                             </div>
                           ) : (
-                            <span className="text-xs text-slate-600">—</span>
+                            <span className="text-xs text-slate-600">{t('common.labels.none')}</span>
                           )}
                         </td>
                         <td className="px-3 py-3">
@@ -294,17 +298,17 @@ export default function SessionsOrganizerView({
                               <div className="min-w-0">
                                 <p className="truncate text-xs text-slate-200">{assessor.user.name}</p>
                                 <span className={`inline-block rounded px-1.5 py-0.5 text-[10px] ${statusBadgeClass(assessor.status)}`}>
-                                  {STATUS_LABEL[assessor.status]}
+                                  {sessionStatusLabel(assessor.status, locale)}
                                 </span>
                               </div>
                             </div>
                           ) : (
-                            <span className="text-xs text-slate-600">—</span>
+                            <span className="text-xs text-slate-600">{t('common.labels.none')}</span>
                           )}
                         </td>
                         <td className="px-3 py-3">
                           <span className="rounded bg-slate-700/60 px-2 py-0.5 text-[10px] font-medium text-slate-300">
-                            {sessionConfirmLabel(s)}
+                            {sessionConfirmLabel(s, locale)}
                           </span>
                         </td>
                         <td className="px-3 py-3">
@@ -313,7 +317,7 @@ export default function SessionsOrganizerView({
                             onClick={() => (editing ? setEditId(null) : openEdit(s))}
                             className="text-xs text-teal-400 hover:text-teal-300"
                           >
-                            {editing ? 'Annuler' : 'Modifier'}
+                            {editing ? t('sessions.organizer.cancel') : t('sessions.organizer.edit')}
                           </button>
                         </td>
                       </tr>
@@ -322,27 +326,27 @@ export default function SessionsOrganizerView({
                           <td colSpan={6} className="px-3 py-4">
                             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
                               <label className="text-xs text-slate-400">
-                                Début
+                                {t('sessions.organizer.start')}
                                 <input type="date" value={editStart} onChange={e => setEditStart(e.target.value)}
                                   className="mt-1 w-full rounded-lg border border-slate-600 bg-slate-700 px-2 py-1.5 text-sm" />
                               </label>
                               <label className="text-xs text-slate-400">
-                                Fin
+                                {t('sessions.organizer.end')}
                                 <input type="date" value={editEnd} onChange={e => setEditEnd(e.target.value)}
                                   className="mt-1 w-full rounded-lg border border-slate-600 bg-slate-700 px-2 py-1.5 text-sm" />
                               </label>
                               <label className="text-xs text-slate-400">
-                                Examen
+                                {t('sessions.organizer.exam')}
                                 <input type="date" value={editExam} onChange={e => setEditExam(e.target.value)}
                                   className="mt-1 w-full rounded-lg border border-slate-600 bg-slate-700 px-2 py-1.5 text-sm" />
                               </label>
                               <label className="text-xs text-slate-400">
-                                {ROLE_LABEL.formateur}
+                                {sessionRoleLabel('formateur', locale)}
                                 <input type="email" value={editFormateur} onChange={e => setEditFormateur(e.target.value)}
                                   className="mt-1 w-full rounded-lg border border-slate-600 bg-slate-700 px-2 py-1.5 text-sm" />
                               </label>
                               <label className="text-xs text-slate-400 sm:col-span-2">
-                                {ROLE_LABEL.assessor}
+                                {sessionRoleLabel('assessor', locale)}
                                 <input type="email" value={editAssessor} onChange={e => setEditAssessor(e.target.value)}
                                   className="mt-1 w-full rounded-lg border border-slate-600 bg-slate-700 px-2 py-1.5 text-sm" />
                               </label>
@@ -350,26 +354,26 @@ export default function SessionsOrganizerView({
                             <div className="mt-3 flex flex-wrap gap-2">
                               <button type="button" disabled={busy} onClick={() => void handleSaveEdit(s.id)}
                                 className="rounded-lg bg-teal-600 px-3 py-1.5 text-xs text-white hover:bg-teal-500 disabled:opacity-50">
-                                Enregistrer
+                                {t('sessions.organizer.save')}
                               </button>
                               <button
                                 type="button"
                                 disabled={busy}
                                 onClick={async () => {
-                                  if (!confirm('Supprimer cette session ?')) return;
+                                  if (!confirm(t('sessions.organizer.deleteConfirm'))) return;
                                   setBusy(true);
                                   try {
                                     await onDeleteSession(s.id);
                                     setEditId(null);
                                   } catch (err: unknown) {
-                                    setError(err instanceof Error ? err.message : 'Erreur');
+                                    setError(err instanceof Error ? err.message : t('common.status.error'));
                                   } finally {
                                     setBusy(false);
                                   }
                                 }}
                                 className="rounded-lg px-3 py-1.5 text-xs text-red-400 hover:bg-red-500/10"
                               >
-                                Supprimer
+                                {t('sessions.organizer.delete')}
                               </button>
                             </div>
                           </td>
