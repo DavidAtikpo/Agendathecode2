@@ -11,6 +11,8 @@ export type UserPreferences = {
   notesShowWhatsApp: boolean;
   /** Dernière ouverture de la vue Tâches (ISO) — remet à zéro le badge « assignées ». */
   assignedInboxLastSeenAt?: string | null;
+  /** Dernière ouverture de l’onglet Groupes (ISO) — badge activité groupe. */
+  groupsInboxLastSeenAt?: string | null;
 };
 
 export const DEFAULT_USER_PREFERENCES: UserPreferences = {
@@ -37,6 +39,9 @@ export function normalizePreferences(raw: unknown): UserPreferences {
   }
   if (typeof o.assignedInboxLastSeenAt === 'string' && o.assignedInboxLastSeenAt.trim() !== '') {
     base.assignedInboxLastSeenAt = o.assignedInboxLastSeenAt.trim();
+  }
+  if (typeof o.groupsInboxLastSeenAt === 'string' && o.groupsInboxLastSeenAt.trim() !== '') {
+    base.groupsInboxLastSeenAt = o.groupsInboxLastSeenAt.trim();
   }
 
   return base;

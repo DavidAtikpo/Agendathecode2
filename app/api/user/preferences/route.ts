@@ -35,6 +35,9 @@ export async function PATCH(request: Request) {
     if (typeof body.assignedInboxLastSeenAt === 'string' && body.assignedInboxLastSeenAt.trim() !== '') {
       patch.assignedInboxLastSeenAt = body.assignedInboxLastSeenAt.trim();
     }
+    if (typeof body.groupsInboxLastSeenAt === 'string' && body.groupsInboxLastSeenAt.trim() !== '') {
+      patch.groupsInboxLastSeenAt = body.groupsInboxLastSeenAt.trim();
+    }
 
     const next = mergePreferences(current, patch);
     const merged = { ...existingRaw, ...next };
