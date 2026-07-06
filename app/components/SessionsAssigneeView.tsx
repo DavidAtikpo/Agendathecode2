@@ -21,6 +21,7 @@ interface SessionsAssigneeViewProps {
     sessionId: string,
     role: SessionAssignmentRole,
     status: 'accepted' | 'declined',
+    acceptedOption?: 'primary' | 'alternative',
   ) => Promise<void>;
 }
 
@@ -63,11 +64,12 @@ export default function SessionsAssigneeView({
     sessionId: string,
     role: SessionAssignmentRole,
     status: 'accepted' | 'declined',
+    acceptedOption?: 'primary' | 'alternative',
   ) => {
     setBusyId(sessionId);
     setError(null);
     try {
-      await onRespondSession(sessionId, role, status);
+      await onRespondSession(sessionId, role, status, acceptedOption);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : t('common.status.error'));
     } finally {
@@ -145,7 +147,12 @@ export default function SessionsAssigneeView({
                       </div>
                       <p className="font-medium text-slate-100">{s.title}</p>
                       <p className="mt-1 text-xs text-slate-400">
-                        {formatSessionDate(s.startDate, locale)} → {formatSessionDate(s.endDate, locale)}
+                        {t('sessions.organizer.optionAShort')} : {formatSessionDate(s.startDate, locale)} → {formatSessionDate(s.endDate, locale)}
+                        {s.altStartDate && s.altEndDate ? (
+                          <span className="mt-0.5 block text-amber-400/90">
+                            {t('sessions.organizer.optionBShort')} : {formatSessionDate(s.altStartDate, locale)} → {formatSessionDate(s.altEndDate, locale)}
+                          </span>
+                        ) : null}
                         {s.examDate
                           ? ` · ${t('sessions.organizer.exam')} ${formatSessionDate(s.examDate, locale)}`
                           : ''}
@@ -160,14 +167,35 @@ export default function SessionsAssigneeView({
 
                   {mine.status === 'pending' ? (
                     <div className="mt-4 flex flex-wrap gap-2">
-                      <button
-                        type="button"
-                        disabled={busy}
-                        onClick={() => void respond(s.id, mine.role, 'accepted')}
-                        className="min-w-[8rem] flex-1 rounded-lg bg-emerald-600 py-2 text-sm font-medium text-white hover:bg-emerald-500 disabled:opacity-50 sm:flex-none sm:px-6"
-                      >
-                        {t('sessions.assignee.respondAvailable')}
-                      </button>
+                      {s.altStartDate && s.altEndDate ? (
+                        <>
+                          <button
+                            type="button"
+                            disabled={busy}
+                            onClick={() => void respond(s.id, mine.role, 'accepted', 'primary')}
+                            className="min-w-[8rem] flex-1 rounded-lg bg-emerald-600 py-2 text-sm font-medium text-white hover:bg-emerald-500 disabled:opacity-50 sm:flex-none sm:px-4"
+                          >
+                            {t('sessions.assignee.acceptOptionA')}
+                          </button>
+                          <button
+                            type="button"
+                            disabled={busy}
+                            onClick={() => void respond(s.id, mine.role, 'accepted', 'alternative')}
+                            className="min-w-[8rem] flex-1 rounded-lg bg-amber-600 py-2 text-sm font-medium text-white hover:bg-amber-500 disabled:opacity-50 sm:flex-none sm:px-4"
+                          >
+                            {t('sessions.assignee.acceptOptionB')}
+                          </button>
+                        </>
+                      ) : (
+                        <button
+                          type="button"
+                          disabled={busy}
+                          onClick={() => void respond(s.id, mine.role, 'accepted')}
+                          className="min-w-[8rem] flex-1 rounded-lg bg-emerald-600 py-2 text-sm font-medium text-white hover:bg-emerald-500 disabled:opacity-50 sm:flex-none sm:px-6"
+                        >
+                          {t('sessions.assignee.respondAvailable')}
+                        </button>
+                      )}
                       <button
                         type="button"
                         disabled={busy}

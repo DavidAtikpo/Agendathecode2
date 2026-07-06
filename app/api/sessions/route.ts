@@ -46,6 +46,8 @@ export async function POST(request: Request) {
   const body = await request.json();
   const startDate = parseDateOnly(body.startDate);
   const endDate = parseDateOnly(body.endDate);
+  const altStartDate = parseDateOnly(body.altStartDate);
+  const altEndDate = parseDateOnly(body.altEndDate);
   const examDate = parseDateOnly(body.examDate);
 
   if (!startDate || !endDate) {
@@ -53,6 +55,15 @@ export async function POST(request: Request) {
   }
   if (endDate < startDate) {
     return NextResponse.json({ error: 'La date de fin doit être après le début' }, { status: 400 });
+  }
+  if ((altStartDate && !altEndDate) || (!altStartDate && altEndDate)) {
+    return NextResponse.json(
+      { error: 'Renseignez début et fin pour l\'option B, ou laissez les deux vides' },
+      { status: 400 },
+    );
+  }
+  if (altStartDate && altEndDate && altEndDate < altStartDate) {
+    return NextResponse.json({ error: 'La date de fin B doit être après le début' }, { status: 400 });
   }
   if (examDate && examDate < endDate) {
     return NextResponse.json({ error: 'La date d\'examen doit être après la fin de formation' }, { status: 400 });
@@ -123,6 +134,8 @@ export async function POST(request: Request) {
       title,
       startDate,
       endDate,
+      altStartDate,
+      altEndDate,
       examDate,
       createdById: userId,
       assignments: {

@@ -22,6 +22,8 @@ interface SessionsOrganizerViewProps {
   onCreateSession: (payload: {
     startDate: string;
     endDate: string;
+    altStartDate?: string | null;
+    altEndDate?: string | null;
     examDate?: string | null;
     formateurEmail?: string;
     assessorEmail?: string;
@@ -31,12 +33,28 @@ interface SessionsOrganizerViewProps {
     payload: {
       startDate?: string;
       endDate?: string;
+      altStartDate?: string | null;
+      altEndDate?: string | null;
       examDate?: string | null;
       formateurEmail?: string | null;
       assessorEmail?: string | null;
     },
   ) => Promise<void>;
   onDeleteSession: (sessionId: string) => Promise<void>;
+  onCreateStaff?: (payload: {
+    firstName: string;
+    lastName: string;
+    email: string;
+    role: 'formateur' | 'assessor' | 'auditeur';
+    sendInvite?: boolean;
+    session?: {
+      startDate: string;
+      endDate: string;
+      altStartDate?: string | null;
+      altEndDate?: string | null;
+      examDate?: string | null;
+    };
+  }) => Promise<void>;
 }
 
 const ORGANIZER_FILTER_KEYS: OrganizerStatusFilter[] = [
@@ -54,20 +72,38 @@ export default function SessionsOrganizerView({
   onCreateSession,
   onUpdateSession,
   onDeleteSession,
+  onCreateStaff,
 }: SessionsOrganizerViewProps) {
   const { locale, t } = useI18n();
   const [filter, setFilter] = useState<OrganizerStatusFilter>('all');
   const [showCreate, setShowCreate] = useState(false);
+  const [showStaff, setShowStaff] = useState(false);
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
+  const [altStartDate, setAltStartDate] = useState('');
+  const [altEndDate, setAltEndDate] = useState('');
   const [examDate, setExamDate] = useState('');
   const [formateurEmail, setFormateurEmail] = useState('');
   const [assessorEmail, setAssessorEmail] = useState('');
+  const [staffFirstName, setStaffFirstName] = useState('');
+  const [staffLastName, setStaffLastName] = useState('');
+  const [staffEmail, setStaffEmail] = useState('');
+  const [staffRole, setStaffRole] = useState<'formateur' | 'assessor' | 'auditeur'>('formateur');
+  const [staffSendInvite, setStaffSendInvite] = useState(true);
+  const [staffAddDates, setStaffAddDates] = useState(false);
+  const [staffStart, setStaffStart] = useState('');
+  const [staffEnd, setStaffEnd] = useState('');
+  const [staffAltStart, setStaffAltStart] = useState('');
+  const [staffAltEnd, setStaffAltEnd] = useState('');
+  const [staffExam, setStaffExam] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
   const [editId, setEditId] = useState<string | null>(null);
   const [editStart, setEditStart] = useState('');
   const [editEnd, setEditEnd] = useState('');
+  const [editAltStart, setEditAltStart] = useState('');
+  const [editAltEnd, setEditAltEnd] = useState('');
   const [editExam, setEditExam] = useState('');
   const [editFormateur, setEditFormateur] = useState('');
   const [editAssessor, setEditAssessor] = useState('');
@@ -97,10 +133,26 @@ export default function SessionsOrganizerView({
     setEditId(s.id);
     setEditStart(s.startDate);
     setEditEnd(s.endDate);
+    setEditAltStart(s.altStartDate ?? '');
+    setEditAltEnd(s.altEndDate ?? '');
     setEditExam(s.examDate ?? '');
     setEditFormateur(assignmentFor(s, 'formateur')?.user.email ?? '');
     setEditAssessor(assignmentFor(s, 'assessor')?.user.email ?? '');
     setError(null);
+  };
+
+  const formatPeriod = (s: TrainingSession) => {
+    const a = `${formatSessionDate(s.startDate, locale)} → ${formatSessionDate(s.endDate, locale)}`;
+    if (s.altStartDate && s.altEndDate) {
+      const b = `${formatSessionDate(s.altStartDate, locale)} → ${formatSessionDate(s.altEndDate, locale)}`;
+      return (
+        <>
+          <span className="block">{t('sessions.organizer.optionAShort')} : {a}</span>
+          <span className="mt-0.5 block text-amber-400/90">{t('sessions.organizer.optionBShort')} : {b}</span>
+        </>
+      );
+    }
+    return a;
   };
 
   const handleCreate = async (e: React.FormEvent) => {
@@ -112,16 +164,62 @@ export default function SessionsOrganizerView({
       await onCreateSession({
         startDate,
         endDate,
+        altStartDate: altStartDate.trim() || null,
+        altEndDate: altEndDate.trim() || null,
         examDate: examDate.trim() || null,
         formateurEmail: formateurEmail.trim() || undefined,
         assessorEmail: assessorEmail.trim() || undefined,
       });
       setStartDate('');
       setEndDate('');
+      setAltStartDate('');
+      setAltEndDate('');
       setExamDate('');
       setFormateurEmail('');
       setAssessorEmail('');
       setShowCreate(false);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : t('common.status.error'));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleCreateStaff = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (busy || !onCreateStaff) return;
+    setBusy(true);
+    setError(null);
+    setSuccess(null);
+    try {
+      const payload: Parameters<NonNullable<typeof onCreateStaff>>[0] = {
+        firstName: staffFirstName.trim(),
+        lastName: staffLastName.trim(),
+        email: staffEmail.trim(),
+        role: staffRole,
+        sendInvite: staffSendInvite,
+      };
+      if (staffAddDates && staffStart && staffEnd) {
+        payload.session = {
+          startDate: staffStart,
+          endDate: staffEnd,
+          altStartDate: staffAltStart.trim() || null,
+          altEndDate: staffAltEnd.trim() || null,
+          examDate: staffExam.trim() || null,
+        };
+      }
+      await onCreateStaff(payload);
+      setSuccess(t('sessions.organizer.staff.created'));
+      setStaffFirstName('');
+      setStaffLastName('');
+      setStaffEmail('');
+      setStaffStart('');
+      setStaffEnd('');
+      setStaffAltStart('');
+      setStaffAltEnd('');
+      setStaffExam('');
+      setStaffAddDates(false);
+      setShowStaff(false);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : t('common.status.error'));
     } finally {
@@ -137,6 +235,8 @@ export default function SessionsOrganizerView({
       await onUpdateSession(sessionId, {
         startDate: editStart,
         endDate: editEnd,
+        altStartDate: editAltStart.trim() || null,
+        altEndDate: editAltEnd.trim() || null,
         examDate: editExam.trim() || null,
         formateurEmail: editFormateur.trim() || null,
         assessorEmail: editAssessor.trim() || null,
@@ -170,25 +270,117 @@ export default function SessionsOrganizerView({
           >
             {showCreate ? t('sessions.organizer.closeForm') : t('sessions.organizer.newSession')}
           </button>
+          {onCreateStaff ? (
+            <button
+              type="button"
+              onClick={() => setShowStaff(v => !v)}
+              className="rounded-lg border border-slate-600 px-4 py-2 text-sm font-medium text-slate-200 hover:bg-slate-800"
+            >
+              {showStaff ? t('sessions.organizer.closeForm') : t('sessions.organizer.staff.title')}
+            </button>
+          ) : null}
         </div>
+
+        {showStaff && onCreateStaff ? (
+          <form onSubmit={handleCreateStaff} className="mt-4 rounded-xl border border-slate-700 bg-slate-800/50 p-4 space-y-3">
+            <p className="text-xs text-slate-500">{t('sessions.organizer.staff.subtitle')}</p>
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+              <label className="block text-xs text-slate-400">
+                {t('sessions.organizer.staff.firstName')}
+                <input value={staffFirstName} onChange={e => setStaffFirstName(e.target.value)} required
+                  className="mt-1 w-full rounded-lg border border-slate-600 bg-slate-700 px-2 py-2 text-sm text-slate-200" />
+              </label>
+              <label className="block text-xs text-slate-400">
+                {t('sessions.organizer.staff.lastName')}
+                <input value={staffLastName} onChange={e => setStaffLastName(e.target.value)} required
+                  className="mt-1 w-full rounded-lg border border-slate-600 bg-slate-700 px-2 py-2 text-sm text-slate-200" />
+              </label>
+              <label className="block text-xs text-slate-400 sm:col-span-2">
+                {t('sessions.organizer.staff.email')}
+                <input type="email" value={staffEmail} onChange={e => setStaffEmail(e.target.value)} required
+                  className="mt-1 w-full rounded-lg border border-slate-600 bg-slate-700 px-2 py-2 text-sm text-slate-200" />
+              </label>
+              <label className="block text-xs text-slate-400">
+                {t('sessions.organizer.staff.role')}
+                <select value={staffRole} onChange={e => setStaffRole(e.target.value as typeof staffRole)}
+                  className="mt-1 w-full rounded-lg border border-slate-600 bg-slate-700 px-2 py-2 text-sm text-slate-200">
+                  <option value="formateur">{t('sessions.roles.formateur')}</option>
+                  <option value="assessor">{t('sessions.roles.assessor')}</option>
+                  <option value="auditeur">{t('sessions.roles.auditeur')}</option>
+                </select>
+              </label>
+              <label className="flex items-center gap-2 text-xs text-slate-400 sm:col-span-3">
+                <input type="checkbox" checked={staffSendInvite} onChange={e => setStaffSendInvite(e.target.checked)} />
+                {t('sessions.organizer.staff.sendInvite')}
+              </label>
+              <label className="flex items-center gap-2 text-xs text-slate-400 sm:col-span-4">
+                <input type="checkbox" checked={staffAddDates} onChange={e => setStaffAddDates(e.target.checked)} />
+                {t('sessions.organizer.staff.addDates')}
+              </label>
+            </div>
+            {staffAddDates ? (
+              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 rounded-lg border border-slate-700/80 p-3">
+                <label className="block text-xs text-slate-400">
+                  {t('sessions.organizer.optionA')}
+                  <input type="date" value={staffStart} onChange={e => setStaffStart(e.target.value)} required={staffAddDates}
+                    className="mt-1 w-full rounded-lg border border-slate-600 bg-slate-700 px-2 py-2 text-sm text-slate-200" />
+                </label>
+                <label className="block text-xs text-slate-400">
+                  {t('sessions.organizer.optionAEnd')}
+                  <input type="date" value={staffEnd} onChange={e => setStaffEnd(e.target.value)} required={staffAddDates}
+                    className="mt-1 w-full rounded-lg border border-slate-600 bg-slate-700 px-2 py-2 text-sm text-slate-200" />
+                </label>
+                <label className="block text-xs text-slate-400">
+                  {t('sessions.organizer.examOptional')}
+                  <input type="date" value={staffExam} onChange={e => setStaffExam(e.target.value)}
+                    className="mt-1 w-full rounded-lg border border-slate-600 bg-slate-700 px-2 py-2 text-sm text-slate-200" />
+                </label>
+                <label className="block text-xs text-slate-400">
+                  {t('sessions.organizer.optionB')}
+                  <input type="date" value={staffAltStart} onChange={e => setStaffAltStart(e.target.value)}
+                    className="mt-1 w-full rounded-lg border border-slate-600 bg-slate-700 px-2 py-2 text-sm text-slate-200" />
+                </label>
+                <label className="block text-xs text-slate-400">
+                  {t('sessions.organizer.optionBEnd')}
+                  <input type="date" value={staffAltEnd} onChange={e => setStaffAltEnd(e.target.value)}
+                    className="mt-1 w-full rounded-lg border border-slate-600 bg-slate-700 px-2 py-2 text-sm text-slate-200" />
+                </label>
+              </div>
+            ) : null}
+            <button type="submit" disabled={busy}
+              className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-500 disabled:opacity-50">
+              {busy ? t('sessions.organizer.staff.creating') : t('sessions.organizer.staff.create')}
+            </button>
+          </form>
+        ) : null}
 
         {showCreate ? (
           <form onSubmit={handleCreate} className="mt-4 rounded-xl border border-slate-700 bg-slate-800/50 p-4 space-y-3">
             <p className="text-xs text-slate-500">{t('sessions.organizer.autoTitleHint')}</p>
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
               <label className="block text-xs text-slate-400">
-                {t('sessions.organizer.start')}
+                {t('sessions.organizer.optionA')}
                 <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} required
                   className="mt-1 w-full rounded-lg border border-slate-600 bg-slate-700 px-2 py-2 text-sm text-slate-200" />
               </label>
               <label className="block text-xs text-slate-400">
-                {t('sessions.organizer.end')}
+                {t('sessions.organizer.optionAEnd')}
                 <input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} required
                   className="mt-1 w-full rounded-lg border border-slate-600 bg-slate-700 px-2 py-2 text-sm text-slate-200" />
               </label>
               <label className="block text-xs text-slate-400">
                 {t('sessions.organizer.examOptional')}
                 <input type="date" value={examDate} onChange={e => setExamDate(e.target.value)}
+                  className="mt-1 w-full rounded-lg border border-slate-600 bg-slate-700 px-2 py-2 text-sm text-slate-200" />
+              </label>
+              <label className="block text-xs text-slate-400">
+                {t('sessions.organizer.optionB')}
+                <input type="date" value={altStartDate} onChange={e => setAltStartDate(e.target.value)}
+                  className="mt-1 w-full rounded-lg border border-slate-600 bg-slate-700 px-2 py-2 text-sm text-slate-200" />
+              </label>
+              <label className="block text-xs text-slate-400">
+                {t('sessions.organizer.optionBEnd')}
+                <input type="date" value={altEndDate} onChange={e => setAltEndDate(e.target.value)}
                   className="mt-1 w-full rounded-lg border border-slate-600 bg-slate-700 px-2 py-2 text-sm text-slate-200" />
               </label>
               <label className="block text-xs text-slate-400 sm:col-span-2 lg:col-span-1">
@@ -234,6 +426,7 @@ export default function SessionsOrganizerView({
 
       <div className={`min-h-0 flex-1 overflow-auto ${pad}`}>
         {error ? <p className="mb-3 text-sm text-red-400">{error}</p> : null}
+        {success ? <p className="mb-3 text-sm text-emerald-400">{success}</p> : null}
 
         {filtered.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-16 text-center text-slate-500">
@@ -265,7 +458,7 @@ export default function SessionsOrganizerView({
                       <tr className="border-b border-slate-800/80 bg-slate-900/40 hover:bg-slate-800/30">
                         <td className="px-3 py-3 font-medium text-slate-100">{s.title}</td>
                         <td className="px-3 py-3 text-xs text-slate-400">
-                          {formatSessionDate(s.startDate, locale)} → {formatSessionDate(s.endDate, locale)}
+                          {formatPeriod(s)}
                           {s.examDate ? (
                             <span className="mt-0.5 block text-teal-400/80">
                               {t('sessions.organizer.exam')} {formatSessionDate(s.examDate, locale)}
@@ -326,18 +519,28 @@ export default function SessionsOrganizerView({
                           <td colSpan={6} className="px-3 py-4">
                             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
                               <label className="text-xs text-slate-400">
-                                {t('sessions.organizer.start')}
+                                {t('sessions.organizer.optionA')}
                                 <input type="date" value={editStart} onChange={e => setEditStart(e.target.value)}
                                   className="mt-1 w-full rounded-lg border border-slate-600 bg-slate-700 px-2 py-1.5 text-sm" />
                               </label>
                               <label className="text-xs text-slate-400">
-                                {t('sessions.organizer.end')}
+                                {t('sessions.organizer.optionAEnd')}
                                 <input type="date" value={editEnd} onChange={e => setEditEnd(e.target.value)}
                                   className="mt-1 w-full rounded-lg border border-slate-600 bg-slate-700 px-2 py-1.5 text-sm" />
                               </label>
                               <label className="text-xs text-slate-400">
                                 {t('sessions.organizer.exam')}
                                 <input type="date" value={editExam} onChange={e => setEditExam(e.target.value)}
+                                  className="mt-1 w-full rounded-lg border border-slate-600 bg-slate-700 px-2 py-1.5 text-sm" />
+                              </label>
+                              <label className="text-xs text-slate-400">
+                                {t('sessions.organizer.optionB')}
+                                <input type="date" value={editAltStart} onChange={e => setEditAltStart(e.target.value)}
+                                  className="mt-1 w-full rounded-lg border border-slate-600 bg-slate-700 px-2 py-1.5 text-sm" />
+                              </label>
+                              <label className="text-xs text-slate-400">
+                                {t('sessions.organizer.optionBEnd')}
+                                <input type="date" value={editAltEnd} onChange={e => setEditAltEnd(e.target.value)}
                                   className="mt-1 w-full rounded-lg border border-slate-600 bg-slate-700 px-2 py-1.5 text-sm" />
                               </label>
                               <label className="text-xs text-slate-400">

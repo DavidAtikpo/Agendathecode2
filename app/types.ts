@@ -9,7 +9,7 @@ export interface User {
   /** Abonnement Stripe — défaut free si absent (anciennes sessions) */
   plan?: 'free' | 'pro';
   /** Rôle compte : user, admin, organizer, formateur, assessor */
-  role?: 'admin' | 'user' | 'organizer' | 'formateur' | 'assessor';
+  role?: 'admin' | 'user' | 'organizer' | 'formateur' | 'assessor' | 'auditeur';
   /** Présent après login/register — utile clients mobiles (Bearer), ignoré par le web */
   token?: string;
   /** Préférences persistantes (API `/api/user/preferences`) — défaut côté client si absent */
@@ -96,6 +96,7 @@ export interface SessionAssignmentView {
   id: string;
   role: SessionAssignmentRole;
   status: SessionAssignmentStatus;
+  acceptedOption?: 'primary' | 'alternative' | null;
   respondedAt: string | null;
   user: Pick<User, 'id' | 'email' | 'name' | 'color' | 'initials'>;
 }
@@ -105,6 +106,8 @@ export interface TrainingSession {
   title: string;
   startDate: string;
   endDate: string;
+  altStartDate?: string | null;
+  altEndDate?: string | null;
   examDate: string | null;
   createdBy: string;
   creatorName?: string;

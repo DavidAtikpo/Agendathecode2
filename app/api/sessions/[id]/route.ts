@@ -55,6 +55,18 @@ export async function PATCH(request: Request, ctx: Ctx) {
   const body = await request.json();
   const startDate = body.startDate !== undefined ? parseDateOnly(body.startDate) : existing.startDate;
   const endDate = body.endDate !== undefined ? parseDateOnly(body.endDate) : existing.endDate;
+  const altStartDate =
+    body.altStartDate === null
+      ? null
+      : body.altStartDate !== undefined
+        ? parseDateOnly(body.altStartDate)
+        : existing.altStartDate;
+  const altEndDate =
+    body.altEndDate === null
+      ? null
+      : body.altEndDate !== undefined
+        ? parseDateOnly(body.altEndDate)
+        : existing.altEndDate;
   const examDate =
     body.examDate === null
       ? null
@@ -68,10 +80,21 @@ export async function PATCH(request: Request, ctx: Ctx) {
   if (endDate < startDate) {
     return NextResponse.json({ error: 'La date de fin doit être après le début' }, { status: 400 });
   }
+  if ((altStartDate && !altEndDate) || (!altStartDate && altEndDate)) {
+    return NextResponse.json(
+      { error: 'Renseignez début et fin pour l\'option B, ou laissez les deux vides' },
+      { status: 400 },
+    );
+  }
+  if (altStartDate && altEndDate && altEndDate < altStartDate) {
+    return NextResponse.json({ error: 'La date de fin B doit être après le début' }, { status: 400 });
+  }
 
   const datesChanged =
     existing.startDate.getTime() !== startDate.getTime() ||
     existing.endDate.getTime() !== endDate.getTime() ||
+    (existing.altStartDate?.getTime() ?? null) !== (altStartDate?.getTime() ?? null) ||
+    (existing.altEndDate?.getTime() ?? null) !== (altEndDate?.getTime() ?? null) ||
     (existing.examDate?.getTime() ?? null) !== (examDate?.getTime() ?? null);
 
   const title =
@@ -81,7 +104,7 @@ export async function PATCH(request: Request, ctx: Ctx) {
 
   await prisma.trainingSession.update({
     where: { id },
-    data: { title, startDate, endDate, examDate },
+    data: { title, startDate, endDate, altStartDate, altEndDate, examDate },
   });
 
   const creator = await prisma.user.findUnique({ where: { id: userId }, select: { name: true } });
@@ -125,7 +148,7 @@ export async function PATCH(request: Request, ctx: Ctx) {
       update: {
         userId: targetId,
         ...(resetStatus
-          ? { status: SessionAssignmentStatus.pending, respondedAt: null }
+          ? { status: SessionAssignmentStatus.pending, respondedAt: null, acceptedOption: null }
           : {}),
       },
     });
@@ -164,7 +187,7 @@ export async function PATCH(request: Request, ctx: Ctx) {
       if (a.status === SessionAssignmentStatus.accepted) {
         await prisma.sessionAssignment.update({
           where: { id: a.id },
-          data: { status: SessionAssignmentStatus.pending, respondedAt: null },
+          data: { status: SessionAssignmentStatus.pending, respondedAt: null, acceptedOption: null },
         });
         await sendPushToUser(a.userId, {
           title: '📅 Dates modifiées — revalidation',

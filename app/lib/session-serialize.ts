@@ -35,6 +35,8 @@ export function serializeTrainingSession(session: SessionWithAssignments) {
     title: session.title,
     startDate: dateOnlyIso(session.startDate),
     endDate: dateOnlyIso(session.endDate),
+    altStartDate: session.altStartDate ? dateOnlyIso(session.altStartDate) : null,
+    altEndDate: session.altEndDate ? dateOnlyIso(session.altEndDate) : null,
     examDate: session.examDate ? dateOnlyIso(session.examDate) : null,
     createdBy: session.createdById,
     creatorName: session.createdBy.name,
@@ -44,6 +46,7 @@ export function serializeTrainingSession(session: SessionWithAssignments) {
       id: a.id,
       role: a.role as string,
       status: a.status as string,
+      acceptedOption: a.acceptedOption as string | null,
       respondedAt: a.respondedAt?.toISOString() ?? null,
       user: {
         id: a.user.id,

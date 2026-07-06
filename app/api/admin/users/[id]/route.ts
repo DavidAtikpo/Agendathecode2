@@ -49,7 +49,8 @@ export async function PATCH(
     body.role === 'user' ||
     body.role === 'organizer' ||
     body.role === 'formateur' ||
-    body.role === 'assessor'
+    body.role === 'assessor' ||
+    body.role === 'auditeur'
   ) {
     data.role = body.role;
   }

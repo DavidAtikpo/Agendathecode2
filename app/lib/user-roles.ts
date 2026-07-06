@@ -8,16 +8,18 @@ export type AppUserRole =
   | 'admin'
   | 'organizer'
   | 'formateur'
-  | 'assessor';
+  | 'assessor'
+  | 'auditeur';
 
-const TRAINING_STAFF: AppUserRole[] = ['formateur', 'assessor'];
+const TRAINING_STAFF: AppUserRole[] = ['formateur', 'assessor', 'auditeur'];
 
 export function normalizeAppUserRole(raw: unknown): AppUserRole {
   if (
     raw === 'admin' ||
     raw === 'organizer' ||
     raw === 'formateur' ||
-    raw === 'assessor'
+    raw === 'assessor' ||
+    raw === 'auditeur'
   ) {
     return raw;
   }
@@ -78,4 +80,5 @@ export const ROLE_BADGE_COLORS: Record<AppUserRole, string> = {
   organizer: 'bg-teal-500/20 text-teal-300',
   formateur: 'bg-indigo-500/20 text-indigo-300',
   assessor: 'bg-sky-500/20 text-sky-300',
+  auditeur: 'bg-amber-500/20 text-amber-300',
 };

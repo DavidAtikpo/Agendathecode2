@@ -902,6 +902,8 @@ export default function HomePage() {
     async (payload: {
       startDate: string;
       endDate: string;
+      altStartDate?: string | null;
+      altEndDate?: string | null;
       examDate?: string | null;
       formateurEmail?: string;
       assessorEmail?: string;
@@ -926,6 +928,8 @@ export default function HomePage() {
       payload: {
         startDate?: string;
         endDate?: string;
+        altStartDate?: string | null;
+        altEndDate?: string | null;
         examDate?: string | null;
         formateurEmail?: string | null;
         assessorEmail?: string | null;
@@ -954,16 +958,54 @@ export default function HomePage() {
   }, [tx]);
 
   const respondSession = useCallback(
-    async (sessionId: string, role: SessionAssignmentRole, status: 'accepted' | 'declined') => {
+    async (
+      sessionId: string,
+      role: SessionAssignmentRole,
+      status: 'accepted' | 'declined',
+      acceptedOption?: 'primary' | 'alternative',
+    ) => {
       const res = await fetch(`/api/sessions/${sessionId}/respond`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         ...fetchOpts,
-        body: JSON.stringify({ role, status }),
+        body: JSON.stringify({ role, status, acceptedOption }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? tx('common.status.error'));
       setTrainingSessions(prev => prev.map(s => (s.id === sessionId ? (data as TrainingSession) : s)));
+    },
+    [tx],
+  );
+
+  const createStaff = useCallback(
+    async (payload: {
+      firstName: string;
+      lastName: string;
+      email: string;
+      role: 'formateur' | 'assessor' | 'auditeur';
+      sendInvite?: boolean;
+      session?: {
+        startDate: string;
+        endDate: string;
+        altStartDate?: string | null;
+        altEndDate?: string | null;
+        examDate?: string | null;
+      };
+    }) => {
+      const res = await fetch('/api/staff', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        ...fetchOpts,
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? tx('common.status.error'));
+      if (data.session) {
+        setTrainingSessions(prev => [
+          data.session as TrainingSession,
+          ...prev.filter(s => s.id !== data.session.id),
+        ]);
+      }
     },
     [tx],
   );
@@ -1828,6 +1870,7 @@ export default function HomePage() {
                   onCreateSession={createSession}
                   onUpdateSession={updateSession}
                   onDeleteSession={deleteSession}
+                  onCreateStaff={createStaff}
                 />
               ) : activeView === 'sessions-assignee' ? (
                 <SessionsAssigneeView

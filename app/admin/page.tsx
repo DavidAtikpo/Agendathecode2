@@ -249,6 +249,7 @@ function AdminPageInner() {
       organizer: 0,
       formateur: 0,
       assessor: 0,
+      auditeur: 0,
     };
     for (const u of users) counts[u.role] += 1;
     return counts;

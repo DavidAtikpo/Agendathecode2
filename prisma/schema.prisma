@@ -290,6 +290,8 @@ enum Role {
   formateur
   /// Reçoit les propositions de session — pas d’accès aux groupes.
   assessor
+  /// Auditeur / stagiaire observateur — compte créé par organisateur ou admin.
+  auditeur
 
   @@schema("agenda")
 }
@@ -300,6 +302,10 @@ model TrainingSession {
   title       String
   startDate   DateTime            @db.Date
   endDate     DateTime            @db.Date
+  /// Option B — deuxième plage de dates proposée (début).
+  altStartDate DateTime?          @db.Date
+  /// Option B — deuxième plage de dates proposée (fin).
+  altEndDate   DateTime?          @db.Date
   examDate    DateTime?           @db.Date
   createdById String
   createdAt   DateTime            @default(now())
@@ -319,6 +325,8 @@ model SessionAssignment {
   userId      String
   role        SessionAssignmentRole
   status      SessionAssignmentStatus   @default(pending)
+  /// Plage acceptée quand deux options sont proposées (primary = option A).
+  acceptedOption SessionDateOption?
   respondedAt DateTime?
   createdAt   DateTime                @default(now())
   updatedAt   DateTime                @updatedAt
@@ -342,6 +350,13 @@ enum SessionAssignmentStatus {
   pending
   accepted
   declined
+
+  @@schema("agenda")
+}
+
+enum SessionDateOption {
+  primary
+  alternative
 
   @@schema("agenda")
 }
