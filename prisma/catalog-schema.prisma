@@ -1,0 +1,26 @@
+generator client {
+  provider = "prisma-client-js"
+  output   = "../node_modules/@prisma/catalog-client"
+}
+
+datasource db {
+  provider = "postgresql"
+  schemas  = ["webirata"]
+}
+
+/// Table existante (créée par cides.tf) — lecture/écriture uniquement, pas de migration Prisma.
+model SessionCatalog {
+  id        String   @id @default(cuid())
+  slug      String   @unique
+  pays      String
+  annee     String
+  mois      String
+  dates     String
+  ordre     Int      @default(0)
+  actif     Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([pays, actif, ordre])
+  @@schema("webirata")
+}

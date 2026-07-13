@@ -24,7 +24,8 @@ export type AppView =
   | 'planning'
   | 'groups'
   | 'sessions-organizer'
-  | 'sessions-assignee';
+  | 'sessions-assignee'
+  | 'session-dates';
 
 interface SidebarProps {
   activeView: AppView;
@@ -320,6 +321,26 @@ export default function Sidebar({
                   <path strokeLinecap="round" strokeLinejoin="round" d="M4 19V5m0 14h16M8 11v8m4-8v8m4-8v8M8 7V5m4 2V5m4 2V5" />
                 </svg>
                 {expanded ? <span className="min-w-0 truncate">{t('sidebar.nav.sessionsOrganizer')}</span> : null}
+              </button>
+            ) : null}
+
+            {showSessionsOrganizer ? (
+              <button
+                type="button"
+                onClick={() => {
+                  onViewChange('session-dates');
+                  afterNav();
+                }}
+                className={navBtn(
+                  activeView === 'session-dates',
+                  'bg-violet-500/20 text-violet-300',
+                )}
+                title={expanded ? undefined : t('sidebar.nav.sessionDates')}
+              >
+                <IconCalendar
+                  className={`h-5 w-5 shrink-0 ${activeView === 'session-dates' ? 'text-violet-300' : 'text-slate-400'}`}
+                />
+                {expanded ? <span className="min-w-0 truncate">{t('sidebar.nav.sessionDates')}</span> : null}
               </button>
             ) : null}
 

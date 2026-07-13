@@ -14,6 +14,7 @@ export {
   planningMessages,
   rolesMessages,
   sessionsMessages,
+  sessionDatesMessages,
   settingsMessages,
   sidebarMessages,
   staticMessages,

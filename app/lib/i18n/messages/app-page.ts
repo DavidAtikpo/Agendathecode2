@@ -10,6 +10,7 @@ export const pageMessages = {
       groups: 'Groupes',
       sessionsOrganizer: 'Gestion sessions',
       sessionsAssignee: 'Mes propositions',
+      sessionDates: 'Dates de sessions',
     },
     mobileNav: {
       notes: 'Notes',
@@ -89,6 +90,7 @@ export const pageMessages = {
       groups: 'Groups',
       sessionsOrganizer: 'Session management',
       sessionsAssignee: 'My proposals',
+      sessionDates: 'Session dates',
     },
     mobileNav: {
       notes: 'Notes',

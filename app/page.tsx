@@ -7,6 +7,7 @@ import CollaboratorsModal from './components/CollaboratorsModal';
 import GroupsView from './components/GroupsView';
 import SessionsOrganizerView from './components/SessionsOrganizerView';
 import SessionsAssigneeView from './components/SessionsAssigneeView';
+import SessionDatesView from './components/SessionDatesView';
 import {
   IconAlertTriangle,
   IconArrowLeft,
@@ -669,8 +670,19 @@ export default function HomePage() {
       setActiveView('planning');
     } else if (activeView === 'sessions-assignee' && !canViewSessionProposals(displayUser.role)) {
       setActiveView('planning');
+    } else if (activeView === 'session-dates' && !canManageTrainingSessions(displayUser.role)) {
+      setActiveView('planning');
     }
   }, [isGuest, activeView, displayUser.role]);
+
+  useEffect(() => {
+    if (isGuest) return;
+    const params = new URLSearchParams(window.location.search);
+    const view = params.get('view');
+    if (view === 'session-dates' && canManageTrainingSessions(displayUser.role)) {
+      setActiveView('session-dates');
+    }
+  }, [isGuest, displayUser.role]);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -1613,6 +1625,8 @@ export default function HomePage() {
           ? tx('page.views.sessionsOrganizer')
           : activeView === 'sessions-assignee'
             ? tx('page.views.sessionsAssignee')
+            : activeView === 'session-dates'
+              ? tx('page.views.sessionDates')
             : activeView === 'groups'
               ? tx('page.views.groups')
               : tx('page.views.tasks');
@@ -1879,6 +1893,8 @@ export default function HomePage() {
                   compactLayout={layoutPreferences.density === 'compact'}
                   onRespondSession={respondSession}
                 />
+              ) : activeView === 'session-dates' ? (
+                <SessionDatesView compactLayout={layoutPreferences.density === 'compact'} />
               ) : activeView === 'groups' ? (
                 <GroupsView
                   groups={groups}

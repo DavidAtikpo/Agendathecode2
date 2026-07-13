@@ -10,6 +10,7 @@ import { pageMessages } from './app-page';
 import { planningMessages } from './planning';
 import { rolesMessages } from './roles';
 import { sessionsMessages } from './sessions';
+import { sessionDatesMessages } from './session-dates';
 import { settingsMessages } from './settings';
 import { sidebarMessages } from './sidebar';
 import { staticMessages } from './static';
@@ -24,6 +25,7 @@ function mergeLocale(locale: AppLocale) {
     tasks: tasksMessages[locale],
     groups: groupsMessages[locale],
     sessions: sessionsMessages[locale],
+    sessionDates: sessionDatesMessages[locale],
     planning: planningMessages[locale],
     notes: notesMessages[locale],
     chat: chatMessages[locale],
@@ -52,6 +54,7 @@ export {
   planningMessages,
   rolesMessages,
   sessionsMessages,
+  sessionDatesMessages,
   settingsMessages,
   sidebarMessages,
   staticMessages,

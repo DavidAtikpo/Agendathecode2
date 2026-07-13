@@ -254,6 +254,16 @@ export function IconPlus(props: IconProps) {
   );
 }
 
+export function IconRefresh(props: IconProps) {
+  return strokeIcon(
+    <>
+      <path d="M21 12a9 9 0 1 1-3-6.7" />
+      <path d="M21 3v6h-6" />
+    </>,
+    props,
+  );
+}
+
 export function IconCamera(props: IconProps) {
   return strokeIcon(
     <>

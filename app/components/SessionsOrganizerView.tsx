@@ -1,6 +1,6 @@
 'use client';
 
-import { Fragment, useMemo, useState } from 'react';
+import { Fragment, useEffect, useMemo, useState } from 'react';
 import type { TrainingSession, User } from '../types';
 import {
   assignmentFor,
@@ -13,6 +13,8 @@ import {
   type OrganizerStatusFilter,
 } from '../lib/session-labels';
 import { useI18n } from '@/app/lib/i18n';
+import { CatalogSessionPicker, type CatalogSessionOption } from './CatalogSessionPicker';
+import type { ParsedCatalogDates } from '@/app/lib/parse-catalog-dates';
 import styles from './Sidebar.module.css';
 
 interface SessionsOrganizerViewProps {
@@ -107,6 +109,111 @@ export default function SessionsOrganizerView({
   const [editExam, setEditExam] = useState('');
   const [editFormateur, setEditFormateur] = useState('');
   const [editAssessor, setEditAssessor] = useState('');
+  const [catalogOptions, setCatalogOptions] = useState<CatalogSessionOption[]>([]);
+  const [catalogPays, setCatalogPays] = useState<'France' | 'Togo'>('France');
+  const [catalogAId, setCatalogAId] = useState('');
+  const [catalogBId, setCatalogBId] = useState('');
+  const [staffCatalogPays, setStaffCatalogPays] = useState<'France' | 'Togo'>('France');
+  const [staffCatalogAId, setStaffCatalogAId] = useState('');
+  const [staffCatalogBId, setStaffCatalogBId] = useState('');
+  const [editCatalogPays, setEditCatalogPays] = useState<'France' | 'Togo'>('France');
+  const [editCatalogAId, setEditCatalogAId] = useState('');
+  const [editCatalogBId, setEditCatalogBId] = useState('');
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const res = await fetch('/api/admin/session-catalog', { credentials: 'include' });
+        if (!res.ok) return;
+        const data = await res.json();
+        if (!cancelled && Array.isArray(data)) {
+          setCatalogOptions(data.filter((row: CatalogSessionOption) => row.actif !== false));
+        }
+      } catch {
+        /* catalogue optionnel */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const applyPrimaryDates = (parsed: ParsedCatalogDates | null) => {
+    if (!parsed) {
+      setStartDate('');
+      setEndDate('');
+      setExamDate('');
+      return;
+    }
+    setStartDate(parsed.startDate);
+    setEndDate(parsed.endDate);
+    setExamDate(parsed.examDate ?? '');
+  };
+
+  const applyAltDates = (parsed: ParsedCatalogDates | null) => {
+    if (!parsed) {
+      setAltStartDate('');
+      setAltEndDate('');
+      return;
+    }
+    setAltStartDate(parsed.startDate);
+    setAltEndDate(parsed.endDate);
+  };
+
+  const applyStaffPrimaryDates = (parsed: ParsedCatalogDates | null) => {
+    if (!parsed) {
+      setStaffStart('');
+      setStaffEnd('');
+      setStaffExam('');
+      return;
+    }
+    setStaffStart(parsed.startDate);
+    setStaffEnd(parsed.endDate);
+    setStaffExam(parsed.examDate ?? '');
+  };
+
+  const applyStaffAltDates = (parsed: ParsedCatalogDates | null) => {
+    if (!parsed) {
+      setStaffAltStart('');
+      setStaffAltEnd('');
+      return;
+    }
+    setStaffAltStart(parsed.startDate);
+    setStaffAltEnd(parsed.endDate);
+  };
+
+  const applyEditPrimaryDates = (parsed: ParsedCatalogDates | null) => {
+    if (!parsed) {
+      setEditStart('');
+      setEditEnd('');
+      setEditExam('');
+      return;
+    }
+    setEditStart(parsed.startDate);
+    setEditEnd(parsed.endDate);
+    setEditExam(parsed.examDate ?? '');
+  };
+
+  const applyEditAltDates = (parsed: ParsedCatalogDates | null) => {
+    if (!parsed) {
+      setEditAltStart('');
+      setEditAltEnd('');
+      return;
+    }
+    setEditAltStart(parsed.startDate);
+    setEditAltEnd(parsed.endDate);
+  };
+
+  const resetCreateCatalog = () => {
+    setCatalogAId('');
+    setCatalogBId('');
+    setStartDate('');
+    setEndDate('');
+    setAltStartDate('');
+    setAltEndDate('');
+    setExamDate('');
+  };
 
   const owned = useMemo(
     () => sessions.filter(s => s.createdBy === currentUser.id),
@@ -138,6 +245,8 @@ export default function SessionsOrganizerView({
     setEditExam(s.examDate ?? '');
     setEditFormateur(assignmentFor(s, 'formateur')?.user.email ?? '');
     setEditAssessor(assignmentFor(s, 'assessor')?.user.email ?? '');
+    setEditCatalogAId('');
+    setEditCatalogBId('');
     setError(null);
   };
 
@@ -177,6 +286,7 @@ export default function SessionsOrganizerView({
       setExamDate('');
       setFormateurEmail('');
       setAssessorEmail('');
+      resetCreateCatalog();
       setShowCreate(false);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : t('common.status.error'));
@@ -218,6 +328,8 @@ export default function SessionsOrganizerView({
       setStaffAltStart('');
       setStaffAltEnd('');
       setStaffExam('');
+      setStaffCatalogAId('');
+      setStaffCatalogBId('');
       setStaffAddDates(false);
       setShowStaff(false);
     } catch (err: unknown) {
@@ -319,33 +431,28 @@ export default function SessionsOrganizerView({
               </label>
             </div>
             {staffAddDates ? (
-              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 rounded-lg border border-slate-700/80 p-3">
-                <label className="block text-xs text-slate-400">
-                  {t('sessions.organizer.optionA')}
-                  <input type="date" value={staffStart} onChange={e => setStaffStart(e.target.value)} required={staffAddDates}
-                    className="mt-1 w-full rounded-lg border border-slate-600 bg-slate-700 px-2 py-2 text-sm text-slate-200" />
-                </label>
-                <label className="block text-xs text-slate-400">
-                  {t('sessions.organizer.optionAEnd')}
-                  <input type="date" value={staffEnd} onChange={e => setStaffEnd(e.target.value)} required={staffAddDates}
-                    className="mt-1 w-full rounded-lg border border-slate-600 bg-slate-700 px-2 py-2 text-sm text-slate-200" />
-                </label>
-                <label className="block text-xs text-slate-400">
-                  {t('sessions.organizer.examOptional')}
-                  <input type="date" value={staffExam} onChange={e => setStaffExam(e.target.value)}
-                    className="mt-1 w-full rounded-lg border border-slate-600 bg-slate-700 px-2 py-2 text-sm text-slate-200" />
-                </label>
-                <label className="block text-xs text-slate-400">
-                  {t('sessions.organizer.optionB')}
-                  <input type="date" value={staffAltStart} onChange={e => setStaffAltStart(e.target.value)}
-                    className="mt-1 w-full rounded-lg border border-slate-600 bg-slate-700 px-2 py-2 text-sm text-slate-200" />
-                </label>
-                <label className="block text-xs text-slate-400">
-                  {t('sessions.organizer.optionBEnd')}
-                  <input type="date" value={staffAltEnd} onChange={e => setStaffAltEnd(e.target.value)}
-                    className="mt-1 w-full rounded-lg border border-slate-600 bg-slate-700 px-2 py-2 text-sm text-slate-200" />
-                </label>
-              </div>
+              <CatalogSessionPicker
+                options={catalogOptions}
+                pays={staffCatalogPays}
+                onPaysChange={(p) => {
+                  setStaffCatalogPays(p);
+                  setStaffCatalogAId('');
+                  setStaffCatalogBId('');
+                  applyStaffPrimaryDates(null);
+                  applyStaffAltDates(null);
+                }}
+                optionAId={staffCatalogAId}
+                optionBId={staffCatalogBId}
+                onOptionAChange={(id, parsed) => {
+                  setStaffCatalogAId(id);
+                  applyStaffPrimaryDates(parsed);
+                }}
+                onOptionBChange={(id, parsed) => {
+                  setStaffCatalogBId(id);
+                  applyStaffAltDates(parsed);
+                }}
+                compact
+              />
             ) : null}
             <button type="submit" disabled={busy}
               className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-500 disabled:opacity-50">
@@ -357,39 +464,35 @@ export default function SessionsOrganizerView({
         {showCreate ? (
           <form onSubmit={handleCreate} className="mt-4 rounded-xl border border-slate-700 bg-slate-800/50 p-4 space-y-3">
             <p className="text-xs text-slate-500">{t('sessions.organizer.autoTitleHint')}</p>
-            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-              <label className="block text-xs text-slate-400">
-                {t('sessions.organizer.optionA')}
-                <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} required
-                  className="mt-1 w-full rounded-lg border border-slate-600 bg-slate-700 px-2 py-2 text-sm text-slate-200" />
-              </label>
-              <label className="block text-xs text-slate-400">
-                {t('sessions.organizer.optionAEnd')}
-                <input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} required
-                  className="mt-1 w-full rounded-lg border border-slate-600 bg-slate-700 px-2 py-2 text-sm text-slate-200" />
-              </label>
-              <label className="block text-xs text-slate-400">
-                {t('sessions.organizer.examOptional')}
-                <input type="date" value={examDate} onChange={e => setExamDate(e.target.value)}
-                  className="mt-1 w-full rounded-lg border border-slate-600 bg-slate-700 px-2 py-2 text-sm text-slate-200" />
-              </label>
-              <label className="block text-xs text-slate-400">
-                {t('sessions.organizer.optionB')}
-                <input type="date" value={altStartDate} onChange={e => setAltStartDate(e.target.value)}
-                  className="mt-1 w-full rounded-lg border border-slate-600 bg-slate-700 px-2 py-2 text-sm text-slate-200" />
-              </label>
-              <label className="block text-xs text-slate-400">
-                {t('sessions.organizer.optionBEnd')}
-                <input type="date" value={altEndDate} onChange={e => setAltEndDate(e.target.value)}
-                  className="mt-1 w-full rounded-lg border border-slate-600 bg-slate-700 px-2 py-2 text-sm text-slate-200" />
-              </label>
-              <label className="block text-xs text-slate-400 sm:col-span-2 lg:col-span-1">
+            <CatalogSessionPicker
+              options={catalogOptions}
+              pays={catalogPays}
+              onPaysChange={(p) => {
+                setCatalogPays(p);
+                setCatalogAId('');
+                setCatalogBId('');
+                applyPrimaryDates(null);
+                applyAltDates(null);
+              }}
+              optionAId={catalogAId}
+              optionBId={catalogBId}
+              onOptionAChange={(id, parsed) => {
+                setCatalogAId(id);
+                applyPrimaryDates(parsed);
+              }}
+              onOptionBChange={(id, parsed) => {
+                setCatalogBId(id);
+                applyAltDates(parsed);
+              }}
+            />
+            <div className="grid gap-3 sm:grid-cols-2">
+              <label className="block text-xs text-slate-400 sm:col-span-1">
                 {t('sessions.organizer.formateurEmail')}
                 <input type="email" value={formateurEmail} onChange={e => setFormateurEmail(e.target.value)}
                   placeholder={t('sessions.organizer.formateurPlaceholder')}
                   className="mt-1 w-full rounded-lg border border-slate-600 bg-slate-700 px-2 py-2 text-sm text-slate-200" />
               </label>
-              <label className="block text-xs text-slate-400 sm:col-span-2">
+              <label className="block text-xs text-slate-400 sm:col-span-1">
                 {t('sessions.organizer.assessorEmail')}
                 <input type="email" value={assessorEmail} onChange={e => setAssessorEmail(e.target.value)}
                   placeholder={t('sessions.organizer.assessorPlaceholder')}
@@ -517,38 +620,34 @@ export default function SessionsOrganizerView({
                       {editing ? (
                         <tr className="border-b border-slate-800 bg-slate-800/40">
                           <td colSpan={6} className="px-3 py-4">
-                            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                              <label className="text-xs text-slate-400">
-                                {t('sessions.organizer.optionA')}
-                                <input type="date" value={editStart} onChange={e => setEditStart(e.target.value)}
-                                  className="mt-1 w-full rounded-lg border border-slate-600 bg-slate-700 px-2 py-1.5 text-sm" />
-                              </label>
-                              <label className="text-xs text-slate-400">
-                                {t('sessions.organizer.optionAEnd')}
-                                <input type="date" value={editEnd} onChange={e => setEditEnd(e.target.value)}
-                                  className="mt-1 w-full rounded-lg border border-slate-600 bg-slate-700 px-2 py-1.5 text-sm" />
-                              </label>
-                              <label className="text-xs text-slate-400">
-                                {t('sessions.organizer.exam')}
-                                <input type="date" value={editExam} onChange={e => setEditExam(e.target.value)}
-                                  className="mt-1 w-full rounded-lg border border-slate-600 bg-slate-700 px-2 py-1.5 text-sm" />
-                              </label>
-                              <label className="text-xs text-slate-400">
-                                {t('sessions.organizer.optionB')}
-                                <input type="date" value={editAltStart} onChange={e => setEditAltStart(e.target.value)}
-                                  className="mt-1 w-full rounded-lg border border-slate-600 bg-slate-700 px-2 py-1.5 text-sm" />
-                              </label>
-                              <label className="text-xs text-slate-400">
-                                {t('sessions.organizer.optionBEnd')}
-                                <input type="date" value={editAltEnd} onChange={e => setEditAltEnd(e.target.value)}
-                                  className="mt-1 w-full rounded-lg border border-slate-600 bg-slate-700 px-2 py-1.5 text-sm" />
-                              </label>
+                            <CatalogSessionPicker
+                              options={catalogOptions}
+                              pays={editCatalogPays}
+                              onPaysChange={(p) => {
+                                setEditCatalogPays(p);
+                                setEditCatalogAId('');
+                                setEditCatalogBId('');
+                              }}
+                              optionAId={editCatalogAId}
+                              optionBId={editCatalogBId}
+                              onOptionAChange={(id, parsed) => {
+                                setEditCatalogAId(id);
+                                if (parsed) applyEditPrimaryDates(parsed);
+                              }}
+                              onOptionBChange={(id, parsed) => {
+                                setEditCatalogBId(id);
+                                if (parsed) applyEditAltDates(parsed);
+                                else applyEditAltDates(null);
+                              }}
+                              compact
+                            />
+                            <div className="mt-3 grid gap-3 sm:grid-cols-2">
                               <label className="text-xs text-slate-400">
                                 {sessionRoleLabel('formateur', locale)}
                                 <input type="email" value={editFormateur} onChange={e => setEditFormateur(e.target.value)}
                                   className="mt-1 w-full rounded-lg border border-slate-600 bg-slate-700 px-2 py-1.5 text-sm" />
                               </label>
-                              <label className="text-xs text-slate-400 sm:col-span-2">
+                              <label className="text-xs text-slate-400">
                                 {sessionRoleLabel('assessor', locale)}
                                 <input type="email" value={editAssessor} onChange={e => setEditAssessor(e.target.value)}
                                   className="mt-1 w-full rounded-lg border border-slate-600 bg-slate-700 px-2 py-1.5 text-sm" />

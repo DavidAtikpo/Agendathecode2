@@ -7,7 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "postinstall": "prisma generate"
+    "postinstall": "prisma generate && prisma generate --schema=prisma/catalog-schema.prisma --config=prisma.config.catalog.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.95.2",

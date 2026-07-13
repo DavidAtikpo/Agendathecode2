@@ -28,6 +28,7 @@ export const sidebarMessages = {
       groups: 'Groupes',
       sessionsOrganizer: 'Gestion sessions',
       sessionsAssignee: 'Mes propositions',
+      sessionDates: 'Dates de sessions',
       aiAssistant: 'Assistant IA',
     },
     badges: {
@@ -87,6 +88,7 @@ export const sidebarMessages = {
       groups: 'Groups',
       sessionsOrganizer: 'Session management',
       sessionsAssignee: 'My proposals',
+      sessionDates: 'Session dates',
       aiAssistant: 'AI assistant',
     },
     badges: {
