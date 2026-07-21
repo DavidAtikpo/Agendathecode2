@@ -4,6 +4,7 @@ import { getSessionUserId } from '@/app/lib/auth';
 import { isSessionCreator, sessionsVisibleToUser } from '@/app/lib/session-access';
 import { resolveUserIdByEmailForAssignment } from '@/app/lib/session-assign';
 import { sessionRoleMismatchMessage } from '@/app/lib/user-roles';
+import { assertOrganizerOwnsStaffUser } from '@/app/lib/staff-access';
 import { buildSessionTitle, parseDateOnly } from '@/app/lib/session-title';
 import {
   SESSION_WITH_ASSIGNMENTS_INCLUDE,
@@ -37,16 +38,17 @@ export async function PATCH(request: Request, ctx: Ctx) {
   if (!userId) {
     return NextResponse.json({ error: 'Non autorisé' }, { status: 401 });
   }
+  const organizerId = userId;
 
   const { id } = await ctx.params;
   const existing = await prisma.trainingSession.findFirst({
-    where: { id, ...sessionsVisibleToUser(userId) },
+    where: { id, ...sessionsVisibleToUser(organizerId) },
     include: SESSION_WITH_ASSIGNMENTS_INCLUDE,
   });
   if (!existing) {
     return NextResponse.json({ error: 'Session introuvable' }, { status: 404 });
   }
-  if (!isSessionCreator(existing, userId)) {
+  if (!isSessionCreator(existing, organizerId)) {
     return NextResponse.json({ error: 'Seul le créateur peut modifier cette session.' }, { status: 403 });
   }
 
@@ -107,7 +109,8 @@ export async function PATCH(request: Request, ctx: Ctx) {
     data: { title, startDate, endDate, altStartDate, altEndDate, examDate },
   });
 
-  const creator = await prisma.user.findUnique({ where: { id: userId }, select: { name: true } });
+  const creatorUser = await prisma.user.findUnique({ where: { id: organizerId }, select: { name: true, role: true } });
+  const creator = creatorUser;
 
   async function upsertRole(role: SessionAssignmentRole, emailKey: 'formateurEmail' | 'assessorEmail') {
     if (body[emailKey] === undefined) return;
@@ -128,9 +131,11 @@ export async function PATCH(request: Request, ctx: Ctx) {
       }
       throw e;
     }
-    if (targetId === userId) {
+    if (targetId === organizerId) {
       throw new Error('SELF_ASSIGN');
     }
+
+    await assertOrganizerOwnsStaffUser(organizerId, targetId, creatorUser?.role ?? 'user');
 
     const prev = priorAssignments.find(a => a.role === role);
     const isNewPerson = !prev || prev.userId !== targetId;
@@ -178,6 +183,12 @@ export async function PATCH(request: Request, ctx: Ctx) {
     if (e instanceof Error && e.message?.startsWith('ROLE_MISMATCH:')) {
       const failed = e.message.split(':')[1] as 'formateur' | 'assessor';
       return NextResponse.json({ error: sessionRoleMismatchMessage(failed) }, { status: 400 });
+    }
+    if (e instanceof Error && e.message === 'STAFF_NOT_OWNED') {
+      return NextResponse.json(
+        { error: 'Vous ne pouvez assigner que des intervenants créés par votre compte.' },
+        { status: 403 },
+      );
     }
     throw e;
   }

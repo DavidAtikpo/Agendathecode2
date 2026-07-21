@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/app/lib/prisma';
 import { getSessionUserId } from '@/app/lib/auth';
+import { getAuthenticatedSessionUser } from '@/app/lib/session-user';
 import { groupsVisibleToUser } from '@/app/lib/group-access';
 import { assertGroupMembersAllowed } from '@/app/lib/group-assign';
 import { GROUP_WITH_MEMBERS_INCLUDE, serializeGroup } from '@/app/lib/group-serialize';
@@ -9,13 +10,13 @@ import { canAccessGroups, groupsForbiddenForRoleMessage } from '@/app/lib/user-r
 
 /** Liste des groupes dont l'utilisateur est membre. */
 export async function GET() {
-  const sessionId = await getSessionUserId();
-  if (!sessionId) {
+  const sessionUser = await getAuthenticatedSessionUser();
+  if (!sessionUser) {
     return NextResponse.json({ error: 'Non autorisé' }, { status: 401 });
   }
 
   const user = await prisma.user.findUnique({
-    where: { id: sessionId },
+    where: { id: sessionUser.id },
     select: { role: true },
   });
   if (!user || !canAccessGroups(user.role)) {
@@ -23,7 +24,7 @@ export async function GET() {
   }
 
   const groups = await prisma.group.findMany({
-    where: groupsVisibleToUser(sessionId),
+    where: groupsVisibleToUser(sessionUser.id, user.role),
     include: GROUP_WITH_MEMBERS_INCLUDE,
     orderBy: { updatedAt: 'desc' },
   });

@@ -67,6 +67,46 @@ const ORGANIZER_FILTER_KEYS: OrganizerStatusFilter[] = [
   'confirmed',
 ];
 
+function staffForRole(staffList: StaffListItem[], role: 'formateur' | 'assessor') {
+  return staffList.filter(s => s.role === role && s.active);
+}
+
+function StaffAssignSelect({
+  value,
+  onChange,
+  role,
+  staffList,
+  noneLabel,
+  currentFallbackLabel,
+}: {
+  value: string;
+  onChange: (email: string) => void;
+  role: 'formateur' | 'assessor';
+  staffList: StaffListItem[];
+  noneLabel: string;
+  currentFallbackLabel: string;
+}) {
+  const options = staffForRole(staffList, role);
+  const valueInList = !value || options.some(o => o.email === value);
+  return (
+    <select
+      value={value}
+      onChange={e => onChange(e.target.value)}
+      className="mt-1 w-full rounded-lg border border-slate-600 bg-slate-700 px-2 py-1.5 text-sm text-slate-100"
+    >
+      <option value="">{noneLabel}</option>
+      {!valueInList && value ? (
+        <option value={value}>{currentFallbackLabel.replace('{email}', value)}</option>
+      ) : null}
+      {options.map(s => (
+        <option key={s.id} value={s.email}>
+          {s.name} — {s.email}
+        </option>
+      ))}
+    </select>
+  );
+}
+
 interface StaffListItem {
   id: string;
   email: string;
@@ -536,15 +576,25 @@ export default function SessionsOrganizerView({
             <div className="grid gap-3 sm:grid-cols-2">
               <label className="block text-xs text-slate-400 sm:col-span-1">
                 {t('sessions.organizer.formateurEmail')}
-                <input type="email" value={formateurEmail} onChange={e => setFormateurEmail(e.target.value)}
-                  placeholder={t('sessions.organizer.formateurPlaceholder')}
-                  className="mt-1 w-full rounded-lg border border-slate-600 bg-slate-700 px-2 py-2 text-sm text-slate-200" />
+                <StaffAssignSelect
+                  value={formateurEmail}
+                  onChange={setFormateurEmail}
+                  role="formateur"
+                  staffList={staffList}
+                  noneLabel={t('sessions.organizer.assignStaffNone')}
+                  currentFallbackLabel={t('sessions.organizer.assignStaffCurrent')}
+                />
               </label>
               <label className="block text-xs text-slate-400 sm:col-span-1">
                 {t('sessions.organizer.assessorEmail')}
-                <input type="email" value={assessorEmail} onChange={e => setAssessorEmail(e.target.value)}
-                  placeholder={t('sessions.organizer.assessorPlaceholder')}
-                  className="mt-1 w-full rounded-lg border border-slate-600 bg-slate-700 px-2 py-2 text-sm text-slate-200" />
+                <StaffAssignSelect
+                  value={assessorEmail}
+                  onChange={setAssessorEmail}
+                  role="assessor"
+                  staffList={staffList}
+                  noneLabel={t('sessions.organizer.assignStaffNone')}
+                  currentFallbackLabel={t('sessions.organizer.assignStaffCurrent')}
+                />
               </label>
             </div>
             <button type="submit" disabled={busy || !startDate || !endDate}
@@ -804,13 +854,25 @@ export default function SessionsOrganizerView({
                             <div className="mt-3 grid gap-3 sm:grid-cols-2">
                               <label className="text-xs text-slate-400">
                                 {sessionRoleLabel('formateur', locale)}
-                                <input type="email" value={editFormateur} onChange={e => setEditFormateur(e.target.value)}
-                                  className="mt-1 w-full rounded-lg border border-slate-600 bg-slate-700 px-2 py-1.5 text-sm" />
+                                <StaffAssignSelect
+                                  value={editFormateur}
+                                  onChange={setEditFormateur}
+                                  role="formateur"
+                                  staffList={staffList}
+                                  noneLabel={t('sessions.organizer.assignStaffNone')}
+                                  currentFallbackLabel={t('sessions.organizer.assignStaffCurrent')}
+                                />
                               </label>
                               <label className="text-xs text-slate-400">
                                 {sessionRoleLabel('assessor', locale)}
-                                <input type="email" value={editAssessor} onChange={e => setEditAssessor(e.target.value)}
-                                  className="mt-1 w-full rounded-lg border border-slate-600 bg-slate-700 px-2 py-1.5 text-sm" />
+                                <StaffAssignSelect
+                                  value={editAssessor}
+                                  onChange={setEditAssessor}
+                                  role="assessor"
+                                  staffList={staffList}
+                                  noneLabel={t('sessions.organizer.assignStaffNone')}
+                                  currentFallbackLabel={t('sessions.organizer.assignStaffCurrent')}
+                                />
                               </label>
                             </div>
                             <div className="mt-3 flex flex-wrap gap-2">

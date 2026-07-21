@@ -1,5 +1,6 @@
 import type { Prisma } from '@prisma/client';
 import { prisma } from '@/app/lib/prisma';
+import { normalizeAppUserRole } from '@/app/lib/user-roles';
 
 /** Groupes dont l'utilisateur est membre. */
 export async function groupIdsForUser(userId: string): Promise<string[]> {
@@ -33,6 +34,9 @@ export async function getGroupMemberIds(groupId: string): Promise<string[]> {
 }
 
 /** Filtre Prisma : groupes visibles par l'utilisateur. */
-export function groupsVisibleToUser(sessionId: string): Prisma.GroupWhereInput {
+export function groupsVisibleToUser(sessionId: string, role?: unknown): Prisma.GroupWhereInput {
+  if (normalizeAppUserRole(role) === 'organizer') {
+    return { createdById: sessionId };
+  }
   return { members: { some: { userId: sessionId } } };
 }

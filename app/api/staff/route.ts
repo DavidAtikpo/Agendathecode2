@@ -7,8 +7,8 @@ import {
   isStaffRole,
   type StaffRole,
 } from '@/app/lib/staff-create';
-import { parseDateOnly } from '@/app/lib/session-title';
-import { buildSessionTitle } from '@/app/lib/session-title';
+import { staffListWhereForUser } from '@/app/lib/staff-access';
+import { buildSessionTitle, parseDateOnly } from '@/app/lib/session-title';
 import {
   SESSION_WITH_ASSIGNMENTS_INCLUDE,
   serializeTrainingSession,
@@ -50,7 +50,7 @@ export async function GET() {
   if (!auth.ok) return auth.response;
 
   const users = await prisma.user.findMany({
-    where: { role: { in: ['formateur', 'assessor', 'auditeur'] } },
+    where: staffListWhereForUser(auth.user.id, auth.user.role),
     orderBy: { name: 'asc' },
     select: {
       id: true,
@@ -104,6 +104,7 @@ export async function POST(request: Request) {
       email,
       role,
       sendInvite,
+      createdByOrganizerId: auth.user.id,
     });
   } catch (e: unknown) {
     if (e instanceof Error && e.message === 'NAME_REQUIRED') {

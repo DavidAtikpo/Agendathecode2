@@ -4,6 +4,7 @@ import { getSessionUserId } from '@/app/lib/auth';
 import { assertUserIsSessionOrganizer, sessionsOrganizerRequiredMessage } from '@/app/lib/pro-plan';
 import { sessionsVisibleToUser } from '@/app/lib/session-access';
 import { resolveUserIdByEmailForAssignment } from '@/app/lib/session-assign';
+import { assertOrganizerOwnsStaffUser } from '@/app/lib/staff-access';
 import { sessionRoleMismatchMessage } from '@/app/lib/user-roles';
 import { buildSessionTitle, parseDateOnly } from '@/app/lib/session-title';
 import {
@@ -77,6 +78,11 @@ export async function POST(request: Request) {
   let formateurId: string | undefined;
   let assessorId: string | undefined;
 
+  const organizer = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { role: true },
+  });
+
   try {
     if (body.formateurEmail) {
       formateurId = await resolveUserIdByEmailForAssignment(
@@ -86,6 +92,7 @@ export async function POST(request: Request) {
       if (formateurId === userId) {
         return NextResponse.json({ error: 'Vous ne pouvez pas vous assigner comme formateur' }, { status: 400 });
       }
+      await assertOrganizerOwnsStaffUser(userId, formateurId, organizer?.role);
     }
     if (body.assessorEmail) {
       assessorId = await resolveUserIdByEmailForAssignment(
@@ -95,6 +102,7 @@ export async function POST(request: Request) {
       if (assessorId === userId) {
         return NextResponse.json({ error: 'Vous ne pouvez pas vous assigner comme assessor' }, { status: 400 });
       }
+      await assertOrganizerOwnsStaffUser(userId, assessorId, organizer?.role);
     }
     if (formateurId && assessorId && formateurId === assessorId) {
       return NextResponse.json(
@@ -120,6 +128,12 @@ export async function POST(request: Request) {
           ),
         },
         { status: 400 },
+      );
+    }
+    if (e instanceof Error && e.message === 'STAFF_NOT_OWNED') {
+      return NextResponse.json(
+        { error: 'Vous ne pouvez assigner que des intervenants créés par votre compte.' },
+        { status: 403 },
       );
     }
     throw e;

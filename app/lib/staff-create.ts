@@ -32,6 +32,8 @@ export type CreateStaffInput = {
   role: StaffRole;
   /** Envoyer un e-mail d'invitation (lien pour définir le mot de passe). */
   sendInvite?: boolean;
+  /** Organisateur ou admin à l'origine de la création (confidentialité multi-organisateurs). */
+  createdByOrganizerId?: string;
 };
 
 export type CreateStaffResult = {
@@ -85,6 +87,9 @@ export async function createStaffAccount(input: CreateStaffInput): Promise<Creat
         name,
         initials: initialsFromName(name),
         role: prismaRole,
+        ...(input.createdByOrganizerId
+          ? { staffCreatedById: input.createdByOrganizerId }
+          : {}),
       },
       select: { id: true, email: true, name: true, role: true },
     });
@@ -116,6 +121,7 @@ export async function createStaffAccount(input: CreateStaffInput): Promise<Creat
       initials: initialsFromName(name),
       role: prismaRole,
       aiCredits: 0,
+      staffCreatedById: input.createdByOrganizerId ?? null,
     },
     select: { id: true, email: true, name: true, role: true },
   });

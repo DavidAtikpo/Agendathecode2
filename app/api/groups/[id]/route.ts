@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/app/lib/prisma';
 import { getSessionUserId } from '@/app/lib/auth';
+import { getAuthenticatedSessionUser } from '@/app/lib/session-user';
 import { groupsVisibleToUser } from '@/app/lib/group-access';
 import { assertGroupMembersAllowed } from '@/app/lib/group-assign';
 import { GROUP_WITH_MEMBERS_INCLUDE, serializeGroup } from '@/app/lib/group-serialize';
@@ -8,14 +9,14 @@ import { GROUP_WITH_MEMBERS_INCLUDE, serializeGroup } from '@/app/lib/group-seri
 type Ctx = { params: Promise<{ id: string }> };
 
 export async function GET(_: Request, ctx: Ctx) {
-  const sessionId = await getSessionUserId();
-  if (!sessionId) {
+  const sessionUser = await getAuthenticatedSessionUser();
+  if (!sessionUser) {
     return NextResponse.json({ error: 'Non autorisé' }, { status: 401 });
   }
 
   const { id } = await ctx.params;
   const group = await prisma.group.findFirst({
-    where: { id, ...groupsVisibleToUser(sessionId) },
+    where: { id, ...groupsVisibleToUser(sessionUser.id, sessionUser.role) },
     include: GROUP_WITH_MEMBERS_INCLUDE,
   });
   if (!group) {

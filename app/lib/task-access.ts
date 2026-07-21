@@ -1,11 +1,31 @@
 import type { Prisma } from '@prisma/client';
+import { normalizeAppUserRole } from '@/app/lib/user-roles';
 
 /**
  * Tâches visibles :
  * - sans groupe : créées par l'utilisateur ou assignées à lui ;
- * - avec groupe : uniquement si l'utilisateur est membre du groupe (pas via assignation seule).
+ * - avec groupe : membres du groupe (utilisateur standard) ;
+ * - organisateur : uniquement ses tâches perso + tâches des groupes qu'il a créés (pas les groupes d'autres équipes).
  */
-export function tasksVisibleToUser(sessionId: string): Prisma.TaskWhereInput {
+export function tasksVisibleToUser(sessionId: string, role?: unknown): Prisma.TaskWhereInput {
+  if (normalizeAppUserRole(role) === 'organizer') {
+    return {
+      OR: [
+        {
+          groupId: null,
+          OR: [
+            { createdById: sessionId },
+            { assignees: { some: { userId: sessionId } } },
+          ],
+        },
+        {
+          groupId: { not: null },
+          group: { createdById: sessionId },
+        },
+      ],
+    };
+  }
+
   return {
     OR: [
       {

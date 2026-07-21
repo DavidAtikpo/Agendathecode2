@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/app/lib/prisma';
-import { getSessionUserId } from '@/app/lib/auth';
+import { getAuthenticatedSessionUser } from '@/app/lib/session-user';
 import { assigneeIdsEqual, parseAssigneeIdsFromBody, resolveAssignees } from '@/app/lib/task-assign';
 import { resolveGroupAssignees } from '@/app/lib/group-assign';
 import { notifyGroupAboutTask } from '@/app/lib/group-notify';
@@ -13,16 +13,17 @@ import { TaskStatus, TaskPriority } from '@prisma/client';
 type Ctx = { params: Promise<{ id: string }> };
 
 export async function PATCH(request: Request, ctx: Ctx) {
-  const sessionId = await getSessionUserId();
-  if (!sessionId) {
+  const sessionUser = await getAuthenticatedSessionUser();
+  if (!sessionUser) {
     return NextResponse.json({ error: 'Non autorisé' }, { status: 401 });
   }
+  const sessionId = sessionUser.id;
 
   const { id } = await ctx.params;
   const data = await request.json();
 
   const existing = await prisma.task.findFirst({
-    where: { id, ...tasksVisibleToUser(sessionId) },
+    where: { id, ...tasksVisibleToUser(sessionId, sessionUser.role) },
     include: TASK_WITH_RELATIONS_INCLUDE,
   });
   if (!existing) {
@@ -231,14 +232,15 @@ export async function PATCH(request: Request, ctx: Ctx) {
 }
 
 export async function DELETE(_: Request, ctx: Ctx) {
-  const sessionId = await getSessionUserId();
-  if (!sessionId) {
+  const sessionUser = await getAuthenticatedSessionUser();
+  if (!sessionUser) {
     return NextResponse.json({ error: 'Non autorisé' }, { status: 401 });
   }
+  const sessionId = sessionUser.id;
 
   const { id } = await ctx.params;
   const task = await prisma.task.findFirst({
-    where: { id, ...tasksVisibleToUser(sessionId) },
+    where: { id, ...tasksVisibleToUser(sessionId, sessionUser.role) },
     include: { assignees: true, assets: { select: { id: true } } },
   });
   if (!task) {

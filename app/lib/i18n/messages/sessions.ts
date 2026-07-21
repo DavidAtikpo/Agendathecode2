@@ -37,6 +37,8 @@ export const sessionsMessages = {
       formateurPlaceholder: 'formateur@exemple.com',
       assessorEmail: 'Email assessor',
       assessorPlaceholder: 'assessor@exemple.com',
+      assignStaffNone: '— Aucun —',
+      assignStaffCurrent: '{email} (assigné actuellement)',
       propose: 'Proposer la session',
       creating: 'Création…',
       filterAria: 'Filtrer par statut',
@@ -78,7 +80,7 @@ export const sessionsMessages = {
       staffList: {
         title: 'Intervenants créés',
         subtitle:
-          'Tous les comptes formateur, assessor et auditeur — avec ou sans session proposée par vous.',
+          'Comptes formateur, assessor et auditeur créés par vous — visibles uniquement sur votre compte organisateur.',
         empty: 'Aucun intervenant pour le moment.',
         loading: 'Chargement…',
         refresh: 'Actualiser',
@@ -164,6 +166,8 @@ export const sessionsMessages = {
       formateurPlaceholder: 'trainer@example.com',
       assessorEmail: 'Assessor email',
       assessorPlaceholder: 'assessor@example.com',
+      assignStaffNone: '— None —',
+      assignStaffCurrent: '{email} (currently assigned)',
       propose: 'Propose session',
       creating: 'Creating…',
       filterAria: 'Filter by status',
@@ -204,7 +208,7 @@ export const sessionsMessages = {
       },
       staffList: {
         title: 'Created staff',
-        subtitle: 'All trainer, assessor and auditor accounts — with or without a session proposed by you.',
+        subtitle: 'Trainer, assessor and auditor accounts you created — visible only on your organizer account.',
         empty: 'No staff accounts yet.',
         loading: 'Loading…',
         refresh: 'Refresh',

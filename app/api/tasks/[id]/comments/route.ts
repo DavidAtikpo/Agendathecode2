@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/app/lib/prisma';
 import { getSessionUserId } from '@/app/lib/auth';
+import { getAuthenticatedSessionUser } from '@/app/lib/session-user';
 import { tasksVisibleToUser } from '@/app/lib/task-access';
 import { sendPushToUser } from '@/app/lib/firebase-admin';
 import { notifyGroupAboutTask } from '@/app/lib/group-notify';
@@ -29,13 +30,13 @@ function serializeComment(c: {
 
 /** GET — liste tous les commentaires d'une tâche */
 export async function GET(_req: NextRequest, ctx: Ctx) {
-  const userId = await getSessionUserId();
-  if (!userId) return NextResponse.json({ error: 'Non autorisé' }, { status: 401 });
+  const sessionUser = await getAuthenticatedSessionUser();
+  if (!sessionUser) return NextResponse.json({ error: 'Non autorisé' }, { status: 401 });
 
   const { id } = await ctx.params;
 
   const task = await prisma.task.findFirst({
-    where: { id, ...tasksVisibleToUser(userId) },
+    where: { id, ...tasksVisibleToUser(sessionUser.id, sessionUser.role) },
     select: { id: true },
   });
   if (!task) return NextResponse.json({ error: 'Tâche introuvable' }, { status: 404 });
@@ -53,13 +54,14 @@ export async function GET(_req: NextRequest, ctx: Ctx) {
 
 /** POST — ajouter un commentaire */
 export async function POST(req: NextRequest, ctx: Ctx) {
-  const userId = await getSessionUserId();
-  if (!userId) return NextResponse.json({ error: 'Non autorisé' }, { status: 401 });
+  const sessionUser = await getAuthenticatedSessionUser();
+  if (!sessionUser) return NextResponse.json({ error: 'Non autorisé' }, { status: 401 });
+  const userId = sessionUser.id;
 
   const { id } = await ctx.params;
 
   const task = await prisma.task.findFirst({
-    where: { id, ...tasksVisibleToUser(userId) },
+    where: { id, ...tasksVisibleToUser(userId, sessionUser.role) },
     select: {
       id: true,
       title: true,

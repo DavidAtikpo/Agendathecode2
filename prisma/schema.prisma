@@ -49,7 +49,12 @@ model User {
   trainingSessionsCreated TrainingSession[] @relation("TrainingSessionCreator")
   sessionAssignments   SessionAssignment[]
   passwordResetTokens  PasswordResetToken[]
+  /// Organisateur (ou admin) ayant créé ce compte formateur / assessor / auditeur
+  staffCreatedById     String?
+  staffCreatedBy       User?            @relation("StaffAccountCreator", fields: [staffCreatedById], references: [id], onDelete: SetNull)
+  staffAccountsCreated User[]           @relation("StaffAccountCreator")
 
+  @@index([staffCreatedById])
   @@schema("agenda")
 }
 

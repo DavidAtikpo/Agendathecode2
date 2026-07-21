@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/app/lib/prisma';
-import { getSessionUserId } from '@/app/lib/auth';
+import { getAuthenticatedSessionUser } from '@/app/lib/session-user';
 import { tasksVisibleToUser } from '@/app/lib/task-access';
 import { ensureCloudinary } from '@/app/lib/cloudinary';
 import { TASK_WITH_RELATIONS_INCLUDE, serializeTask } from '@/app/lib/task-serialize';
@@ -15,13 +15,13 @@ function toKind(v: unknown): TaskAssetKind {
 }
 
 export async function GET(_: Request, ctx: Ctx) {
-  const sessionId = await getSessionUserId();
-  if (!sessionId) {
+  const sessionUser = await getAuthenticatedSessionUser();
+  if (!sessionUser) {
     return NextResponse.json({ error: 'Non autorisé' }, { status: 401 });
   }
   const { id } = await ctx.params;
   const task = await prisma.task.findFirst({
-    where: { id, ...tasksVisibleToUser(sessionId) },
+    where: { id, ...tasksVisibleToUser(sessionUser.id, sessionUser.role) },
     include: TASK_WITH_RELATIONS_INCLUDE,
   });
   if (!task) return NextResponse.json({ error: 'Tâche introuvable' }, { status: 404 });
@@ -29,10 +29,11 @@ export async function GET(_: Request, ctx: Ctx) {
 }
 
 export async function POST(request: Request, ctx: Ctx) {
-  const sessionId = await getSessionUserId();
-  if (!sessionId) {
+  const sessionUser = await getAuthenticatedSessionUser();
+  if (!sessionUser) {
     return NextResponse.json({ error: 'Non autorisé' }, { status: 401 });
   }
+  const sessionId = sessionUser.id;
   const cloud = ensureCloudinary();
   if (!cloud) {
     return NextResponse.json({ error: 'Cloudinary non configuré' }, { status: 500 });
@@ -40,7 +41,7 @@ export async function POST(request: Request, ctx: Ctx) {
 
   const { id } = await ctx.params;
   const existing = await prisma.task.findFirst({
-    where: { id, ...tasksVisibleToUser(sessionId) },
+    where: { id, ...tasksVisibleToUser(sessionId, sessionUser.role) },
     include: { assignees: true },
   });
   if (!existing) return NextResponse.json({ error: 'Tâche introuvable' }, { status: 404 });

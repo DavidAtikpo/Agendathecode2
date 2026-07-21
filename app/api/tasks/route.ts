@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/app/lib/prisma';
 import { getSessionUserId } from '@/app/lib/auth';
+import { getAuthenticatedSessionUser } from '@/app/lib/session-user';
 import { resolveAssignees } from '@/app/lib/task-assign';
 import { resolveGroupAssignees } from '@/app/lib/group-assign';
 import { assertGroupMember } from '@/app/lib/group-access';
@@ -12,13 +13,13 @@ import { sendPushToUser } from '@/app/lib/firebase-admin';
 import { TaskStatus, TaskPriority } from '@prisma/client';
 
 export async function GET() {
-  const sessionId = await getSessionUserId();
-  if (!sessionId) {
+  const sessionUser = await getAuthenticatedSessionUser();
+  if (!sessionUser) {
     return NextResponse.json({ error: 'Non autorisé' }, { status: 401 });
   }
 
   const tasks = await prisma.task.findMany({
-    where: tasksVisibleToUser(sessionId),
+    where: tasksVisibleToUser(sessionUser.id, sessionUser.role),
     include: TASK_WITH_RELATIONS_INCLUDE,
     orderBy: { createdAt: 'desc' },
   });
