@@ -22,6 +22,7 @@ interface GroupsViewProps {
   onDeleteGroup: (groupId: string) => Promise<void>;
   onAddGroupMember: (groupId: string, userId: string) => Promise<void>;
   onRemoveGroupMember: (groupId: string, userId: string) => Promise<void>;
+  onLeaveGroup: (groupId: string) => Promise<void>;
   onUploadGroupLogo: (groupId: string, file: File) => Promise<Group>;
   onAdd: (data: Omit<Task, 'id' | 'createdAt' | 'updatedAt' | 'createdBy'>) => Task | void | Promise<Task | void>;
   onUpdate: (id: string, data: Partial<Task>) => void | Promise<void>;
@@ -85,6 +86,7 @@ export default function GroupsView({
   onDeleteGroup,
   onAddGroupMember,
   onRemoveGroupMember,
+  onLeaveGroup,
   onUploadGroupLogo,
   onAdd,
   onUpdate,
@@ -125,22 +127,29 @@ export default function GroupsView({
     [filteredGroups, selectedGroupId],
   );
 
-  const groupTasks = useMemo(
-    () => (selectedGroup ? tasks.filter(t => t.groupId === selectedGroup.id) : []),
-    [tasks, selectedGroup],
-  );
-
-  const assigneePickerUsers = useMemo(() => {
+  const groupTasks = useMemo(() => {
     if (!selectedGroup) return [];
+    const isMember = selectedGroup.members.some(m => m.id === currentUser.id);
+    if (!isMember) return [];
+    return tasks.filter(t => t.groupId === selectedGroup.id);
+  }, [tasks, selectedGroup, currentUser.id]);
+
+  const boardUsers = useMemo(() => {
+    if (!selectedGroup) return [currentUser];
     const seen = new Set<string>();
     const out: User[] = [];
     for (const m of selectedGroup.members) {
-      if (m.id !== currentUser.id && !seen.has(m.id)) {
+      if (!seen.has(m.id)) {
         seen.add(m.id);
         out.push(m);
       }
     }
     return out;
+  }, [selectedGroup, currentUser]);
+
+  const assigneePickerUsers = useMemo(() => {
+    if (!selectedGroup) return [];
+    return selectedGroup.members.filter(m => m.id !== currentUser.id);
   }, [selectedGroup, currentUser.id]);
 
   useEffect(() => {
@@ -211,6 +220,22 @@ export default function GroupsView({
     .join('\n');
 
   const isOwner = selectedGroup?.createdBy === currentUser.id;
+  const isMember = selectedGroup?.members.some(m => m.id === currentUser.id) ?? false;
+
+  const handleLeaveGroup = async () => {
+    if (!selectedGroup || !isMember || isOwner) return;
+    if (!confirm(t('groups.settingsPanel.leaveConfirm'))) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await onLeaveGroup(selectedGroup.id);
+      setShowSettings(false);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : t('common.errors.generic'));
+    } finally {
+      setBusy(false);
+    }
+  };
 
   const taskCountLabel =
     groupTasks.length === 1
@@ -520,6 +545,16 @@ export default function GroupsView({
                     ))}
                 </div>
               ) : null}
+              {!isOwner && isMember ? (
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={() => void handleLeaveGroup()}
+                  className="mt-2 text-xs text-amber-400 hover:text-amber-300"
+                >
+                  {t('groups.settingsPanel.leaveGroup')}
+                </button>
+              ) : null}
             </div>
           </div>
         ) : null}
@@ -537,7 +572,7 @@ export default function GroupsView({
         ) : selectedGroup ? (
           <TaskBoard
             tasks={tasks}
-            users={users}
+            users={boardUsers}
             groups={groups}
             currentUser={currentUser}
             onAdd={onAdd}

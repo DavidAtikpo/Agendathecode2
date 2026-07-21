@@ -29,6 +29,8 @@ export const groupsMessages = {
       delete: 'Supprimer',
       deleteConfirm: 'Supprimer ce groupe ?',
       members: 'Membres',
+      leaveGroup: 'Quitter ce groupe',
+      leaveConfirm: 'Quitter ce groupe ? Vous ne verrez plus ses tâches.',
     },
     empty: {
       loginRequired: 'Connectez-vous pour accéder aux groupes.',
@@ -70,6 +72,8 @@ export const groupsMessages = {
       delete: 'Delete',
       deleteConfirm: 'Delete this group?',
       members: 'Members',
+      leaveGroup: 'Leave this group',
+      leaveConfirm: 'Leave this group? You will no longer see its tasks.',
     },
     empty: {
       loginRequired: 'Sign in to access groups.',

@@ -1,6 +1,6 @@
 'use client';
 
-import { Fragment, useEffect, useMemo, useState } from 'react';
+import { Fragment, useCallback, useEffect, useMemo, useState } from 'react';
 import type { TrainingSession, User } from '../types';
 import {
   assignmentFor,
@@ -67,6 +67,27 @@ const ORGANIZER_FILTER_KEYS: OrganizerStatusFilter[] = [
   'confirmed',
 ];
 
+interface StaffListItem {
+  id: string;
+  email: string;
+  name: string;
+  role: 'formateur' | 'assessor' | 'auditeur';
+  active: boolean;
+}
+
+function staffProposalsOnOwned(staffId: string, owned: TrainingSession[]) {
+  return owned.flatMap(s =>
+    s.assignments
+      .filter(a => a.user.id === staffId)
+      .map(a => ({
+        sessionId: s.id,
+        sessionTitle: s.title,
+        role: a.role,
+        status: a.status,
+      })),
+  );
+}
+
 export default function SessionsOrganizerView({
   sessions,
   currentUser,
@@ -119,6 +140,28 @@ export default function SessionsOrganizerView({
   const [editCatalogPays, setEditCatalogPays] = useState<'France' | 'Togo'>('France');
   const [editCatalogAId, setEditCatalogAId] = useState('');
   const [editCatalogBId, setEditCatalogBId] = useState('');
+  const [staffList, setStaffList] = useState<StaffListItem[]>([]);
+  const [staffListLoading, setStaffListLoading] = useState(false);
+  const [showStaffList, setShowStaffList] = useState(true);
+
+  const fetchStaffList = useCallback(async () => {
+    if (!onCreateStaff) return;
+    setStaffListLoading(true);
+    try {
+      const res = await fetch('/api/staff', { credentials: 'include' });
+      if (!res.ok) return;
+      const data = await res.json();
+      if (Array.isArray(data)) setStaffList(data as StaffListItem[]);
+    } catch {
+      /* ignore */
+    } finally {
+      setStaffListLoading(false);
+    }
+  }, [onCreateStaff]);
+
+  useEffect(() => {
+    void fetchStaffList();
+  }, [fetchStaffList]);
 
   useEffect(() => {
     let cancelled = false;
@@ -220,6 +263,10 @@ export default function SessionsOrganizerView({
     [sessions, currentUser.id],
   );
 
+  const staffListSorted = useMemo(() => {
+    return [...staffList].sort((a, b) => a.name.localeCompare(b.name, locale));
+  }, [staffList, locale]);
+
   const filtered = useMemo(
     () => owned.filter(s => matchesOrganizerFilter(s, filter)),
     [owned, filter],
@@ -320,6 +367,7 @@ export default function SessionsOrganizerView({
       }
       await onCreateStaff(payload);
       setSuccess(t('sessions.organizer.staff.created'));
+      void fetchStaffList();
       setStaffFirstName('');
       setStaffLastName('');
       setStaffEmail('');
@@ -530,6 +578,118 @@ export default function SessionsOrganizerView({
       <div className={`min-h-0 flex-1 overflow-auto ${pad}`}>
         {error ? <p className="mb-3 text-sm text-red-400">{error}</p> : null}
         {success ? <p className="mb-3 text-sm text-emerald-400">{success}</p> : null}
+
+        {onCreateStaff ? (
+          <section className="mb-4 rounded-xl border border-slate-700/80 bg-slate-900/50">
+            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-800/80 px-3 py-2.5">
+              <div>
+                <h3 className="text-sm font-semibold text-slate-100">
+                  {t('sessions.organizer.staffList.title')}
+                </h3>
+                <p className="text-[11px] text-slate-500">{t('sessions.organizer.staffList.subtitle')}</p>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => void fetchStaffList()}
+                  disabled={staffListLoading}
+                  className="rounded-lg border border-slate-600 px-2.5 py-1 text-[11px] text-slate-300 hover:bg-slate-800 disabled:opacity-50"
+                >
+                  {staffListLoading
+                    ? t('sessions.organizer.staffList.refreshing')
+                    : t('sessions.organizer.staffList.refresh')}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowStaffList(v => !v)}
+                  className="rounded-lg border border-slate-600 px-2.5 py-1 text-[11px] text-slate-300 hover:bg-slate-800"
+                >
+                  {showStaffList ? t('sessions.organizer.staffList.hide') : t('sessions.organizer.staffList.show')}
+                </button>
+              </div>
+            </div>
+            {showStaffList ? (
+              staffListLoading && staffListSorted.length === 0 ? (
+                <p className="px-3 py-6 text-center text-xs text-slate-500">
+                  {t('sessions.organizer.staffList.loading')}
+                </p>
+              ) : staffListSorted.length === 0 ? (
+                <p className="px-3 py-6 text-center text-xs text-slate-500">
+                  {t('sessions.organizer.staffList.empty')}
+                </p>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full min-w-[640px] text-left text-xs">
+                    <thead>
+                      <tr className="border-b border-slate-800 text-[10px] font-semibold uppercase tracking-wider text-slate-500">
+                        <th className="px-3 py-2">{t('sessions.organizer.staffList.colName')}</th>
+                        <th className="px-3 py-2">{t('sessions.organizer.staffList.colEmail')}</th>
+                        <th className="px-3 py-2">{t('sessions.organizer.staffList.colRole')}</th>
+                        <th className="px-3 py-2">{t('sessions.organizer.staffList.colProposals')}</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {staffListSorted.map(member => {
+                        const proposals = staffProposalsOnOwned(member.id, owned);
+                        const roleKey = member.role as 'formateur' | 'assessor' | 'auditeur';
+                        const roleLabel =
+                          roleKey === 'auditeur'
+                            ? t('sessions.roles.auditeur')
+                            : sessionRoleLabel(roleKey, locale);
+                        return (
+                          <tr
+                            key={member.id}
+                            className="border-b border-slate-800/60 hover:bg-slate-800/30"
+                          >
+                            <td className="px-3 py-2.5 font-medium text-slate-100">
+                              {member.name}
+                              {!member.active ? (
+                                <span className="ml-1.5 text-[10px] text-red-400">
+                                  ({t('sessions.organizer.staffList.inactive')})
+                                </span>
+                              ) : null}
+                            </td>
+                            <td className="px-3 py-2.5 text-slate-400">{member.email}</td>
+                            <td className="px-3 py-2.5">
+                              <span className="rounded bg-slate-700/80 px-1.5 py-0.5 text-[10px] font-medium text-slate-300">
+                                {roleLabel}
+                              </span>
+                            </td>
+                            <td className="px-3 py-2.5 text-slate-400">
+                              {proposals.length === 0 ? (
+                                <span className="text-amber-400/90">
+                                  {t('sessions.organizer.staffList.noProposal')}
+                                </span>
+                              ) : (
+                                <ul className="space-y-1">
+                                  {proposals.map(p => (
+                                    <li key={`${p.sessionId}-${p.role}`}>
+                                      <span className="text-slate-300">{p.sessionTitle}</span>
+                                      <span className="text-slate-600"> · </span>
+                                      <span className="text-slate-500">
+                                        {sessionRoleLabel(p.role, locale)}
+                                      </span>
+                                      <span className="text-slate-600"> · </span>
+                                      <span
+                                        className={`rounded px-1 py-0.5 text-[10px] ${statusBadgeClass(p.status)}`}
+                                      >
+                                        {sessionStatusLabel(p.status, locale)}
+                                      </span>
+                                    </li>
+                                  ))}
+                                </ul>
+                              )}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )
+            ) : null}
+          </section>
+        ) : null}
 
         {filtered.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-16 text-center text-slate-500">

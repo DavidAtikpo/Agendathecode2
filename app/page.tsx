@@ -903,6 +903,18 @@ export default function HomePage() {
     setGroups(prev => prev.map(g => (g.id === groupId ? (data as Group) : g)));
   }, [tx]);
 
+  const leaveGroup = useCallback(async (groupId: string) => {
+    if (!currentUser) return;
+    const res = await fetch(`/api/groups/${groupId}/members/${currentUser.id}`, {
+      method: 'DELETE',
+      ...fetchOpts,
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error((data as { error?: string }).error ?? tx('common.status.error'));
+    setGroups(prev => prev.filter(g => g.id !== groupId));
+    setTasks(prev => prev.filter(t => t.groupId !== groupId));
+  }, [currentUser, tx]);
+
   const uploadGroupLogo = useCallback(async (groupId: string, file: File) => {
     const result = await uploadWithProgress<Group>(`/api/groups/${groupId}/logo`, file);
     if (!result.ok || !result.data) throw new Error(result.error ?? tx('common.upload.uploadFailed'));
@@ -1911,6 +1923,7 @@ export default function HomePage() {
                   onDeleteGroup={deleteGroup}
                   onAddGroupMember={addGroupMember}
                   onRemoveGroupMember={removeGroupMember}
+                  onLeaveGroup={leaveGroup}
                   onUploadGroupLogo={uploadGroupLogo}
                   onAdd={addTask}
                   onUpdate={updateTask}

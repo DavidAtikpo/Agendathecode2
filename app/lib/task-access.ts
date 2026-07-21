@@ -1,12 +1,24 @@
 import type { Prisma } from '@prisma/client';
 
-/** Tâches visibles : créées par l'utilisateur, assignées, ou dans un groupe dont il est membre. */
+/**
+ * Tâches visibles :
+ * - sans groupe : créées par l'utilisateur ou assignées à lui ;
+ * - avec groupe : uniquement si l'utilisateur est membre du groupe (pas via assignation seule).
+ */
 export function tasksVisibleToUser(sessionId: string): Prisma.TaskWhereInput {
   return {
     OR: [
-      { createdById: sessionId },
-      { assignees: { some: { userId: sessionId } } },
-      { group: { members: { some: { userId: sessionId } } } },
+      {
+        groupId: null,
+        OR: [
+          { createdById: sessionId },
+          { assignees: { some: { userId: sessionId } } },
+        ],
+      },
+      {
+        groupId: { not: null },
+        group: { members: { some: { userId: sessionId } } },
+      },
     ],
   };
 }
