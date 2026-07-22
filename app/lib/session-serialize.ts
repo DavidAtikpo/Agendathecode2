@@ -14,7 +14,7 @@ export const SESSION_WITH_ASSIGNMENTS_INCLUDE = {
         },
       },
     },
-    orderBy: { role: 'asc' as const },
+    orderBy: [{ role: 'asc' as const }, { createdAt: 'asc' as const }],
   },
   createdBy: {
     select: { id: true, name: true, email: true },

@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type { Note, Task, TaskStatus, TrainingSession } from '../types';
+import type { Note, SessionAssignmentRole, Task, TaskStatus, TrainingSession } from '../types';
 import { useI18n } from '@/app/lib/i18n';
 import {
   sessionRoleLabel,
@@ -261,7 +261,7 @@ interface PlanningViewProps {
   compactLayout?: boolean;
   onRespondSession?: (
     sessionId: string,
-    role: 'formateur' | 'assessor',
+    role: SessionAssignmentRole,
     status: 'accepted' | 'declined',
   ) => Promise<void>;
 }
@@ -288,7 +288,7 @@ function DetailPanel({
   currentUserId?: string;
   onRespondSession?: (
     sessionId: string,
-    role: 'formateur' | 'assessor',
+    role: SessionAssignmentRole,
     status: 'accepted' | 'declined',
   ) => Promise<void>;
   onClose: () => void;

@@ -24,6 +24,13 @@ export function formatSessionDate(iso: string, locale: AppLocale) {
   return d.toLocaleDateString(dateLocale, { day: 'numeric', month: 'long', year: 'numeric' });
 }
 
+export function assignmentsForRole(
+  session: TrainingSession,
+  role: SessionAssignmentRole,
+): SessionAssignmentView[] {
+  return session.assignments.filter(a => a.role === role);
+}
+
 export function assignmentFor(
   session: TrainingSession,
   role: SessionAssignmentRole,

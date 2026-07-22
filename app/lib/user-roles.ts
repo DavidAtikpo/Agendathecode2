@@ -45,10 +45,16 @@ export function canManageTrainingSessions(role: unknown): boolean {
   return r === 'organizer' || r === 'admin';
 }
 
+/** Catalogue « Dates de sessions » (France / Togo) — organisateurs et admins. */
+export function canManageSessionCatalog(role: unknown): boolean {
+  const r = normalizeAppUserRole(role);
+  return r === 'organizer' || r === 'admin';
+}
+
 /** Vue « Mes propositions » (réponses formateur / assessor). */
 export function canViewSessionProposals(role: unknown): boolean {
   const r = normalizeAppUserRole(role);
-  return r === 'formateur' || r === 'assessor' || r === 'admin';
+  return r === 'formateur' || r === 'assessor' || r === 'auditeur' || r === 'admin';
 }
 
 const i18nMessages = messages as unknown as Parameters<typeof t>[0];

@@ -56,8 +56,10 @@ interface SidebarProps {
   lastDataUpdatedAt?: string | null;
   /** Tiroir mobile : menu toujours large (pas de mode réduit). */
   preferExpanded?: boolean;
-  /** Compte Pro : afficher la gestion des sessions créées. */
+  /** Gestion des sessions créées (organisateur / admin). */
   showSessionsOrganizer?: boolean;
+  /** Catalogue public des dates de sessions — réservé organisateur / admin. */
+  showSessionDates?: boolean;
   /** Propositions formateur / assessor reçues. */
   showSessionsAssignee?: boolean;
   /** Badge « en attente » sur Mes propositions. */
@@ -97,6 +99,7 @@ export default function Sidebar({
   lastDataUpdatedAt = null,
   preferExpanded = false,
   showSessionsOrganizer = false,
+  showSessionDates = false,
   showSessionsAssignee = false,
   sessionPendingCount = 0,
   showGroups = false,
@@ -293,7 +296,7 @@ export default function Sidebar({
               </button>
             ) : null}
 
-            {(showSessionsOrganizer || showSessionsAssignee) && expanded ? (
+            {(showSessionsOrganizer || showSessionsAssignee || showSessionDates) && expanded ? (
               <SectionLabel>{t('sidebar.sections.training')}</SectionLabel>
             ) : null}
 
@@ -324,7 +327,7 @@ export default function Sidebar({
               </button>
             ) : null}
 
-            {showSessionsOrganizer ? (
+            {showSessionDates ? (
               <button
                 type="button"
                 onClick={() => {

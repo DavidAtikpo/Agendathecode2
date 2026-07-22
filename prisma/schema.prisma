@@ -352,15 +352,17 @@ model SessionAssignment {
   session     TrainingSession         @relation(fields: [sessionId], references: [id], onDelete: Cascade)
   user        User                    @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  @@unique([sessionId, role])
+  @@unique([sessionId, userId])
   @@index([userId])
   @@index([sessionId])
+  @@index([sessionId, role])
   @@schema("agenda")
 }
 
 enum SessionAssignmentRole {
   formateur
   assessor
+  auditeur
 
   @@schema("agenda")
 }

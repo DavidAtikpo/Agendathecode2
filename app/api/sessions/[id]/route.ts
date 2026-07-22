@@ -2,16 +2,17 @@ import { NextResponse } from 'next/server';
 import { prisma } from '@/app/lib/prisma';
 import { getSessionUserId } from '@/app/lib/auth';
 import { isSessionCreator, sessionsVisibleToUser } from '@/app/lib/session-access';
-import { resolveUserIdByEmailForAssignment } from '@/app/lib/session-assign';
-import { sessionRoleMismatchMessage } from '@/app/lib/user-roles';
-import { assertOrganizerOwnsStaffUser } from '@/app/lib/staff-access';
+import {
+  parseRoleEmailMap,
+  syncSessionAssignments,
+} from '@/app/lib/session-assignment-batch';
 import { buildSessionTitle, parseDateOnly } from '@/app/lib/session-title';
 import {
   SESSION_WITH_ASSIGNMENTS_INCLUDE,
   serializeTrainingSession,
 } from '@/app/lib/session-serialize';
 import { sendPushToUser } from '@/app/lib/firebase-admin';
-import { SessionAssignmentRole, SessionAssignmentStatus } from '@prisma/client';
+import { SessionAssignmentStatus } from '@prisma/client';
 
 type Ctx = { params: Promise<{ id: string }> };
 
@@ -110,79 +111,49 @@ export async function PATCH(request: Request, ctx: Ctx) {
   });
 
   const creatorUser = await prisma.user.findUnique({ where: { id: organizerId }, select: { name: true, role: true } });
-  const creator = creatorUser;
 
-  async function upsertRole(role: SessionAssignmentRole, emailKey: 'formateurEmail' | 'assessorEmail') {
-    if (body[emailKey] === undefined) return;
-    const email = body[emailKey];
-    if (email === null || email === '') {
-      await prisma.sessionAssignment.deleteMany({ where: { sessionId: id, role } });
-      return;
-    }
-    let targetId: string;
-    try {
-      targetId = await resolveUserIdByEmailForAssignment(email, role);
-    } catch (e: unknown) {
-      if (e instanceof Error && e.message === 'USER_NOT_FOUND') {
-        throw new Error('USER_NOT_FOUND');
-      }
-      if (e instanceof Error && e.message === 'ROLE_MISMATCH') {
-        throw new Error(`ROLE_MISMATCH:${role}`);
-      }
-      throw e;
-    }
-    if (targetId === organizerId) {
-      throw new Error('SELF_ASSIGN');
-    }
-
-    await assertOrganizerOwnsStaffUser(organizerId, targetId, creatorUser?.role ?? 'user');
-
-    const prev = priorAssignments.find(a => a.role === role);
-    const isNewPerson = !prev || prev.userId !== targetId;
-    const resetStatus =
-      datesChanged || isNewPerson || prev?.status === SessionAssignmentStatus.declined;
-
-    await prisma.sessionAssignment.upsert({
-      where: { sessionId_role: { sessionId: id, role } },
-      create: {
-        sessionId: id,
-        userId: targetId,
-        role,
-        status: SessionAssignmentStatus.pending,
-      },
-      update: {
-        userId: targetId,
-        ...(resetStatus
-          ? { status: SessionAssignmentStatus.pending, respondedAt: null, acceptedOption: null }
-          : {}),
-      },
-    });
-
-    if (isNewPerson || resetStatus) {
-      await sendPushToUser(targetId, {
-        title: datesChanged ? '📅 Session modifiée' : '📅 Proposition de session',
-        body: `${creator?.name ?? 'Organisateur'} : ${title}`,
-        data: { type: 'session_proposal', sessionId: id, role },
-      });
-    }
-  }
+  const roleEmails = parseRoleEmailMap(body);
+  const hasAssignmentPatch =
+    roleEmails.formateur !== undefined ||
+    roleEmails.assessor !== undefined ||
+    roleEmails.auditeur !== undefined;
 
   try {
-    await upsertRole(SessionAssignmentRole.formateur, 'formateurEmail');
-    await upsertRole(SessionAssignmentRole.assessor, 'assessorEmail');
+    if (hasAssignmentPatch) {
+      await syncSessionAssignments(id, roleEmails, organizerId, creatorUser?.role ?? 'user', {
+        datesChanged,
+        priorAssignments: priorAssignments.map(a => ({
+          id: a.id,
+          userId: a.userId,
+          role: a.role,
+          status: a.status,
+        })),
+        notify: async (targetId, role, isNew) => {
+          if (isNew || datesChanged) {
+            await sendPushToUser(targetId, {
+              title: datesChanged ? '📅 Session modifiée' : '📅 Proposition de session',
+              body: `${creatorUser?.name ?? 'Organisateur'} : ${title}`,
+              data: { type: 'session_proposal', sessionId: id, role },
+            });
+          }
+        },
+      });
+    }
   } catch (e: unknown) {
     if (e instanceof Error && e.message === 'USER_NOT_FOUND') {
       return NextResponse.json(
         { error: 'Aucun compte Agenda avec cet email.' },
-        { status: 404 }
+        { status: 404 },
       );
     }
     if (e instanceof Error && e.message === 'SELF_ASSIGN') {
-      return NextResponse.json({ error: 'Vous ne pouvez pas vous assigner ce rôle.' }, { status: 400 });
+      return NextResponse.json({ error: 'Vous ne pouvez pas vous inclure dans la proposition.' }, { status: 400 });
     }
-    if (e instanceof Error && e.message?.startsWith('ROLE_MISMATCH:')) {
-      const failed = e.message.split(':')[1] as 'formateur' | 'assessor';
-      return NextResponse.json({ error: sessionRoleMismatchMessage(failed) }, { status: 400 });
+    if (e instanceof Error && e.message === 'DUPLICATE_USER') {
+      return NextResponse.json(
+        { error: 'Chaque intervenant ne peut apparaître qu\'une seule fois sur la session.' },
+        { status: 400 },
+      );
     }
     if (e instanceof Error && e.message === 'STAFF_NOT_OWNED') {
       return NextResponse.json(
@@ -190,10 +161,13 @@ export async function PATCH(request: Request, ctx: Ctx) {
         { status: 403 },
       );
     }
+    if (e instanceof Error && e.message === 'ROLE_MISMATCH') {
+      return NextResponse.json({ error: 'Rôle du compte incompatible avec l\'assignation.' }, { status: 400 });
+    }
     throw e;
   }
 
-  if (datesChanged) {
+  if (datesChanged && !hasAssignmentPatch) {
     for (const a of priorAssignments) {
       if (a.status === SessionAssignmentStatus.accepted) {
         await prisma.sessionAssignment.update({

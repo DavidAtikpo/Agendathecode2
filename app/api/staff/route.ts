@@ -41,6 +41,7 @@ async function requireOrganizerOrAdmin() {
 function staffRoleToAssignmentRole(role: StaffRole): SessionAssignmentRole | null {
   if (role === 'formateur') return SessionAssignmentRole.formateur;
   if (role === 'assessor') return SessionAssignmentRole.assessor;
+  if (role === 'auditeur') return SessionAssignmentRole.auditeur;
   return null;
 }
 

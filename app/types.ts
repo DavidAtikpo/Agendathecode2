@@ -89,7 +89,7 @@ export interface Group {
   memberCount: number;
 }
 
-export type SessionAssignmentRole = 'formateur' | 'assessor';
+export type SessionAssignmentRole = 'formateur' | 'assessor' | 'auditeur';
 export type SessionAssignmentStatus = 'pending' | 'accepted' | 'declined';
 
 export interface SessionAssignmentView {

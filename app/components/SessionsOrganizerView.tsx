@@ -3,7 +3,7 @@
 import { Fragment, useCallback, useEffect, useMemo, useState } from 'react';
 import type { TrainingSession, User } from '../types';
 import {
-  assignmentFor,
+  assignmentsForRole,
   formatSessionDate,
   matchesOrganizerFilter,
   sessionConfirmLabel,
@@ -12,6 +12,7 @@ import {
   statusBadgeClass,
   type OrganizerStatusFilter,
 } from '../lib/session-labels';
+import type { SessionAssignmentRole, SessionAssignmentView } from '../types';
 import { useI18n } from '@/app/lib/i18n';
 import { CatalogSessionPicker, type CatalogSessionOption } from './CatalogSessionPicker';
 import type { ParsedCatalogDates } from '@/app/lib/parse-catalog-dates';
@@ -27,8 +28,9 @@ interface SessionsOrganizerViewProps {
     altStartDate?: string | null;
     altEndDate?: string | null;
     examDate?: string | null;
-    formateurEmail?: string;
-    assessorEmail?: string;
+    formateurEmails?: string[];
+    assessorEmails?: string[];
+    auditeurEmails?: string[];
   }) => Promise<TrainingSession>;
   onUpdateSession: (
     sessionId: string,
@@ -38,11 +40,14 @@ interface SessionsOrganizerViewProps {
       altStartDate?: string | null;
       altEndDate?: string | null;
       examDate?: string | null;
-      formateurEmail?: string | null;
-      assessorEmail?: string | null;
+      formateurEmails?: string[];
+      assessorEmails?: string[];
+      auditeurEmails?: string[];
     },
   ) => Promise<void>;
   onDeleteSession: (sessionId: string) => Promise<void>;
+  /** Ouvre la vue « Dates de sessions » (catalogue). */
+  onOpenSessionDates?: () => void;
   onCreateStaff?: (payload: {
     firstName: string;
     lastName: string;
@@ -67,43 +72,98 @@ const ORGANIZER_FILTER_KEYS: OrganizerStatusFilter[] = [
   'confirmed',
 ];
 
-function staffForRole(staffList: StaffListItem[], role: 'formateur' | 'assessor') {
+type StaffPickRole = 'formateur' | 'assessor' | 'auditeur';
+
+function staffForRole(staffList: StaffListItem[], role: StaffPickRole) {
   return staffList.filter(s => s.role === role && s.active);
 }
 
-function StaffAssignSelect({
-  value,
+function StaffMultiSelect({
+  selectedEmails,
   onChange,
   role,
   staffList,
-  noneLabel,
-  currentFallbackLabel,
+  label,
+  emptyHint,
 }: {
-  value: string;
-  onChange: (email: string) => void;
-  role: 'formateur' | 'assessor';
+  selectedEmails: string[];
+  onChange: (emails: string[]) => void;
+  role: StaffPickRole;
   staffList: StaffListItem[];
-  noneLabel: string;
-  currentFallbackLabel: string;
+  label: string;
+  emptyHint: string;
 }) {
   const options = staffForRole(staffList, role);
-  const valueInList = !value || options.some(o => o.email === value);
+  const toggle = (email: string) => {
+    if (selectedEmails.includes(email)) {
+      onChange(selectedEmails.filter(e => e !== email));
+    } else {
+      onChange([...selectedEmails, email]);
+    }
+  };
   return (
-    <select
-      value={value}
-      onChange={e => onChange(e.target.value)}
-      className="mt-1 w-full rounded-lg border border-slate-600 bg-slate-700 px-2 py-1.5 text-sm text-slate-100"
-    >
-      <option value="">{noneLabel}</option>
-      {!valueInList && value ? (
-        <option value={value}>{currentFallbackLabel.replace('{email}', value)}</option>
+    <div className="text-xs text-slate-400">
+      <span className="font-medium text-slate-300">{label}</span>
+      <div className="mt-1 max-h-36 overflow-y-auto rounded-lg border border-slate-600 bg-slate-800/80 p-1">
+        {options.length === 0 ? (
+          <p className="px-2 py-2 text-[11px] text-slate-500">{emptyHint}</p>
+        ) : (
+          options.map(s => (
+            <label
+              key={s.id}
+              className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 hover:bg-slate-700/60"
+            >
+              <input
+                type="checkbox"
+                checked={selectedEmails.includes(s.email)}
+                onChange={() => toggle(s.email)}
+                className="rounded border-slate-500"
+              />
+              <span className="min-w-0 truncate text-slate-200">
+                {s.name} <span className="text-slate-500">({s.email})</span>
+              </span>
+            </label>
+          ))
+        )}
+      </div>
+      {selectedEmails.length > 0 ? (
+        <p className="mt-1 text-[10px] text-teal-400/90">
+          {selectedEmails.length} sélectionné(s)
+        </p>
       ) : null}
-      {options.map(s => (
-        <option key={s.id} value={s.email}>
-          {s.name} — {s.email}
-        </option>
+    </div>
+  );
+}
+
+function AssigneeStack({
+  assignees,
+  locale,
+}: {
+  assignees: SessionAssignmentView[];
+  locale: string;
+}) {
+  if (assignees.length === 0) {
+    return <span className="text-xs text-slate-600">—</span>;
+  }
+  return (
+    <ul className="space-y-2">
+      {assignees.map(a => (
+        <li key={a.id} className="flex items-center gap-2">
+          <div
+            className={`${styles.userAvatar} collab-avatar-${a.user.id}`}
+            style={{ ['--avatar-color' as string]: a.user.color }}
+          >
+            {a.user.initials}
+          </div>
+          <div className="min-w-0">
+            <p className="truncate text-xs text-slate-200">{a.user.name}</p>
+            <span className={`inline-block rounded px-1.5 py-0.5 text-[10px] ${statusBadgeClass(a.status)}`}>
+              {sessionStatusLabel(a.status, locale as 'fr' | 'en')}
+            </span>
+          </div>
+        </li>
       ))}
-    </select>
+    </ul>
   );
 }
 
@@ -135,6 +195,7 @@ export default function SessionsOrganizerView({
   onCreateSession,
   onUpdateSession,
   onDeleteSession,
+  onOpenSessionDates,
   onCreateStaff,
 }: SessionsOrganizerViewProps) {
   const { locale, t } = useI18n();
@@ -146,8 +207,9 @@ export default function SessionsOrganizerView({
   const [altStartDate, setAltStartDate] = useState('');
   const [altEndDate, setAltEndDate] = useState('');
   const [examDate, setExamDate] = useState('');
-  const [formateurEmail, setFormateurEmail] = useState('');
-  const [assessorEmail, setAssessorEmail] = useState('');
+  const [formateurEmails, setFormateurEmails] = useState<string[]>([]);
+  const [assessorEmails, setAssessorEmails] = useState<string[]>([]);
+  const [auditeurEmails, setAuditeurEmails] = useState<string[]>([]);
   const [staffFirstName, setStaffFirstName] = useState('');
   const [staffLastName, setStaffLastName] = useState('');
   const [staffEmail, setStaffEmail] = useState('');
@@ -168,8 +230,9 @@ export default function SessionsOrganizerView({
   const [editAltStart, setEditAltStart] = useState('');
   const [editAltEnd, setEditAltEnd] = useState('');
   const [editExam, setEditExam] = useState('');
-  const [editFormateur, setEditFormateur] = useState('');
-  const [editAssessor, setEditAssessor] = useState('');
+  const [editFormateurEmails, setEditFormateurEmails] = useState<string[]>([]);
+  const [editAssessorEmails, setEditAssessorEmails] = useState<string[]>([]);
+  const [editAuditeurEmails, setEditAuditeurEmails] = useState<string[]>([]);
   const [catalogOptions, setCatalogOptions] = useState<CatalogSessionOption[]>([]);
   const [catalogPays, setCatalogPays] = useState<'France' | 'Togo'>('France');
   const [catalogAId, setCatalogAId] = useState('');
@@ -329,8 +392,9 @@ export default function SessionsOrganizerView({
     setEditAltStart(s.altStartDate ?? '');
     setEditAltEnd(s.altEndDate ?? '');
     setEditExam(s.examDate ?? '');
-    setEditFormateur(assignmentFor(s, 'formateur')?.user.email ?? '');
-    setEditAssessor(assignmentFor(s, 'assessor')?.user.email ?? '');
+    setEditFormateurEmails(assignmentsForRole(s, 'formateur').map(a => a.user.email));
+    setEditAssessorEmails(assignmentsForRole(s, 'assessor').map(a => a.user.email));
+    setEditAuditeurEmails(assignmentsForRole(s, 'auditeur').map(a => a.user.email));
     setEditCatalogAId('');
     setEditCatalogBId('');
     setError(null);
@@ -362,16 +426,18 @@ export default function SessionsOrganizerView({
         altStartDate: altStartDate.trim() || null,
         altEndDate: altEndDate.trim() || null,
         examDate: examDate.trim() || null,
-        formateurEmail: formateurEmail.trim() || undefined,
-        assessorEmail: assessorEmail.trim() || undefined,
+        formateurEmails,
+        assessorEmails,
+        auditeurEmails,
       });
       setStartDate('');
       setEndDate('');
       setAltStartDate('');
       setAltEndDate('');
       setExamDate('');
-      setFormateurEmail('');
-      setAssessorEmail('');
+      setFormateurEmails([]);
+      setAssessorEmails([]);
+      setAuditeurEmails([]);
       resetCreateCatalog();
       setShowCreate(false);
     } catch (err: unknown) {
@@ -437,8 +503,9 @@ export default function SessionsOrganizerView({
         altStartDate: editAltStart.trim() || null,
         altEndDate: editAltEnd.trim() || null,
         examDate: editExam.trim() || null,
-        formateurEmail: editFormateur.trim() || null,
-        assessorEmail: editAssessor.trim() || null,
+        formateurEmails: editFormateurEmails,
+        assessorEmails: editAssessorEmails,
+        auditeurEmails: editAuditeurEmails,
       });
       setEditId(null);
     } catch (err: unknown) {
@@ -469,6 +536,15 @@ export default function SessionsOrganizerView({
           >
             {showCreate ? t('sessions.organizer.closeForm') : t('sessions.organizer.newSession')}
           </button>
+          {onOpenSessionDates ? (
+            <button
+              type="button"
+              onClick={onOpenSessionDates}
+              className="rounded-lg border border-violet-500/40 bg-violet-500/10 px-4 py-2 text-sm font-medium text-violet-200 hover:bg-violet-500/20"
+            >
+              {t('sessions.organizer.openSessionDates')}
+            </button>
+          ) : null}
           {onCreateStaff ? (
             <button
               type="button"
@@ -572,29 +648,32 @@ export default function SessionsOrganizerView({
                 applyAltDates(parsed);
               }}
             />
-            <div className="grid gap-3 sm:grid-cols-2">
-              <label className="block text-xs text-slate-400 sm:col-span-1">
-                {t('sessions.organizer.formateurEmail')}
-                <StaffAssignSelect
-                  value={formateurEmail}
-                  onChange={setFormateurEmail}
-                  role="formateur"
-                  staffList={staffList}
-                  noneLabel={t('sessions.organizer.assignStaffNone')}
-                  currentFallbackLabel={t('sessions.organizer.assignStaffCurrent')}
-                />
-              </label>
-              <label className="block text-xs text-slate-400 sm:col-span-1">
-                {t('sessions.organizer.assessorEmail')}
-                <StaffAssignSelect
-                  value={assessorEmail}
-                  onChange={setAssessorEmail}
-                  role="assessor"
-                  staffList={staffList}
-                  noneLabel={t('sessions.organizer.assignStaffNone')}
-                  currentFallbackLabel={t('sessions.organizer.assignStaffCurrent')}
-                />
-              </label>
+            <p className="text-xs text-slate-500">{t('sessions.organizer.multiInviteHint')}</p>
+            <div className="grid gap-3 lg:grid-cols-3">
+              <StaffMultiSelect
+                label={t('sessions.organizer.formateurEmail')}
+                selectedEmails={formateurEmails}
+                onChange={setFormateurEmails}
+                role="formateur"
+                staffList={staffList}
+                emptyHint={t('sessions.organizer.staffList.empty')}
+              />
+              <StaffMultiSelect
+                label={t('sessions.organizer.assessorEmail')}
+                selectedEmails={assessorEmails}
+                onChange={setAssessorEmails}
+                role="assessor"
+                staffList={staffList}
+                emptyHint={t('sessions.organizer.staffList.empty')}
+              />
+              <StaffMultiSelect
+                label={t('sessions.roles.auditeur')}
+                selectedEmails={auditeurEmails}
+                onChange={setAuditeurEmails}
+                role="auditeur"
+                staffList={staffList}
+                emptyHint={t('sessions.organizer.staffList.empty')}
+              />
             </div>
             <button type="submit" disabled={busy || !startDate || !endDate}
               className="rounded-lg bg-teal-600 px-4 py-2 text-sm font-medium text-white hover:bg-teal-500 disabled:opacity-50">
@@ -747,21 +826,23 @@ export default function SessionsOrganizerView({
           </div>
         ) : (
           <div className="overflow-x-auto rounded-xl border border-slate-700/80">
-            <table className="w-full min-w-[720px] border-collapse text-left text-sm">
+            <table className="w-full min-w-[880px] border-collapse text-left text-sm">
               <thead>
                 <tr className="border-b border-slate-700 bg-slate-800/80 text-[10px] font-semibold uppercase tracking-wider text-slate-500">
                   <th className="px-3 py-2.5">{t('sessions.organizer.table.session')}</th>
                   <th className="px-3 py-2.5">{t('sessions.organizer.table.period')}</th>
                   <th className="px-3 py-2.5">{t('sessions.organizer.table.formateur')}</th>
                   <th className="px-3 py-2.5">{t('sessions.organizer.table.assessor')}</th>
+                  <th className="px-3 py-2.5">{t('sessions.organizer.table.auditeur')}</th>
                   <th className="px-3 py-2.5">{t('sessions.organizer.table.globalState')}</th>
                   <th className="px-3 py-2.5 w-24" />
                 </tr>
               </thead>
               <tbody>
                 {filtered.map(s => {
-                  const formateur = assignmentFor(s, 'formateur');
-                  const assessor = assignmentFor(s, 'assessor');
+                  const formateurs = assignmentsForRole(s, 'formateur');
+                  const assessors = assignmentsForRole(s, 'assessor');
+                  const auditeurs = assignmentsForRole(s, 'auditeur');
                   const editing = editId === s.id;
                   return (
                     <Fragment key={s.id}>
@@ -775,39 +856,14 @@ export default function SessionsOrganizerView({
                             </span>
                           ) : null}
                         </td>
-                        <td className="px-3 py-3">
-                          {formateur ? (
-                            <div className="flex items-center gap-2">
-                              <div className={`${styles.userAvatar} collab-avatar-${formateur.user.id}`} style={{ ['--avatar-color' as string]: formateur.user.color }}>
-                                {formateur.user.initials}
-                              </div>
-                              <div className="min-w-0">
-                                <p className="truncate text-xs text-slate-200">{formateur.user.name}</p>
-                                <span className={`inline-block rounded px-1.5 py-0.5 text-[10px] ${statusBadgeClass(formateur.status)}`}>
-                                  {sessionStatusLabel(formateur.status, locale)}
-                                </span>
-                              </div>
-                            </div>
-                          ) : (
-                            <span className="text-xs text-slate-600">{t('common.labels.none')}</span>
-                          )}
+                        <td className="px-3 py-3 align-top">
+                          <AssigneeStack assignees={formateurs} locale={locale} />
                         </td>
-                        <td className="px-3 py-3">
-                          {assessor ? (
-                            <div className="flex items-center gap-2">
-                              <div className={`${styles.userAvatar} collab-avatar-${assessor.user.id}`} style={{ ['--avatar-color' as string]: assessor.user.color }}>
-                                {assessor.user.initials}
-                              </div>
-                              <div className="min-w-0">
-                                <p className="truncate text-xs text-slate-200">{assessor.user.name}</p>
-                                <span className={`inline-block rounded px-1.5 py-0.5 text-[10px] ${statusBadgeClass(assessor.status)}`}>
-                                  {sessionStatusLabel(assessor.status, locale)}
-                                </span>
-                              </div>
-                            </div>
-                          ) : (
-                            <span className="text-xs text-slate-600">{t('common.labels.none')}</span>
-                          )}
+                        <td className="px-3 py-3 align-top">
+                          <AssigneeStack assignees={assessors} locale={locale} />
+                        </td>
+                        <td className="px-3 py-3 align-top">
+                          <AssigneeStack assignees={auditeurs} locale={locale} />
                         </td>
                         <td className="px-3 py-3">
                           <span className="rounded bg-slate-700/60 px-2 py-0.5 text-[10px] font-medium text-slate-300">
@@ -826,7 +882,7 @@ export default function SessionsOrganizerView({
                       </tr>
                       {editing ? (
                         <tr className="border-b border-slate-800 bg-slate-800/40">
-                          <td colSpan={6} className="px-3 py-4">
+                          <td colSpan={7} className="px-3 py-4">
                             <CatalogSessionPicker
                               options={catalogOptions}
                               pays={editCatalogPays}
@@ -848,29 +904,31 @@ export default function SessionsOrganizerView({
                               }}
                               compact
                             />
-                            <div className="mt-3 grid gap-3 sm:grid-cols-2">
-                              <label className="text-xs text-slate-400">
-                                {sessionRoleLabel('formateur', locale)}
-                                <StaffAssignSelect
-                                  value={editFormateur}
-                                  onChange={setEditFormateur}
-                                  role="formateur"
-                                  staffList={staffList}
-                                  noneLabel={t('sessions.organizer.assignStaffNone')}
-                                  currentFallbackLabel={t('sessions.organizer.assignStaffCurrent')}
-                                />
-                              </label>
-                              <label className="text-xs text-slate-400">
-                                {sessionRoleLabel('assessor', locale)}
-                                <StaffAssignSelect
-                                  value={editAssessor}
-                                  onChange={setEditAssessor}
-                                  role="assessor"
-                                  staffList={staffList}
-                                  noneLabel={t('sessions.organizer.assignStaffNone')}
-                                  currentFallbackLabel={t('sessions.organizer.assignStaffCurrent')}
-                                />
-                              </label>
+                            <div className="mt-3 grid gap-3 lg:grid-cols-3">
+                              <StaffMultiSelect
+                                label={sessionRoleLabel('formateur', locale)}
+                                selectedEmails={editFormateurEmails}
+                                onChange={setEditFormateurEmails}
+                                role="formateur"
+                                staffList={staffList}
+                                emptyHint={t('sessions.organizer.staffList.empty')}
+                              />
+                              <StaffMultiSelect
+                                label={sessionRoleLabel('assessor', locale)}
+                                selectedEmails={editAssessorEmails}
+                                onChange={setEditAssessorEmails}
+                                role="assessor"
+                                staffList={staffList}
+                                emptyHint={t('sessions.organizer.staffList.empty')}
+                              />
+                              <StaffMultiSelect
+                                label={t('sessions.roles.auditeur')}
+                                selectedEmails={editAuditeurEmails}
+                                onChange={setEditAuditeurEmails}
+                                role="auditeur"
+                                staffList={staffList}
+                                emptyHint={t('sessions.organizer.staffList.empty')}
+                              />
                             </div>
                             <div className="mt-3 flex flex-wrap gap-2">
                               <button type="button" disabled={busy} onClick={() => void handleSaveEdit(s.id)}

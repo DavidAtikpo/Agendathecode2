@@ -19,7 +19,9 @@ export const sessionsMessages = {
     },
     organizer: {
       title: 'Gestion des sessions',
-      subtitle: 'Proposez aux formateurs et assessors les dates du catalogue « Dates de sessions ».',
+      subtitle:
+        'Proposez aux formateurs et assessors les dates du catalogue « Dates de sessions ».',
+      openSessionDates: 'Dates de sessions',
       newSession: 'Nouvelle session',
       closeForm: 'Fermer le formulaire',
       autoTitleHint: 'Choisissez les dates dans le catalogue — le titre est généré automatiquement.',
@@ -37,6 +39,8 @@ export const sessionsMessages = {
       formateurPlaceholder: 'formateur@exemple.com',
       assessorEmail: 'Email assessor',
       assessorPlaceholder: 'assessor@exemple.com',
+      multiInviteHint:
+        'Vous pouvez inviter plusieurs formateurs, assessors et auditeurs pour la même proposition.',
       assignStaffNone: '— Aucun —',
       assignStaffCurrent: '{email} (assigné actuellement)',
       propose: 'Proposer la session',
@@ -56,6 +60,7 @@ export const sessionsMessages = {
         period: 'Période',
         formateur: 'Formateur',
         assessor: 'Assessor',
+        auditeur: 'Auditeur',
         globalState: 'État global',
       },
       deleteConfirm: 'Supprimer cette session ?',
@@ -149,6 +154,7 @@ export const sessionsMessages = {
     organizer: {
       title: 'Session management',
       subtitle: 'Propose catalog dates to trainers and assessors (see « Session dates » menu).',
+      openSessionDates: 'Session dates',
       newSession: 'New session',
       closeForm: 'Close form',
       autoTitleHint: 'Pick dates from the catalog — the title is generated automatically.',
@@ -166,6 +172,8 @@ export const sessionsMessages = {
       formateurPlaceholder: 'trainer@example.com',
       assessorEmail: 'Assessor email',
       assessorPlaceholder: 'assessor@example.com',
+      multiInviteHint:
+        'You can invite multiple trainers, assessors, and auditors for the same proposal.',
       assignStaffNone: '— None —',
       assignStaffCurrent: '{email} (currently assigned)',
       propose: 'Propose session',
@@ -185,6 +193,7 @@ export const sessionsMessages = {
         period: 'Period',
         formateur: 'Trainer',
         assessor: 'Assessor',
+        auditeur: 'Auditor',
         globalState: 'Overall status',
       },
       deleteConfirm: 'Delete this session?',

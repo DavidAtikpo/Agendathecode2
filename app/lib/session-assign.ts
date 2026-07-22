@@ -27,7 +27,11 @@ export async function resolveUserIdByEmailForAssignment(
   }
 
   const expectedRole =
-    assignmentRole === SessionAssignmentRole.formateur ? 'formateur' : 'assessor';
+    assignmentRole === SessionAssignmentRole.formateur
+      ? 'formateur'
+      : assignmentRole === SessionAssignmentRole.assessor
+        ? 'assessor'
+        : 'auditeur';
 
   const user = await prisma.user.findUnique({
     where: { email: raw },
@@ -46,6 +50,8 @@ export async function resolveUserIdByEmailForAssignment(
 }
 
 export function parseSessionRole(raw: unknown): SessionAssignmentRole | null {
-  if (raw === 'formateur' || raw === 'assessor') return raw;
+  if (raw === 'formateur' || raw === 'assessor' || raw === 'auditeur') {
+    return raw as SessionAssignmentRole;
+  }
   return null;
 }

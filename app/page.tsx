@@ -35,6 +35,7 @@ import {
 import {
   canAccessGroups,
   canManageTrainingSessions,
+  canManageSessionCatalog,
   canViewSessionProposals,
 } from './lib/user-roles';
 import SettingsModal from './components/SettingsModal';
@@ -670,8 +671,10 @@ export default function HomePage() {
       setActiveView('planning');
     } else if (activeView === 'sessions-assignee' && !canViewSessionProposals(displayUser.role)) {
       setActiveView('planning');
-    } else if (activeView === 'session-dates' && !canManageTrainingSessions(displayUser.role)) {
-      setActiveView('planning');
+    } else if (activeView === 'session-dates' && !canManageSessionCatalog(displayUser.role)) {
+      setActiveView(
+        canManageTrainingSessions(displayUser.role) ? 'sessions-organizer' : 'planning',
+      );
     }
   }, [isGuest, activeView, displayUser.role]);
 
@@ -679,7 +682,7 @@ export default function HomePage() {
     if (isGuest) return;
     const params = new URLSearchParams(window.location.search);
     const view = params.get('view');
-    if (view === 'session-dates' && canManageTrainingSessions(displayUser.role)) {
+    if (view === 'session-dates' && canManageSessionCatalog(displayUser.role)) {
       setActiveView('session-dates');
     }
   }, [isGuest, displayUser.role]);
@@ -929,8 +932,9 @@ export default function HomePage() {
       altStartDate?: string | null;
       altEndDate?: string | null;
       examDate?: string | null;
-      formateurEmail?: string;
-      assessorEmail?: string;
+      formateurEmails?: string[];
+      assessorEmails?: string[];
+      auditeurEmails?: string[];
     }) => {
       const res = await fetch('/api/sessions', {
         method: 'POST',
@@ -955,8 +959,9 @@ export default function HomePage() {
         altStartDate?: string | null;
         altEndDate?: string | null;
         examDate?: string | null;
-        formateurEmail?: string | null;
-        assessorEmail?: string | null;
+        formateurEmails?: string[];
+        assessorEmails?: string[];
+        auditeurEmails?: string[];
       },
     ) => {
       const res = await fetch(`/api/sessions/${sessionId}`, {
@@ -1622,6 +1627,7 @@ export default function HomePage() {
     onOpenSettings: () => setSettingsModalOpen(true),
     lastDataUpdatedAt,
     showSessionsOrganizer: !isGuest && canManageTrainingSessions(displayUser.role),
+    showSessionDates: !isGuest && canManageSessionCatalog(displayUser.role),
     showSessionsAssignee: !isGuest && canViewSessionProposals(displayUser.role),
     sessionPendingCount,
     showGroups: !isGuest && canAccessGroups(displayUser.role),
@@ -1897,6 +1903,11 @@ export default function HomePage() {
                   onUpdateSession={updateSession}
                   onDeleteSession={deleteSession}
                   onCreateStaff={createStaff}
+                  onOpenSessionDates={
+                    canManageSessionCatalog(displayUser.role)
+                      ? () => setActiveView('session-dates')
+                      : undefined
+                  }
                 />
               ) : activeView === 'sessions-assignee' ? (
                 <SessionsAssigneeView

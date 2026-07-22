@@ -22,7 +22,7 @@ export async function POST(request: Request, ctx: Ctx) {
   const { id } = await ctx.params;
   const body = await request.json();
   const decision = body.status === 'accepted' || body.status === 'declined' ? body.status : null;
-  const role = body.role === 'formateur' || body.role === 'assessor' ? body.role : null;
+  const role = body.role === 'formateur' || body.role === 'assessor' || body.role === 'auditeur' ? body.role : null;
   const acceptedOption =
     body.acceptedOption === 'primary' || body.acceptedOption === 'alternative'
       ? body.acceptedOption
@@ -38,7 +38,7 @@ export async function POST(request: Request, ctx: Ctx) {
   });
   if (!canViewSessionProposals(account?.role)) {
     return NextResponse.json(
-      { error: 'Seuls les comptes Formateur et Assessor peuvent répondre aux propositions.' },
+      { error: 'Seuls les comptes Formateur, Assessor et Auditeur peuvent répondre aux propositions.' },
       { status: 403 },
     );
   }
@@ -49,6 +49,9 @@ export async function POST(request: Request, ctx: Ctx) {
   }
   if (accountRole === 'assessor' && role !== 'assessor') {
     return NextResponse.json({ error: 'Votre compte est Assessor uniquement.' }, { status: 403 });
+  }
+  if (accountRole === 'auditeur' && role !== 'auditeur') {
+    return NextResponse.json({ error: 'Votre compte est Auditeur uniquement.' }, { status: 403 });
   }
 
   const session = await prisma.trainingSession.findFirst({
@@ -90,7 +93,8 @@ export async function POST(request: Request, ctx: Ctx) {
   });
 
   const responder = await prisma.user.findUnique({ where: { id: userId }, select: { name: true } });
-  const roleLabel = role === 'formateur' ? 'Formateur' : 'Assessor';
+  const roleLabel =
+    role === 'formateur' ? 'Formateur' : role === 'assessor' ? 'Assessor' : 'Auditeur';
   const statusLabel = decision === 'accepted' ? 'disponible' : 'indisponible';
 
   await sendPushToUser(session.createdById, {

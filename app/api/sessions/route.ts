@@ -3,8 +3,11 @@ import { prisma } from '@/app/lib/prisma';
 import { getSessionUserId } from '@/app/lib/auth';
 import { assertUserIsSessionOrganizer, sessionsOrganizerRequiredMessage } from '@/app/lib/pro-plan';
 import { sessionsVisibleToUser } from '@/app/lib/session-access';
-import { resolveUserIdByEmailForAssignment } from '@/app/lib/session-assign';
 import { assertOrganizerOwnsStaffUser } from '@/app/lib/staff-access';
+import {
+  parseRoleEmailMap,
+  resolveAllSessionAssignments,
+} from '@/app/lib/session-assignment-batch';
 import { sessionRoleMismatchMessage } from '@/app/lib/user-roles';
 import { buildSessionTitle, parseDateOnly } from '@/app/lib/session-title';
 import {
@@ -12,7 +15,7 @@ import {
   serializeTrainingSession,
 } from '@/app/lib/session-serialize';
 import { sendPushToUser } from '@/app/lib/firebase-admin';
-import { SessionAssignmentRole, SessionAssignmentStatus } from '@prisma/client';
+import { SessionAssignmentStatus } from '@prisma/client';
 
 export async function GET() {
   const userId = await getSessionUserId();
@@ -75,60 +78,36 @@ export async function POST(request: Request) {
       ? body.title.trim()
       : buildSessionTitle(startDate, endDate, examDate);
 
-  let formateurId: string | undefined;
-  let assessorId: string | undefined;
-
   const organizer = await prisma.user.findUnique({
     where: { id: userId },
     select: { role: true },
   });
 
+  const roleEmails = parseRoleEmailMap(body);
+  let assignments: Awaited<ReturnType<typeof resolveAllSessionAssignments>>;
   try {
-    if (body.formateurEmail) {
-      formateurId = await resolveUserIdByEmailForAssignment(
-        body.formateurEmail,
-        SessionAssignmentRole.formateur,
-      );
-      if (formateurId === userId) {
-        return NextResponse.json({ error: 'Vous ne pouvez pas vous assigner comme formateur' }, { status: 400 });
-      }
-      await assertOrganizerOwnsStaffUser(userId, formateurId, organizer?.role);
-    }
-    if (body.assessorEmail) {
-      assessorId = await resolveUserIdByEmailForAssignment(
-        body.assessorEmail,
-        SessionAssignmentRole.assessor,
-      );
-      if (assessorId === userId) {
-        return NextResponse.json({ error: 'Vous ne pouvez pas vous assigner comme assessor' }, { status: 400 });
-      }
-      await assertOrganizerOwnsStaffUser(userId, assessorId, organizer?.role);
-    }
-    if (formateurId && assessorId && formateurId === assessorId) {
-      return NextResponse.json(
-        { error: 'Le formateur et l\'assessor doivent être des personnes différentes' },
-        { status: 400 }
-      );
-    }
+    assignments = await resolveAllSessionAssignments(roleEmails, userId, organizer?.role);
   } catch (e: unknown) {
+    if (e instanceof Error && e.message === 'SELF_ASSIGN') {
+      return NextResponse.json({ error: 'Vous ne pouvez pas vous inclure dans la proposition.' }, { status: 400 });
+    }
+    if (e instanceof Error && e.message === 'DUPLICATE_USER') {
+      return NextResponse.json(
+        { error: 'Chaque intervenant ne peut apparaître qu\'une seule fois sur la session.' },
+        { status: 400 },
+      );
+    }
     if (e instanceof Error && e.message === 'EMAIL_INVALID') {
       return NextResponse.json({ error: 'Email invalide' }, { status: 400 });
     }
     if (e instanceof Error && e.message === 'USER_NOT_FOUND') {
       return NextResponse.json(
-        { error: 'Aucun compte Agenda avec cet email. La personne doit d\'abord s\'inscrire.' },
-        { status: 404 }
+        { error: 'Aucun compte Agenda avec cet email. Créez d\'abord l\'intervenant.' },
+        { status: 404 },
       );
     }
     if (e instanceof Error && e.message === 'ROLE_MISMATCH') {
-      return NextResponse.json(
-        {
-          error: sessionRoleMismatchMessage(
-            body.formateurEmail && !formateurId ? 'formateur' : 'assessor',
-          ),
-        },
-        { status: 400 },
-      );
+      return NextResponse.json({ error: sessionRoleMismatchMessage('assessor') }, { status: 400 });
     }
     if (e instanceof Error && e.message === 'STAFF_NOT_OWNED') {
       return NextResponse.json(
@@ -138,10 +117,6 @@ export async function POST(request: Request) {
     }
     throw e;
   }
-
-  const assignments: { userId: string; role: SessionAssignmentRole }[] = [];
-  if (formateurId) assignments.push({ userId: formateurId, role: SessionAssignmentRole.formateur });
-  if (assessorId) assignments.push({ userId: assessorId, role: SessionAssignmentRole.assessor });
 
   const session = await prisma.trainingSession.create({
     data: {

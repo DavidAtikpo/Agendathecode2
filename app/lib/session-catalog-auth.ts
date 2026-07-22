@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/app/lib/prisma';
 import { getSessionUserId } from '@/app/lib/auth';
-import { canManageTrainingSessions } from '@/app/lib/user-roles';
+import { canManageSessionCatalog } from '@/app/lib/user-roles';
 
 /** Organisateur ou administrateur — gestion du catalogue de dates publiques. */
 export async function requireSessionCatalogManager(): Promise<
@@ -18,7 +18,7 @@ export async function requireSessionCatalogManager(): Promise<
     select: { role: true },
   });
 
-  if (!user || !canManageTrainingSessions(user.role)) {
+  if (!user || !canManageSessionCatalog(user.role)) {
     return {
       ok: false,
       response: NextResponse.json(
