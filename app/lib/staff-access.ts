@@ -13,7 +13,13 @@ export function staffListWhereForUser(
   if (normalizeAppUserRole(role) === 'admin') {
     return base;
   }
-  return { ...base, staffCreatedById: userId };
+  return {
+    ...base,
+    OR: [
+      { staffCreatedById: userId },
+      { staffRegistration: { is: { createdById: userId } } },
+    ],
+  };
 }
 
 /** Vérifie qu’un organisateur ne propose que des intervenants qu’il a créés (admin exempté). */
@@ -26,14 +32,43 @@ export async function assertOrganizerOwnsStaffUser(
 
   const staff = await prisma.user.findUnique({
     where: { id: staffUserId },
-    select: { staffCreatedById: true, role: true },
+    select: {
+      staffCreatedById: true,
+      role: true,
+      staffRegistration: { select: { createdById: true } },
+    },
   });
   if (!staff || !STAFF_ROLES.includes(staff.role)) {
     throw new Error('STAFF_NOT_FOUND');
   }
-  if (staff.staffCreatedById !== organizerId) {
+  const owned =
+    staff.staffCreatedById === organizerId ||
+    staff.staffRegistration?.createdById === organizerId;
+  if (!owned) {
     throw new Error('STAFF_NOT_OWNED');
   }
+}
+
+export async function registerStaffForOrganizer(staffUserId: string, organizerId: string): Promise<void> {
+  const existing = await prisma.staffRegistration.findUnique({
+    where: { staffUserId },
+    select: { createdById: true },
+  });
+  if (existing && existing.createdById !== organizerId) {
+    throw new Error('STAFF_OWNED_BY_OTHER');
+  }
+
+  await prisma.$transaction([
+    prisma.user.update({
+      where: { id: staffUserId },
+      data: { staffCreatedById: organizerId },
+    }),
+    prisma.staffRegistration.upsert({
+      where: { staffUserId },
+      create: { staffUserId, createdById: organizerId },
+      update: { createdById: organizerId },
+    }),
+  ]);
 }
 
 export function isOrganizerRole(role: unknown): boolean {

@@ -7,7 +7,7 @@ import {
   isStaffRole,
   type StaffRole,
 } from '@/app/lib/staff-create';
-import { staffListWhereForUser } from '@/app/lib/staff-access';
+import { staffListWhereForUser, registerStaffForOrganizer } from '@/app/lib/staff-access';
 import { buildSessionTitle, parseDateOnly } from '@/app/lib/session-title';
 import {
   SESSION_WITH_ASSIGNMENTS_INCLUDE,
@@ -116,6 +116,18 @@ export async function POST(request: Request) {
     if (e instanceof Error && e.message === 'ROLE_CONFLICT') {
       return NextResponse.json(
         { error: 'Cet email est déjà associé à un autre type de compte.' },
+        { status: 409 },
+      );
+    }
+    throw e;
+  }
+
+  try {
+    await registerStaffForOrganizer(staff.id, auth.user.id);
+  } catch (e: unknown) {
+    if (e instanceof Error && e.message === 'STAFF_OWNED_BY_OTHER') {
+      return NextResponse.json(
+        { error: 'Cet intervenant a été créé par un autre organisateur.' },
         { status: 409 },
       );
     }

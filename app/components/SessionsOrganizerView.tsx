@@ -185,7 +185,6 @@ export default function SessionsOrganizerView({
   const [showStaffList, setShowStaffList] = useState(true);
 
   const fetchStaffList = useCallback(async () => {
-    if (!onCreateStaff) return;
     setStaffListLoading(true);
     try {
       const res = await fetch('/api/staff', { credentials: 'include' });
@@ -197,7 +196,7 @@ export default function SessionsOrganizerView({
     } finally {
       setStaffListLoading(false);
     }
-  }, [onCreateStaff]);
+  }, []);
 
   useEffect(() => {
     void fetchStaffList();
@@ -629,8 +628,7 @@ export default function SessionsOrganizerView({
         {error ? <p className="mb-3 text-sm text-red-400">{error}</p> : null}
         {success ? <p className="mb-3 text-sm text-emerald-400">{success}</p> : null}
 
-        {onCreateStaff ? (
-          <section className="mb-4 rounded-xl border border-slate-700/80 bg-slate-900/50">
+        <section className="mb-4 rounded-xl border border-slate-700/80 bg-slate-900/50">
             <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-800/80 px-3 py-2.5">
               <div>
                 <h3 className="text-sm font-semibold text-slate-100">
@@ -739,7 +737,6 @@ export default function SessionsOrganizerView({
               )
             ) : null}
           </section>
-        ) : null}
 
         {filtered.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-16 text-center text-slate-500">

@@ -53,8 +53,22 @@ model User {
   staffCreatedById     String?
   staffCreatedBy       User?            @relation("StaffAccountCreator", fields: [staffCreatedById], references: [id], onDelete: SetNull)
   staffAccountsCreated User[]           @relation("StaffAccountCreator")
+  staffRegistration    StaffRegistration? @relation("StaffRegistrationStaff")
+  staffRegistrationsCreated StaffRegistration[] @relation("StaffRegistrationCreator")
 
   @@index([staffCreatedById])
+  @@schema("agenda")
+}
+
+/// Lien organisateur → intervenant créé (source de vérité pour la liste confidentielle).
+model StaffRegistration {
+  staffUserId String   @id
+  createdById String
+  createdAt   DateTime @default(now())
+  staff       User     @relation("StaffRegistrationStaff", fields: [staffUserId], references: [id], onDelete: Cascade)
+  creator     User     @relation("StaffRegistrationCreator", fields: [createdById], references: [id], onDelete: Cascade)
+
+  @@index([createdById])
   @@schema("agenda")
 }
 

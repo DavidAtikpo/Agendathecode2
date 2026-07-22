@@ -33,7 +33,10 @@ export function isTrainingStaffRole(role: unknown): boolean {
 }
 
 export function canAccessGroups(role: unknown): boolean {
-  return !isTrainingStaffRole(role);
+  const r = normalizeAppUserRole(role);
+  if (TRAINING_STAFF.includes(r)) return false;
+  if (r === 'organizer') return false;
+  return true;
 }
 
 /** Création et gestion des sessions formation (remplace le forfait Pro). */
