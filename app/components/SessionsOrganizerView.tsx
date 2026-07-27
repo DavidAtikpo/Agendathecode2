@@ -75,7 +75,7 @@ const ORGANIZER_FILTER_KEYS: OrganizerStatusFilter[] = [
 type StaffPickRole = 'formateur' | 'assessor' | 'auditeur';
 
 function staffForRole(staffList: StaffListItem[], role: StaffPickRole) {
-  return staffList.filter(s => s.role === role && s.active);
+  return staffList.filter(s => s.role === role);
 }
 
 function StaffMultiSelect({
@@ -251,15 +251,25 @@ export default function SessionsOrganizerView({
     setStaffListLoading(true);
     try {
       const res = await fetch('/api/staff', { credentials: 'include' });
-      if (!res.ok) return;
-      const data = await res.json();
-      if (Array.isArray(data)) setStaffList(data as StaffListItem[]);
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        const msg =
+          typeof data?.error === 'string'
+            ? data.error
+            : t('sessions.organizer.staffList.loadError');
+        setError(msg);
+        return;
+      }
+      if (Array.isArray(data)) {
+        setStaffList(data as StaffListItem[]);
+        setError(null);
+      }
     } catch {
-      /* ignore */
+      setError(t('sessions.organizer.staffList.loadError'));
     } finally {
       setStaffListLoading(false);
     }
-  }, []);
+  }, [t]);
 
   useEffect(() => {
     void fetchStaffList();

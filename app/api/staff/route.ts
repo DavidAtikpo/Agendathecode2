@@ -7,7 +7,12 @@ import {
   isStaffRole,
   type StaffRole,
 } from '@/app/lib/staff-create';
-import { staffListWhereForUser, registerStaffForOrganizer } from '@/app/lib/staff-access';
+import {
+  backfillOrganizerStaffRegistrations,
+  staffListWhereForUser,
+  registerStaffForOrganizer,
+} from '@/app/lib/staff-access';
+import { normalizeAppUserRole } from '@/app/lib/user-roles';
 import { buildSessionTitle, parseDateOnly } from '@/app/lib/session-title';
 import {
   SESSION_WITH_ASSIGNMENTS_INCLUDE,
@@ -49,6 +54,10 @@ function staffRoleToAssignmentRole(role: StaffRole): SessionAssignmentRole | nul
 export async function GET() {
   const auth = await requireOrganizerOrAdmin();
   if (!auth.ok) return auth.response;
+
+  if (normalizeAppUserRole(auth.user.role) === 'organizer') {
+    await backfillOrganizerStaffRegistrations(auth.user.id);
+  }
 
   const users = await prisma.user.findMany({
     where: staffListWhereForUser(auth.user.id, auth.user.role),

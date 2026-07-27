@@ -98,6 +98,7 @@ export const sessionsMessages = {
         colProposals: 'Vos propositions de session',
         noProposal: 'Aucune session proposée',
         inactive: 'inactif',
+        loadError: 'Impossible de charger la liste des intervenants.',
       },
       catalog: {
         hint: 'Sélectionnez les sessions publiées (menu « Dates de sessions »). Option A obligatoire, option B pour proposer une alternative.',
@@ -230,6 +231,7 @@ export const sessionsMessages = {
         colProposals: 'Your session proposals',
         noProposal: 'No session proposed',
         inactive: 'inactive',
+        loadError: 'Could not load staff list.',
       },
       catalog: {
         hint: 'Select published sessions (from « Session dates »). Option A required; option B for an alternative.',
