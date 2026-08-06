@@ -64,7 +64,7 @@ export function sessionOrganizerRequiredMessage(locale: AppLocale = 'fr') {
 }
 
 export function sessionRoleMismatchMessage(
-  assignmentRole: 'formateur' | 'assessor',
+  assignmentRole: 'formateur' | 'assessor' | 'auditeur',
   locale: AppLocale = 'fr',
 ) {
   const role = t(i18nMessages, locale, `sessions.roles.${assignmentRole}`);

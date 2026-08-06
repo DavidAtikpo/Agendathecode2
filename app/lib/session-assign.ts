@@ -4,6 +4,23 @@ import { normalizeAppUserRole } from '@/app/lib/user-roles';
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
+export function normalizeStaffEmail(raw: unknown): string {
+  return typeof raw === 'string' ? raw.trim().toLowerCase() : '';
+}
+
+/** Compte trouvé mais rôle incompatible avec l’assignation (formateur / assessor / auditeur). */
+export class RoleAssignmentMismatchError extends Error {
+  readonly code = 'ROLE_MISMATCH' as const;
+
+  constructor(
+    readonly email: string,
+    readonly expectedRole: string,
+    readonly actualRole: string,
+  ) {
+    super('ROLE_MISMATCH');
+  }
+}
+
 export async function resolveUserIdByEmail(email: unknown): Promise<string> {
   const raw = typeof email === 'string' ? email.trim().toLowerCase() : '';
   if (!raw || !EMAIL_RE.test(raw)) {
@@ -43,7 +60,7 @@ export async function resolveUserIdByEmailForAssignment(
 
   const role = normalizeAppUserRole(user.role);
   if (role !== expectedRole && role !== 'admin') {
-    throw new Error('ROLE_MISMATCH');
+    throw new RoleAssignmentMismatchError(raw, expectedRole, role);
   }
 
   return user.id;

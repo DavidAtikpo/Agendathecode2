@@ -199,7 +199,16 @@ export async function POST(request: Request) {
 
     const assignmentRole = staffRoleToAssignmentRole(role);
     const assignments: { userId: string; role: SessionAssignmentRole }[] = [];
-    if (assignmentRole && staff.id !== auth.user.id) {
+    if (assignmentRole) {
+      if (staff.id === auth.user.id) {
+        return NextResponse.json(
+          {
+            error:
+              'Utilisez l’e-mail du formateur / assessor / auditeur à créer, pas celui de votre compte organisateur.',
+          },
+          { status: 400 },
+        );
+      }
       assignments.push({ userId: staff.id, role: assignmentRole });
     }
 

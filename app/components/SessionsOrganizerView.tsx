@@ -74,6 +74,15 @@ const ORGANIZER_FILTER_KEYS: OrganizerStatusFilter[] = [
 
 type StaffPickRole = 'formateur' | 'assessor' | 'auditeur';
 
+function normalizeEmailList(emails: string[]): string[] {
+  const out: string[] = [];
+  for (const raw of emails) {
+    const e = raw.trim().toLowerCase();
+    if (e && !out.includes(e)) out.push(e);
+  }
+  return out;
+}
+
 function staffForRole(staffList: StaffListItem[], role: StaffPickRole) {
   return staffList.filter(s => s.role === role);
 }
@@ -85,6 +94,9 @@ function StaffMultiSelect({
   staffList,
   label,
   emptyHint,
+  organizerEmail,
+  organizerSelfHint,
+  onBlockedOrganizerEmail,
 }: {
   selectedEmails: string[];
   onChange: (emails: string[]) => void;
@@ -92,13 +104,24 @@ function StaffMultiSelect({
   staffList: StaffListItem[];
   label: string;
   emptyHint: string;
+  organizerEmail: string;
+  organizerSelfHint?: string;
+  onBlockedOrganizerEmail?: () => void;
 }) {
   const options = staffForRole(staffList, role);
+  const organizerNorm = organizerEmail.trim().toLowerCase();
+  const selectedNorm = useMemo(() => normalizeEmailList(selectedEmails), [selectedEmails]);
+
   const toggle = (email: string) => {
-    if (selectedEmails.includes(email)) {
-      onChange(selectedEmails.filter(e => e !== email));
+    const norm = email.trim().toLowerCase();
+    if (norm === organizerNorm) {
+      onBlockedOrganizerEmail?.();
+      return;
+    }
+    if (selectedNorm.includes(norm)) {
+      onChange(selectedNorm.filter(e => e !== norm));
     } else {
-      onChange([...selectedEmails, email]);
+      onChange([...selectedNorm, norm]);
     }
   };
   return (
@@ -108,27 +131,37 @@ function StaffMultiSelect({
         {options.length === 0 ? (
           <p className="px-2 py-2 text-[11px] text-slate-500">{emptyHint}</p>
         ) : (
-          options.map(s => (
-            <label
-              key={s.id}
-              className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 hover:bg-slate-700/60"
-            >
-              <input
-                type="checkbox"
-                checked={selectedEmails.includes(s.email)}
-                onChange={() => toggle(s.email)}
-                className="rounded border-slate-500"
-              />
-              <span className="min-w-0 truncate text-slate-200">
-                {s.name} <span className="text-slate-500">({s.email})</span>
-              </span>
-            </label>
-          ))
+          options.map(s => {
+            const emailNorm = s.email.trim().toLowerCase();
+            const isOrganizerSelf = emailNorm === organizerNorm;
+            return (
+              <label
+                key={s.id}
+                className={`flex items-center gap-2 rounded-md px-2 py-1.5 ${
+                  isOrganizerSelf
+                    ? 'cursor-not-allowed opacity-50'
+                    : 'cursor-pointer hover:bg-slate-700/60'
+                }`}
+                title={isOrganizerSelf ? organizerSelfHint : undefined}
+              >
+                <input
+                  type="checkbox"
+                  checked={selectedNorm.includes(emailNorm)}
+                  disabled={isOrganizerSelf}
+                  onChange={() => toggle(s.email)}
+                  className="rounded border-slate-500"
+                />
+                <span className="min-w-0 truncate text-slate-200">
+                  {s.name} <span className="text-slate-500">({s.email})</span>
+                </span>
+              </label>
+            );
+          })
         )}
       </div>
-      {selectedEmails.length > 0 ? (
+      {selectedNorm.length > 0 ? (
         <p className="mt-1 text-[10px] text-teal-400/90">
-          {selectedEmails.length} sélectionné(s)
+          {selectedNorm.length} sélectionné(s)
         </p>
       ) : null}
     </div>
@@ -402,9 +435,15 @@ export default function SessionsOrganizerView({
     setEditAltStart(s.altStartDate ?? '');
     setEditAltEnd(s.altEndDate ?? '');
     setEditExam(s.examDate ?? '');
-    setEditFormateurEmails(assignmentsForRole(s, 'formateur').map(a => a.user.email));
-    setEditAssessorEmails(assignmentsForRole(s, 'assessor').map(a => a.user.email));
-    setEditAuditeurEmails(assignmentsForRole(s, 'auditeur').map(a => a.user.email));
+    setEditFormateurEmails(
+      normalizeEmailList(assignmentsForRole(s, 'formateur').map(a => a.user.email)),
+    );
+    setEditAssessorEmails(
+      normalizeEmailList(assignmentsForRole(s, 'assessor').map(a => a.user.email)),
+    );
+    setEditAuditeurEmails(
+      normalizeEmailList(assignmentsForRole(s, 'auditeur').map(a => a.user.email)),
+    );
     setEditCatalogAId('');
     setEditCatalogBId('');
     setError(null);
@@ -436,9 +475,9 @@ export default function SessionsOrganizerView({
         altStartDate: altStartDate.trim() || null,
         altEndDate: altEndDate.trim() || null,
         examDate: examDate.trim() || null,
-        formateurEmails,
-        assessorEmails,
-        auditeurEmails,
+        formateurEmails: normalizeEmailList(formateurEmails),
+        assessorEmails: normalizeEmailList(assessorEmails),
+        auditeurEmails: normalizeEmailList(auditeurEmails),
       });
       setStartDate('');
       setEndDate('');
@@ -512,6 +551,7 @@ export default function SessionsOrganizerView({
     if (busy) return;
     setBusy(true);
     setError(null);
+    setSuccess(null);
     try {
       await onUpdateSession(sessionId, {
         startDate: editStart,
@@ -519,16 +559,24 @@ export default function SessionsOrganizerView({
         altStartDate: editAltStart.trim() || null,
         altEndDate: editAltEnd.trim() || null,
         examDate: editExam.trim() || null,
-        formateurEmails: editFormateurEmails,
-        assessorEmails: editAssessorEmails,
-        auditeurEmails: editAuditeurEmails,
+        formateurEmails: normalizeEmailList(editFormateurEmails),
+        assessorEmails: normalizeEmailList(editAssessorEmails),
+        auditeurEmails: normalizeEmailList(editAuditeurEmails),
       });
       setEditId(null);
+      setSuccess(t('sessions.organizer.saveSuccess'));
+      void fetchStaffList();
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : t('common.status.error'));
     } finally {
       setBusy(false);
     }
+  };
+
+  const staffPickerCommon = {
+    organizerEmail: currentUser.email,
+    organizerSelfHint: t('sessions.errors.organizerOwnEmail'),
+    onBlockedOrganizerEmail: () => setError(t('sessions.errors.organizerOwnEmail')),
   };
 
   const pad = compactLayout ? 'px-3 py-3' : 'px-4 py-4 md:px-6 md:py-5';
@@ -673,6 +721,7 @@ export default function SessionsOrganizerView({
                 role="formateur"
                 staffList={staffList}
                 emptyHint={t('sessions.organizer.staffList.empty')}
+                {...staffPickerCommon}
               />
               <StaffMultiSelect
                 label={t('sessions.organizer.assessorEmail')}
@@ -681,6 +730,7 @@ export default function SessionsOrganizerView({
                 role="assessor"
                 staffList={staffList}
                 emptyHint={t('sessions.organizer.staffList.empty')}
+                {...staffPickerCommon}
               />
               <StaffMultiSelect
                 label={t('sessions.roles.auditeur')}
@@ -689,6 +739,7 @@ export default function SessionsOrganizerView({
                 role="auditeur"
                 staffList={staffList}
                 emptyHint={t('sessions.organizer.staffList.empty')}
+                {...staffPickerCommon}
               />
             </div>
             <button type="submit" disabled={busy || !startDate || !endDate}
@@ -928,6 +979,7 @@ export default function SessionsOrganizerView({
                                 role="formateur"
                                 staffList={staffList}
                                 emptyHint={t('sessions.organizer.staffList.empty')}
+                                {...staffPickerCommon}
                               />
                               <StaffMultiSelect
                                 label={sessionRoleLabel('assessor', locale)}
@@ -936,6 +988,7 @@ export default function SessionsOrganizerView({
                                 role="assessor"
                                 staffList={staffList}
                                 emptyHint={t('sessions.organizer.staffList.empty')}
+                                {...staffPickerCommon}
                               />
                               <StaffMultiSelect
                                 label={t('sessions.roles.auditeur')}
@@ -944,6 +997,7 @@ export default function SessionsOrganizerView({
                                 role="auditeur"
                                 staffList={staffList}
                                 emptyHint={t('sessions.organizer.staffList.empty')}
+                                {...staffPickerCommon}
                               />
                             </div>
                             <div className="mt-3 flex flex-wrap gap-2">

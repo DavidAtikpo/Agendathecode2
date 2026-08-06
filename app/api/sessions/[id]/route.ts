@@ -12,6 +12,8 @@ import {
   serializeTrainingSession,
 } from '@/app/lib/session-serialize';
 import { sendPushToUser } from '@/app/lib/firebase-admin';
+import { RoleAssignmentMismatchError } from '@/app/lib/session-assign';
+import { sessionRoleMismatchMessage } from '@/app/lib/user-roles';
 import { SessionAssignmentStatus } from '@prisma/client';
 
 type Ctx = { params: Promise<{ id: string }> };
@@ -161,8 +163,14 @@ export async function PATCH(request: Request, ctx: Ctx) {
         { status: 403 },
       );
     }
-    if (e instanceof Error && e.message === 'ROLE_MISMATCH') {
-      return NextResponse.json({ error: 'Rôle du compte incompatible avec l\'assignation.' }, { status: 400 });
+    if (e instanceof RoleAssignmentMismatchError) {
+      const role = e.expectedRole as 'formateur' | 'assessor' | 'auditeur';
+      return NextResponse.json(
+        {
+          error: `${sessionRoleMismatchMessage(role)} (${e.email} — rôle actuel : ${e.actualRole})`,
+        },
+        { status: 400 },
+      );
     }
     throw e;
   }

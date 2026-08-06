@@ -3,11 +3,11 @@ import { prisma } from '@/app/lib/prisma';
 import { getSessionUserId } from '@/app/lib/auth';
 import { assertUserIsSessionOrganizer, sessionsOrganizerRequiredMessage } from '@/app/lib/pro-plan';
 import { sessionsVisibleToUser } from '@/app/lib/session-access';
-import { assertOrganizerOwnsStaffUser } from '@/app/lib/staff-access';
 import {
   parseRoleEmailMap,
   resolveAllSessionAssignments,
 } from '@/app/lib/session-assignment-batch';
+import { RoleAssignmentMismatchError } from '@/app/lib/session-assign';
 import { sessionRoleMismatchMessage } from '@/app/lib/user-roles';
 import { buildSessionTitle, parseDateOnly } from '@/app/lib/session-title';
 import {
@@ -106,8 +106,14 @@ export async function POST(request: Request) {
         { status: 404 },
       );
     }
-    if (e instanceof Error && e.message === 'ROLE_MISMATCH') {
-      return NextResponse.json({ error: sessionRoleMismatchMessage('assessor') }, { status: 400 });
+    if (e instanceof RoleAssignmentMismatchError) {
+      const role = e.expectedRole as 'formateur' | 'assessor' | 'auditeur';
+      return NextResponse.json(
+        {
+          error: `${sessionRoleMismatchMessage(role)} (${e.email} — rôle actuel : ${e.actualRole})`,
+        },
+        { status: 400 },
+      );
     }
     if (e instanceof Error && e.message === 'STAFF_NOT_OWNED') {
       return NextResponse.json(

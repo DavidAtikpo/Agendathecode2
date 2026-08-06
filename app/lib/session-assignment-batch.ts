@@ -1,6 +1,9 @@
 import { prisma } from '@/app/lib/prisma';
 import { SessionAssignmentRole, SessionAssignmentStatus } from '@prisma/client';
-import { resolveUserIdByEmailForAssignment } from '@/app/lib/session-assign';
+import {
+  RoleAssignmentMismatchError,
+  normalizeStaffEmail,
+} from '@/app/lib/session-assign';
 import { assertOrganizerOwnsStaffUser } from '@/app/lib/staff-access';
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -62,7 +65,8 @@ export async function resolveStaffEmailsForRole(
 ): Promise<string[]> {
   const userIds: string[] = [];
   for (const email of emails) {
-    const userId = await resolveUserIdByEmailForAssignment(email, role);
+    const normalized = normalizeStaffEmail(email);
+    const userId = await resolveUserIdByEmailForAssignment(normalized, role);
     if (userId === organizerId) {
       throw new Error('SELF_ASSIGN');
     }
