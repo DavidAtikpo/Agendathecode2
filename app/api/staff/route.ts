@@ -129,6 +129,24 @@ export async function POST(request: Request) {
         { status: 409 },
       );
     }
+    if (e instanceof Error && e.message === 'ORGANIZER_SELF_STAFF') {
+      return NextResponse.json(
+        {
+          error:
+            'Utilisez l’e-mail du formateur / assessor / auditeur à créer, pas celui de votre compte organisateur.',
+        },
+        { status: 400 },
+      );
+    }
+    if (e instanceof Error && e.message === 'ORGANIZER_ROLE_PROTECTED') {
+      return NextResponse.json(
+        {
+          error:
+            'Cet e-mail appartient à un compte Organisateur ou Admin. Indiquez l’e-mail du futur intervenant (autre adresse).',
+        },
+        { status: 409 },
+      );
+    }
     throw e;
   }
 

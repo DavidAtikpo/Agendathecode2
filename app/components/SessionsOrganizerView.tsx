@@ -463,6 +463,12 @@ export default function SessionsOrganizerView({
     setBusy(true);
     setError(null);
     setSuccess(null);
+    const emailNorm = staffEmail.trim().toLowerCase();
+    if (emailNorm === currentUser.email.trim().toLowerCase()) {
+      setError(t('sessions.errors.organizerOwnEmail'));
+      setBusy(false);
+      return;
+    }
     try {
       const payload: Parameters<NonNullable<typeof onCreateStaff>>[0] = {
         firstName: staffFirstName.trim(),

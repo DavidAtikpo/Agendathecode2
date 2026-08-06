@@ -2,12 +2,16 @@
   "name": "agenda",
   "version": "0.1.0",
   "private": true,
+  "main": "electron/main.js",
   "scripts": {
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
     "register-staff": "node scripts/register-staff-for-organizer.mjs",
+    "electron:dev": "electron .",
+    "electron:build": "electron-builder --win",
+    "electron:build:portable": "electron-builder --win portable",
     "postinstall": "prisma generate && prisma generate --schema=prisma/catalog-schema.prisma --config=prisma.config.catalog.ts"
   },
   "dependencies": {
@@ -36,6 +40,32 @@
     "eslint": "^9",
     "eslint-config-next": "16.2.2",
     "tailwindcss": "^4",
-    "typescript": "^5"
+    "typescript": "^5",
+    "electron": "^35.0.0",
+    "electron-builder": "^25.1.8"
+  },
+  "build": {
+    "appId": "com.neurix.agenda",
+    "productName": "Neurix Agenda",
+    "directories": {
+      "output": "dist-electron"
+    },
+    "files": [
+      "electron/**/*",
+      "package.json"
+    ],
+    "win": {
+      "target": [
+        "nsis"
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "installerLanguages": [
+        "fr",
+        "en"
+      ]
+    }
   }
 }

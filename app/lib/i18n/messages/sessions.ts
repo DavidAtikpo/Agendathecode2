@@ -132,6 +132,8 @@ export const sessionsMessages = {
       organizerRequired: 'La gestion des sessions formation est réservée au rôle Organisateur.',
       roleMismatch: 'Cet email doit correspondre à un compte avec le rôle « {role} ».',
       createFailed: 'Impossible de créer la session',
+      organizerOwnEmail:
+        'Indiquez l’e-mail du futur intervenant, pas celui de votre compte organisateur.',
     },
   },
   en: {
@@ -265,6 +267,8 @@ export const sessionsMessages = {
       organizerRequired: 'Training session management is reserved for the Organizer role.',
       roleMismatch: 'This email must match an account with the « {role} » role.',
       createFailed: 'Could not create session',
+      organizerOwnEmail:
+        'Use the new staff member’s email, not your organizer account email.',
     },
   },
 } as const;

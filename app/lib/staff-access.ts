@@ -58,10 +58,14 @@ export async function backfillOrganizerStaffRegistrations(organizerId: string): 
   for (const a of bySession) ids.add(a.userId);
 
   for (const staffUserId of ids) {
+    if (staffUserId === organizerId) continue;
     try {
       await registerStaffForOrganizer(staffUserId, organizerId);
     } catch (e: unknown) {
       if (e instanceof Error && e.message === 'STAFF_OWNED_BY_OTHER') continue;
+      if (e instanceof Error && e.message === 'ORGANIZER_SELF_STAFF') continue;
+      if (e instanceof Error && e.message === 'ORGANIZER_ROLE_PROTECTED') continue;
+      if (e instanceof Error && e.message === 'STAFF_NOT_FOUND') continue;
       throw e;
     }
   }
@@ -145,6 +149,25 @@ async function claimStaffForOrganizerIfAllowed(
 }
 
 export async function registerStaffForOrganizer(staffUserId: string, organizerId: string): Promise<void> {
+  if (staffUserId === organizerId) {
+    throw new Error('ORGANIZER_SELF_STAFF');
+  }
+
+  const staff = await prisma.user.findUnique({
+    where: { id: staffUserId },
+    select: { role: true },
+  });
+  if (!staff) {
+    throw new Error('STAFF_NOT_FOUND');
+  }
+  const staffRole = normalizeAppUserRole(staff.role);
+  if (staffRole === 'organizer' || staffRole === 'admin') {
+    throw new Error('ORGANIZER_ROLE_PROTECTED');
+  }
+  if (!STAFF_ROLES.includes(staff.role)) {
+    throw new Error('STAFF_NOT_FOUND');
+  }
+
   const existing = await prisma.staffRegistration.findUnique({
     where: { staffUserId },
     select: { createdById: true },

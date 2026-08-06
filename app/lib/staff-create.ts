@@ -73,11 +73,16 @@ export async function createStaffAccount(input: CreateStaffInput): Promise<Creat
 
   if (existing) {
     const existingRole = normalizeAppUserRole(existing.role);
-    if (
-      existingRole !== role &&
-      existingRole !== 'admin' &&
-      existingRole !== 'organizer'
-    ) {
+
+    if (input.createdByOrganizerId && existing.id === input.createdByOrganizerId) {
+      throw new Error('ORGANIZER_SELF_STAFF');
+    }
+
+    if (existingRole === 'organizer' || existingRole === 'admin') {
+      throw new Error('ORGANIZER_ROLE_PROTECTED');
+    }
+
+    if (existingRole !== role && existingRole !== 'user') {
       throw new Error('ROLE_CONFLICT');
     }
 
