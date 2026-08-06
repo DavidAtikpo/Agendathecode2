@@ -1,8 +1,8 @@
 import { prisma } from '@/app/lib/prisma';
 import { SessionAssignmentRole, SessionAssignmentStatus } from '@prisma/client';
 import {
-  RoleAssignmentMismatchError,
   normalizeStaffEmail,
+  resolveUserIdByEmailForAssignment,
 } from '@/app/lib/session-assign';
 import { assertOrganizerOwnsStaffUser } from '@/app/lib/staff-access';
 
