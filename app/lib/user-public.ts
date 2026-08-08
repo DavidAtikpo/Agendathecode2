@@ -79,8 +79,9 @@ export function toPublicUser(u: ToPublicUserInput, opts?: ToPublicUserOptions): 
   if (opts?.includePasswordLoginHint) {
     base.hasPasswordLogin = Boolean(u.passwordHash);
   }
-  if (isTrainingStaffRole(u.role) && u.webirataUserId) {
-    base.webirataLinked = true;
+  /** Toujours exposer le portail aux intervenants — le bouton ne dépend plus uniquement de webirataUserId. */
+  if (isTrainingStaffRole(u.role)) {
+    base.webirataLinked = Boolean(u.webirataUserId);
     base.webirataPortalUrl = getWebirataPortalUrl();
   }
   return base;

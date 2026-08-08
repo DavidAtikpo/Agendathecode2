@@ -1962,6 +1962,7 @@ export default function HomePage() {
                   compactLayout={layoutPreferences.density === 'compact'}
                   onRespondSession={respondSession}
                   onRefreshUser={refreshCurrentUser}
+                  onUserUpdated={u => setCurrentUser(prev => (prev ? { ...prev, ...u } : u))}
                 />
               ) : activeView === 'session-dates' ? (
                 <SessionDatesView compactLayout={layoutPreferences.density === 'compact'} />

@@ -132,6 +132,10 @@ export const sessionsMessages = {
       openWebirataHint: 'Accédez à votre espace formation avec le même e-mail et mot de passe.',
       webirataReady:
         'Votre compte a-finpart est prêt — utilisez le même e-mail et mot de passe pour vous connecter.',
+      webirataBanner: 'Espace formation a-finpart (même e-mail et mot de passe Neurix).',
+      webirataOpening: 'Ouverture…',
+      webirataNeedsAccept:
+        'Acceptez d’abord une proposition (« Disponible ») pour activer pleinement votre compte a-finpart.',
       filters: {
         all: 'Toutes',
         pending: 'En attente',
@@ -278,6 +282,10 @@ export const sessionsMessages = {
       openWebirataHint: 'Access your training portal with the same email and password.',
       webirataReady:
         'Your a-finpart account is ready — use the same email and password to sign in.',
+      webirataBanner: 'a-finpart training portal (same Neurix email and password).',
+      webirataOpening: 'Opening…',
+      webirataNeedsAccept:
+        'First accept a proposal (« Available ») to fully activate your a-finpart account.',
       filters: {
         all: 'All',
         pending: 'Pending',

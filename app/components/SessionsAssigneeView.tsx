@@ -12,6 +12,7 @@ import {
   type AssigneeStatusFilter,
 } from '../lib/session-labels';
 import { useI18n } from '@/app/lib/i18n';
+import { isTrainingStaffRole } from '@/app/lib/user-roles';
 
 interface SessionsAssigneeViewProps {
   sessions: TrainingSession[];
@@ -25,6 +26,7 @@ interface SessionsAssigneeViewProps {
   ) => Promise<void>;
   /** Rafraîchit le profil (ex. lien a-finpart après acceptation). */
   onRefreshUser?: () => Promise<void>;
+  onUserUpdated?: (user: User) => void;
 }
 
 const ASSIGNEE_FILTER_KEYS: AssigneeStatusFilter[] = ['all', 'pending', 'accepted', 'declined'];
@@ -35,20 +37,68 @@ export default function SessionsAssigneeView({
   compactLayout,
   onRespondSession,
   onRefreshUser,
+  onUserUpdated,
 }: SessionsAssigneeViewProps) {
   const { locale, t, dateLocale } = useI18n();
   const [filter, setFilter] = useState<AssigneeStatusFilter>('all');
   const [busyId, setBusyId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [portalBusy, setPortalBusy] = useState(false);
+
+  const isStaff = isTrainingStaffRole(currentUser.role);
+  const portalUrl = currentUser.webirataPortalUrl ?? 'https://a-finpart.com';
+  /** Bouton toujours visible pour formateur / assessor / auditeur */
+  const showPortal = isStaff;
 
   useEffect(() => {
-    if (!currentUser.webirataLinked && onRefreshUser) {
-      void onRefreshUser();
-    }
-  }, [currentUser.webirataLinked, onRefreshUser]);
+    if (!isStaff) return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        if (onRefreshUser) await onRefreshUser();
+        const res = await fetch('/api/user/webirata-sync', {
+          method: 'POST',
+          credentials: 'include',
+        });
+        if (!res.ok || cancelled) return;
+        const data = await res.json();
+        if (cancelled) return;
+        if (data?.user && onUserUpdated) onUserUpdated(data.user as User);
+      } catch {
+        /* ignore */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // Sync once when opening Mes propositions as staff
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- volontairement une fois au montage staff
+  }, [isStaff]);
 
-  const portalUrl = currentUser.webirataPortalUrl ?? 'https://a-finpart.com';
-  const showPortal = Boolean(currentUser.webirataLinked);
+  const openPortal = async () => {
+    setPortalBusy(true);
+    setError(null);
+    try {
+      const res = await fetch('/api/user/webirata-sync', {
+        method: 'POST',
+        credentials: 'include',
+      });
+      const data = await res.json().catch(() => ({}));
+      if (data?.user && onUserUpdated) onUserUpdated(data.user as User);
+      if (data?.needsAccept) {
+        setError(t('sessions.assignee.webirataNeedsAccept'));
+      }
+      const url =
+        typeof data?.portalUrl === 'string' && data.portalUrl
+          ? data.portalUrl
+          : portalUrl;
+      window.open(url, '_blank', 'noopener,noreferrer');
+    } catch {
+      window.open(portalUrl, '_blank', 'noopener,noreferrer');
+    } finally {
+      setPortalBusy(false);
+    }
+  };
 
   const assigned = useMemo(
     () => sessions.filter(s => myAssignment(s, currentUser.id)),
@@ -102,17 +152,21 @@ export default function SessionsAssigneeView({
         </h2>
         <p className="mt-0.5 text-xs text-slate-500">{t('sessions.assignee.subtitle')}</p>
         {showPortal ? (
-          <div className="mt-3 rounded-xl border border-teal-500/30 bg-teal-500/10 p-3">
-            <p className="text-xs text-teal-100/90">{t('sessions.assignee.webirataReady')}</p>
-            <a
-              href={portalUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="mt-2 inline-flex items-center gap-1.5 rounded-lg bg-teal-600 px-4 py-2 text-sm font-semibold text-white hover:bg-teal-500"
+          <div className="mt-3 rounded-xl border border-teal-500/40 bg-teal-500/15 p-3 shadow-sm shadow-teal-900/20">
+            <p className="text-sm font-semibold text-teal-100">
+              {currentUser.webirataLinked
+                ? t('sessions.assignee.webirataReady')
+                : t('sessions.assignee.webirataBanner')}
+            </p>
+            <button
+              type="button"
+              disabled={portalBusy}
+              onClick={() => void openPortal()}
+              className="mt-2 inline-flex items-center gap-1.5 rounded-lg bg-teal-500 px-4 py-2.5 text-sm font-bold text-white hover:bg-teal-400 disabled:opacity-60"
             >
-              {t('sessions.assignee.openWebirata')}
+              {portalBusy ? t('sessions.assignee.webirataOpening') : t('sessions.assignee.openWebirata')}
               <span aria-hidden>↗</span>
-            </a>
+            </button>
             <p className="mt-1.5 text-[11px] text-slate-400">{t('sessions.assignee.openWebirataHint')}</p>
           </div>
         ) : null}
@@ -243,15 +297,15 @@ export default function SessionsAssigneeView({
                     </div>
                   ) : mine.status === 'accepted' && showPortal ? (
                     <div className="mt-3">
-                      <a
-                        href={portalUrl}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="inline-flex items-center gap-1.5 rounded-lg bg-teal-600/90 px-3 py-1.5 text-xs font-medium text-white hover:bg-teal-500"
+                      <button
+                        type="button"
+                        disabled={portalBusy}
+                        onClick={() => void openPortal()}
+                        className="inline-flex items-center gap-1.5 rounded-lg bg-teal-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-teal-500 disabled:opacity-60"
                       >
                         {t('sessions.assignee.openWebirata')}
                         <span aria-hidden>↗</span>
-                      </a>
+                      </button>
                     </div>
                   ) : mine.respondedAt ? (
                     <p className="mt-3 text-[11px] text-slate-500">
