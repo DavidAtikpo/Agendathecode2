@@ -130,6 +130,8 @@ export const sessionsMessages = {
       respondedAt: 'Répondu le {date}',
       openWebirata: 'Ouvrir a-finpart',
       openWebirataHint: 'Accédez à votre espace formation avec le même e-mail et mot de passe.',
+      webirataReady:
+        'Votre compte a-finpart est prêt — utilisez le même e-mail et mot de passe pour vous connecter.',
       filters: {
         all: 'Toutes',
         pending: 'En attente',
@@ -274,6 +276,8 @@ export const sessionsMessages = {
       respondedAt: 'Responded on {date}',
       openWebirata: 'Open a-finpart',
       openWebirataHint: 'Access your training portal with the same email and password.',
+      webirataReady:
+        'Your a-finpart account is ready — use the same email and password to sign in.',
       filters: {
         all: 'All',
         pending: 'Pending',

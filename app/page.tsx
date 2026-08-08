@@ -1001,6 +1001,17 @@ export default function HomePage() {
     [tx],
   );
 
+  const refreshCurrentUser = useCallback(async () => {
+    try {
+      const meRes = await fetch('/api/auth/me', fetchOpts);
+      if (!meRes.ok) return;
+      const me = (await meRes.json()) as User;
+      setCurrentUser(prev => (prev ? { ...prev, ...me } : me));
+    } catch {
+      /* ignore */
+    }
+  }, []);
+
   const respondSession = useCallback(
     async (
       sessionId: string,
@@ -1016,8 +1027,16 @@ export default function HomePage() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? tx('common.status.error'));
-      setTrainingSessions(prev => prev.map(s => (s.id === sessionId ? (data as TrainingSession) : s)));
-      if (status === 'accepted') {
+      const sessionPayload =
+        data && typeof data === 'object' && 'session' in data
+          ? (data.session as TrainingSession)
+          : (data as TrainingSession);
+      setTrainingSessions(prev =>
+        prev.map(s => (s.id === sessionId ? sessionPayload : s)),
+      );
+      if (data?.user && typeof data.user === 'object') {
+        setCurrentUser(prev => (prev ? { ...prev, ...(data.user as User) } : (data.user as User)));
+      } else if (status === 'accepted') {
         try {
           const meRes = await fetch('/api/auth/me', fetchOpts);
           if (meRes.ok) {
@@ -1942,6 +1961,7 @@ export default function HomePage() {
                   currentUser={displayUser}
                   compactLayout={layoutPreferences.density === 'compact'}
                   onRespondSession={respondSession}
+                  onRefreshUser={refreshCurrentUser}
                 />
               ) : activeView === 'session-dates' ? (
                 <SessionDatesView compactLayout={layoutPreferences.density === 'compact'} />

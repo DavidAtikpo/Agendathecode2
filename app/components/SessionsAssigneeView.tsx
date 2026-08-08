@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import type { SessionAssignmentRole, TrainingSession, User } from '../types';
 import {
   formatSessionDate,
@@ -23,6 +23,8 @@ interface SessionsAssigneeViewProps {
     status: 'accepted' | 'declined',
     acceptedOption?: 'primary' | 'alternative',
   ) => Promise<void>;
+  /** Rafraîchit le profil (ex. lien a-finpart après acceptation). */
+  onRefreshUser?: () => Promise<void>;
 }
 
 const ASSIGNEE_FILTER_KEYS: AssigneeStatusFilter[] = ['all', 'pending', 'accepted', 'declined'];
@@ -32,11 +34,21 @@ export default function SessionsAssigneeView({
   currentUser,
   compactLayout,
   onRespondSession,
+  onRefreshUser,
 }: SessionsAssigneeViewProps) {
   const { locale, t, dateLocale } = useI18n();
   const [filter, setFilter] = useState<AssigneeStatusFilter>('all');
   const [busyId, setBusyId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!currentUser.webirataLinked && onRefreshUser) {
+      void onRefreshUser();
+    }
+  }, [currentUser.webirataLinked, onRefreshUser]);
+
+  const portalUrl = currentUser.webirataPortalUrl ?? 'https://a-finpart.com';
+  const showPortal = Boolean(currentUser.webirataLinked);
 
   const assigned = useMemo(
     () => sessions.filter(s => myAssignment(s, currentUser.id)),
@@ -70,6 +82,9 @@ export default function SessionsAssigneeView({
     setError(null);
     try {
       await onRespondSession(sessionId, role, status, acceptedOption);
+      if (status === 'accepted' && onRefreshUser) {
+        await onRefreshUser();
+      }
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : t('common.status.error'));
     } finally {
@@ -86,18 +101,19 @@ export default function SessionsAssigneeView({
           {t('sessions.assignee.title')}
         </h2>
         <p className="mt-0.5 text-xs text-slate-500">{t('sessions.assignee.subtitle')}</p>
-        {currentUser.webirataLinked && currentUser.webirataPortalUrl ? (
-          <div className="mt-3 flex flex-wrap items-center gap-2">
+        {showPortal ? (
+          <div className="mt-3 rounded-xl border border-teal-500/30 bg-teal-500/10 p-3">
+            <p className="text-xs text-teal-100/90">{t('sessions.assignee.webirataReady')}</p>
             <a
-              href={currentUser.webirataPortalUrl}
+              href={portalUrl}
               target="_blank"
               rel="noopener noreferrer"
-              className="inline-flex items-center gap-1.5 rounded-lg bg-teal-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-teal-500"
+              className="mt-2 inline-flex items-center gap-1.5 rounded-lg bg-teal-600 px-4 py-2 text-sm font-semibold text-white hover:bg-teal-500"
             >
               {t('sessions.assignee.openWebirata')}
               <span aria-hidden>↗</span>
             </a>
-            <span className="text-[11px] text-slate-500">{t('sessions.assignee.openWebirataHint')}</span>
+            <p className="mt-1.5 text-[11px] text-slate-400">{t('sessions.assignee.openWebirataHint')}</p>
           </div>
         ) : null}
 
@@ -155,16 +171,22 @@ export default function SessionsAssigneeView({
                         <span className="rounded bg-indigo-500/20 px-2 py-0.5 text-[10px] font-semibold uppercase text-indigo-200">
                           {sessionRoleLabel(mine.role, locale)}
                         </span>
-                        <span className={`rounded px-2 py-0.5 text-[10px] font-semibold ${statusBadgeClass(mine.status)}`}>
+                        <span
+                          className={`rounded px-2 py-0.5 text-[10px] font-semibold ${statusBadgeClass(mine.status)}`}
+                        >
                           {sessionStatusLabel(mine.status, locale)}
                         </span>
                       </div>
                       <p className="font-medium text-slate-100">{s.title}</p>
                       <p className="mt-1 text-xs text-slate-400">
-                        {t('sessions.organizer.optionAShort')} : {formatSessionDate(s.startDate, locale)} → {formatSessionDate(s.endDate, locale)}
+                        {t('sessions.organizer.optionAShort')} :{' '}
+                        {formatSessionDate(s.startDate, locale)} →{' '}
+                        {formatSessionDate(s.endDate, locale)}
                         {s.altStartDate && s.altEndDate ? (
                           <span className="mt-0.5 block text-amber-400/90">
-                            {t('sessions.organizer.optionBShort')} : {formatSessionDate(s.altStartDate, locale)} → {formatSessionDate(s.altEndDate, locale)}
+                            {t('sessions.organizer.optionBShort')} :{' '}
+                            {formatSessionDate(s.altStartDate, locale)} →{' '}
+                            {formatSessionDate(s.altEndDate, locale)}
                           </span>
                         ) : null}
                         {s.examDate
@@ -218,6 +240,18 @@ export default function SessionsAssigneeView({
                       >
                         {t('sessions.assignee.respondUnavailable')}
                       </button>
+                    </div>
+                  ) : mine.status === 'accepted' && showPortal ? (
+                    <div className="mt-3">
+                      <a
+                        href={portalUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1.5 rounded-lg bg-teal-600/90 px-3 py-1.5 text-xs font-medium text-white hover:bg-teal-500"
+                      >
+                        {t('sessions.assignee.openWebirata')}
+                        <span aria-hidden>↗</span>
+                      </a>
                     </div>
                   ) : mine.respondedAt ? (
                     <p className="mt-3 text-[11px] text-slate-500">
