@@ -19,6 +19,7 @@ import {
   serializeTrainingSession,
 } from '@/app/lib/session-serialize';
 import { sendPushToUser } from '@/app/lib/firebase-admin';
+import { syncAllWebirataStaffForOrganizer } from '@/app/lib/webirata-staff';
 import { SessionAssignmentRole, SessionAssignmentStatus } from '@prisma/client';
 
 export const runtime = 'nodejs';
@@ -50,13 +51,19 @@ function staffRoleToAssignmentRole(role: StaffRole): SessionAssignmentRole | nul
   return null;
 }
 
-/** GET — liste des comptes formateur / assessor / auditeur */
+/** GET — liste des comptes formateur / assessor / auditeur (+ import webirata / a-finpart) */
 export async function GET() {
   const auth = await requireOrganizerOrAdmin();
   if (!auth.ok) return auth.response;
 
   if (normalizeAppUserRole(auth.user.role) === 'organizer') {
     await backfillOrganizerStaffRegistrations(auth.user.id);
+  }
+
+  try {
+    await syncAllWebirataStaffForOrganizer(auth.user.id);
+  } catch (e: unknown) {
+    console.error('[api/staff] sync webirata', e);
   }
 
   const users = await prisma.user.findMany({
@@ -69,6 +76,7 @@ export async function GET() {
       role: true,
       createdAt: true,
       active: true,
+      webirataUserId: true,
     },
   });
 
@@ -80,6 +88,7 @@ export async function GET() {
       role: u.role,
       active: u.active,
       createdAt: u.createdAt.toISOString(),
+      fromWebirata: Boolean(u.webirataUserId),
     })),
   );
 }
@@ -106,6 +115,17 @@ export async function POST(request: Request) {
     );
   }
 
+  const sessionPayload = body.session;
+  let plannedSessionTitle: string | null = null;
+  if (sessionPayload && typeof sessionPayload === 'object') {
+    const startDate = parseDateOnly(sessionPayload.startDate);
+    const endDate = parseDateOnly(sessionPayload.endDate);
+    const examDate = parseDateOnly(sessionPayload.examDate);
+    if (startDate && endDate) {
+      plannedSessionTitle = buildSessionTitle(startDate, endDate, examDate);
+    }
+  }
+
   let staff;
   try {
     staff = await createStaffAccount({
@@ -115,6 +135,10 @@ export async function POST(request: Request) {
       role,
       sendInvite,
       createdByOrganizerId: auth.user.id,
+      inviteContext: {
+        organizerName: auth.user.name,
+        sessionTitle: plannedSessionTitle,
+      },
     });
   } catch (e: unknown) {
     if (e instanceof Error && e.message === 'NAME_REQUIRED') {
@@ -162,15 +186,15 @@ export async function POST(request: Request) {
     throw e;
   }
 
-  const sessionPayload = body.session;
+  const sessionPayloadResolved = body.session;
   let session = null;
 
-  if (sessionPayload && typeof sessionPayload === 'object') {
-    const startDate = parseDateOnly(sessionPayload.startDate);
-    const endDate = parseDateOnly(sessionPayload.endDate);
-    const altStartDate = parseDateOnly(sessionPayload.altStartDate);
-    const altEndDate = parseDateOnly(sessionPayload.altEndDate);
-    const examDate = parseDateOnly(sessionPayload.examDate);
+  if (sessionPayloadResolved && typeof sessionPayloadResolved === 'object') {
+    const startDate = parseDateOnly(sessionPayloadResolved.startDate);
+    const endDate = parseDateOnly(sessionPayloadResolved.endDate);
+    const altStartDate = parseDateOnly(sessionPayloadResolved.altStartDate);
+    const altEndDate = parseDateOnly(sessionPayloadResolved.altEndDate);
+    const examDate = parseDateOnly(sessionPayloadResolved.examDate);
 
     if (!startDate || !endDate) {
       return NextResponse.json(

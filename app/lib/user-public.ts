@@ -1,5 +1,6 @@
 import { normalizePreferences, type UserPreferences } from '@/app/lib/user-preferences';
-import { normalizeAppUserRole, type AppUserRole } from '@/app/lib/user-roles';
+import { isTrainingStaffRole, normalizeAppUserRole, type AppUserRole } from '@/app/lib/user-roles';
+import { getWebirataPortalUrl } from '@/app/lib/webirata-portal';
 
 /** Sous-ensemble User DB — évite d'importer des types depuis `@prisma/client` (résolution fragile en build Next). */
 export type ToPublicUserInput = {
@@ -24,6 +25,8 @@ export type ToPublicUserInput = {
   stripeCustomerId?: string | null;
   /** Notifications push non vues — badge de l'icône app mobile */
   unreadNotificationCount?: number;
+  /** Compte lié sur a-finpart / webirata */
+  webirataUserId?: string | null;
 };
 
 export type PublicUser = {
@@ -46,6 +49,10 @@ export type PublicUser = {
   hasStripeSubscription: boolean;
   /** Notifications push non vues — pilote le badge de l'icône app mobile */
   unreadNotificationCount: number;
+  /** Compte créé / lié sur a-finpart — bouton portail pour intervenants */
+  webirataLinked?: boolean;
+  /** URL du portail a-finpart (si lié) */
+  webirataPortalUrl?: string | null;
 };
 
 type ToPublicUserOptions = {
@@ -71,6 +78,10 @@ export function toPublicUser(u: ToPublicUserInput, opts?: ToPublicUserOptions): 
   };
   if (opts?.includePasswordLoginHint) {
     base.hasPasswordLogin = Boolean(u.passwordHash);
+  }
+  if (isTrainingStaffRole(u.role) && u.webirataUserId) {
+    base.webirataLinked = true;
+    base.webirataPortalUrl = getWebirataPortalUrl();
   }
   return base;
 }

@@ -86,6 +86,20 @@ export default function SessionsAssigneeView({
           {t('sessions.assignee.title')}
         </h2>
         <p className="mt-0.5 text-xs text-slate-500">{t('sessions.assignee.subtitle')}</p>
+        {currentUser.webirataLinked && currentUser.webirataPortalUrl ? (
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            <a
+              href={currentUser.webirataPortalUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1.5 rounded-lg bg-teal-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-teal-500"
+            >
+              {t('sessions.assignee.openWebirata')}
+              <span aria-hidden>↗</span>
+            </a>
+            <span className="text-[11px] text-slate-500">{t('sessions.assignee.openWebirataHint')}</span>
+          </div>
+        ) : null}
 
         <div className="mt-4 flex flex-wrap gap-1.5" role="tablist">
           {ASSIGNEE_FILTER_KEYS.map(key => (

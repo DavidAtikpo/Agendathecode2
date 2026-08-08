@@ -1002,6 +1002,17 @@ export default function HomePage() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? tx('common.status.error'));
       setTrainingSessions(prev => prev.map(s => (s.id === sessionId ? (data as TrainingSession) : s)));
+      if (status === 'accepted') {
+        try {
+          const meRes = await fetch('/api/auth/me', fetchOpts);
+          if (meRes.ok) {
+            const me = (await meRes.json()) as User;
+            setCurrentUser(prev => (prev ? { ...prev, ...me } : me));
+          }
+        } catch {
+          /* ignore */
+        }
+      }
     },
     [tx],
   );

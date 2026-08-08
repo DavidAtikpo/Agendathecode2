@@ -3,7 +3,7 @@ import type { Role } from '@prisma/client';
 import { prisma } from '@/app/lib/prisma';
 import { hashPassword } from '@/app/lib/auth';
 import { initialsFromName, USER_AVATAR_COLORS } from '@/app/lib/user-display';
-import { sendPasswordResetEmail } from '@/app/lib/email';
+import { sendStaffInvitationEmail, getTrainingCenterDisplayName } from '@/app/lib/email';
 import { getPublicSiteBaseUrl } from '@/app/lib/site-base-url';
 import {
   generatePasswordResetToken,
@@ -25,6 +25,12 @@ export function staffRoleToPrisma(role: StaffRole): Role {
   return role;
 }
 
+export type StaffInviteContext = {
+  organizerName: string;
+  organizationName?: string;
+  sessionTitle?: string | null;
+};
+
 export type CreateStaffInput = {
   firstName: string;
   lastName: string;
@@ -34,6 +40,8 @@ export type CreateStaffInput = {
   sendInvite?: boolean;
   /** Organisateur ou admin à l'origine de la création (confidentialité multi-organisateurs). */
   createdByOrganizerId?: string;
+  /** Contexte pour l'e-mail d'invitation (organisateur, session proposée). */
+  inviteContext?: StaffInviteContext;
 };
 
 export type CreateStaffResult = {
@@ -100,7 +108,7 @@ export async function createStaffAccount(input: CreateStaffInput): Promise<Creat
     });
 
     const inviteEmailSent = input.sendInvite
-      ? await sendStaffInviteEmail(updated.id, updated.email, updated.name)
+      ? await sendStaffInviteEmail(updated.id, updated.email, updated.name, role, input.inviteContext)
       : false;
 
     return {
@@ -132,7 +140,7 @@ export async function createStaffAccount(input: CreateStaffInput): Promise<Creat
   });
 
   const inviteEmailSent = input.sendInvite
-    ? await sendStaffInviteEmail(user.id, user.email, user.name)
+    ? await sendStaffInviteEmail(user.id, user.email, user.name, role, input.inviteContext)
     : false;
 
   return {
@@ -145,7 +153,13 @@ export async function createStaffAccount(input: CreateStaffInput): Promise<Creat
   };
 }
 
-async function sendStaffInviteEmail(userId: string, email: string, name: string): Promise<boolean> {
+async function sendStaffInviteEmail(
+  userId: string,
+  email: string,
+  name: string,
+  staffRole: StaffRole,
+  inviteContext?: StaffInviteContext,
+): Promise<boolean> {
   const { raw, hash } = generatePasswordResetToken();
   const expiresAt = new Date(Date.now() + PASSWORD_RESET_TTL_MS);
 
@@ -156,10 +170,14 @@ async function sendStaffInviteEmail(userId: string, email: string, name: string)
     }),
   ]);
 
-  const resetUrl = `${getPublicSiteBaseUrl()}/reset-password?token=${raw}`;
-  const sent = await sendPasswordResetEmail(email, {
+  const setupPasswordUrl = `${getPublicSiteBaseUrl()}/reset-password?token=${raw}`;
+  const sent = await sendStaffInvitationEmail(email, {
     name,
-    resetUrl,
+    setupPasswordUrl,
+    organizerName: inviteContext?.organizerName ?? 'Votre organisateur',
+    organizationName: inviteContext?.organizationName ?? getTrainingCenterDisplayName(),
+    staffRole,
+    sessionTitle: inviteContext?.sessionTitle ?? null,
     locale: 'fr',
   });
 

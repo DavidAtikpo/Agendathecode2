@@ -16,6 +16,9 @@ const MOIS_INDEX: Record<string, number> = {
   decembre: 12,
 };
 
+const MOIS_PATTERN =
+  'janvier|f[eé]vrier|mars|avril|mai|juin|juillet|ao[uû]t|septembre|octobre|novembre|d[eé]cembre';
+
 export interface ParsedCatalogDates {
   startDate: string;
   endDate: string;
@@ -30,6 +33,12 @@ function normalizeMoisKey(mois: string): string {
     .replace(/\p{M}/gu, '');
 }
 
+function resolveMonth(mois: string | undefined, fallback: number): number | null {
+  if (!mois) return fallback;
+  const key = mois.trim().toLowerCase();
+  return MOIS_INDEX[key] ?? MOIS_INDEX[normalizeMoisKey(mois)] ?? null;
+}
+
 function toIsoDate(year: number, month: number, day: number): string | null {
   if (day < 1 || day > 31 || month < 1 || month > 12) return null;
   const d = new Date(Date.UTC(year, month - 1, day));
@@ -39,6 +48,31 @@ function toIsoDate(year: number, month: number, day: number): string | null {
   return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
 }
 
+function parseExamDate(
+  text: string,
+  endYear: number,
+  endMonth: number,
+  endDay: number,
+): string | null {
+  const exam = /examen\s+(\d{1,2})/i.exec(text);
+  if (!exam) return null;
+
+  const examDay = Number.parseInt(exam[1], 10);
+  let examDate = toIsoDate(endYear, endMonth, examDay);
+  if (examDate) return examDate;
+
+  const nextMonth = endMonth === 12 ? 1 : endMonth + 1;
+  const nextYear = endMonth === 12 ? endYear + 1 : endYear;
+  examDate = toIsoDate(nextYear, nextMonth, examDay);
+  if (examDate) return examDate;
+
+  if (examDay > endDay) {
+    return toIsoDate(endYear, endMonth, examDay);
+  }
+
+  return null;
+}
+
 /** Convertit une entrée catalogue (année + mois + texte dates) en dates ISO. */
 export function parseCatalogSessionDates(
   annee: string,
@@ -46,24 +80,35 @@ export function parseCatalogSessionDates(
   dates: string,
 ): ParsedCatalogDates | null {
   const year = Number.parseInt(annee.trim(), 10);
-  const month = MOIS_INDEX[mois.trim().toLowerCase()] ?? MOIS_INDEX[normalizeMoisKey(mois)];
-  if (!Number.isFinite(year) || !month) return null;
+  const catalogMonth =
+    MOIS_INDEX[mois.trim().toLowerCase()] ?? MOIS_INDEX[normalizeMoisKey(mois)];
+  if (!Number.isFinite(year) || !catalogMonth) return null;
 
   const text = dates.trim();
-  const range = /du\s+(\d{1,2})\s+au\s+(\d{1,2})/i.exec(text);
+  const range = new RegExp(
+    `du\\s+(\\d{1,2})(?:\\s+(${MOIS_PATTERN}))?\\s+au\\s+(\\d{1,2})(?:\\s+(${MOIS_PATTERN}))?`,
+    'i',
+  ).exec(text);
   if (!range) return null;
 
   const startDay = Number.parseInt(range[1], 10);
-  const endDay = Number.parseInt(range[2], 10);
-  const startDate = toIsoDate(year, month, startDay);
-  const endDate = toIsoDate(year, month, endDay);
-  if (!startDate || !endDate) return null;
+  const endDay = Number.parseInt(range[3], 10);
+  const startMonth = resolveMonth(range[2], catalogMonth);
+  const endMonth = resolveMonth(range[4], catalogMonth);
+  if (!startMonth || !endMonth) return null;
 
-  let examDate: string | null = null;
-  const exam = /examen\s+(\d{1,2})/i.exec(text);
-  if (exam) {
-    examDate = toIsoDate(year, month, Number.parseInt(exam[1], 10));
+  let startYear = year;
+  let endYear = year;
+  if (endMonth < startMonth) {
+    endYear = year + 1;
   }
+
+  const startDate = toIsoDate(startYear, startMonth, startDay);
+  const endDate = toIsoDate(endYear, endMonth, endDay);
+  if (!startDate || !endDate) return null;
+  if (endDate < startDate) return null;
+
+  const examDate = parseExamDate(text, endYear, endMonth, endDay);
 
   return { startDate, endDate, examDate };
 }

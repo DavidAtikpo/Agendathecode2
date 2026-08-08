@@ -8,6 +8,8 @@ import {
 } from '@/app/lib/auth';
 import { hashPasswordResetToken } from '@/app/lib/password-reset';
 import { toPublicUser } from '@/app/lib/user-public';
+import { provisionWebirataStaffAccountIfReady } from '@/app/lib/webirata-staff';
+import { isTrainingStaffRole } from '@/app/lib/user-roles';
 
 export const runtime = 'nodejs';
 
@@ -57,6 +59,14 @@ export async function POST(request: Request) {
       }),
       prisma.passwordResetToken.deleteMany({ where: { userId: user.id } }),
     ]);
+
+    if (isTrainingStaffRole(user.role)) {
+      try {
+        await provisionWebirataStaffAccountIfReady(user.id);
+      } catch (e: unknown) {
+        console.error('[auth/reset-password] provision webirata', e);
+      }
+    }
 
     const sessionToken = await createSessionToken(user.id);
     const updated = await prisma.user.findUniqueOrThrow({ where: { id: user.id } });

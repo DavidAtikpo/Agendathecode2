@@ -8,6 +8,7 @@ import {
 } from '@/app/lib/session-serialize';
 import { sendPushToUser } from '@/app/lib/firebase-admin';
 import { canViewSessionProposals, normalizeAppUserRole } from '@/app/lib/user-roles';
+import { provisionWebirataStaffAccountIfReady } from '@/app/lib/webirata-staff';
 import { SessionAssignmentStatus, SessionDateOption } from '@prisma/client';
 
 type Ctx = { params: Promise<{ id: string }> };
@@ -102,6 +103,14 @@ export async function POST(request: Request, ctx: Ctx) {
     body: `${responder?.name ?? 'Un intervenant'} : ${session.title}`,
     data: { type: 'session_response', sessionId: id, role, status: decision },
   });
+
+  if (decision === 'accepted') {
+    try {
+      await provisionWebirataStaffAccountIfReady(userId);
+    } catch (e: unknown) {
+      console.error('[sessions/respond] provision webirata', e);
+    }
+  }
 
   const updated = await prisma.trainingSession.findUnique({
     where: { id },

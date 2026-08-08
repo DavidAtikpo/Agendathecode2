@@ -8,6 +8,34 @@ datasource db {
   schemas  = ["webirata"]
 }
 
+enum WebirataRole {
+  USER
+  ADMIN
+  GESTIONNAIRE
+  CONTRIBUTOR
+  CLIENT
+  FORMATEUR
+  ENTREPRISE
+
+  @@schema("webirata")
+}
+
+/// Comptes utilisateurs a-finpart / webirata (table existante — pas de db push).
+model WebirataUser {
+  id        String       @id
+  email     String       @unique
+  password  String
+  nom       String?
+  prenom    String?
+  role      WebirataRole
+  createdAt DateTime     @default(now())
+  updatedAt DateTime     @updatedAt
+  isActive  Boolean      @default(true)
+
+  @@map("User")
+  @@schema("webirata")
+}
+
 /// Table existante (créée par cides.tf) — lecture/écriture uniquement, pas de migration Prisma.
 model SessionCatalog {
   id        String   @id @default(cuid())

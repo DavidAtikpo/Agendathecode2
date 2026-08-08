@@ -55,6 +55,9 @@ model User {
   staffAccountsCreated User[]           @relation("StaffAccountCreator")
   staffRegistration    StaffRegistration? @relation("StaffRegistrationStaff")
   staffRegistrationsCreated StaffRegistration[] @relation("StaffRegistrationCreator")
+  /// Compte lié sur a-finpart / webirata (après validation session + mot de passe)
+  webirataUserId     String?          @unique
+  webirataSyncedAt   DateTime?
 
   @@index([staffCreatedById])
   @@schema("agenda")

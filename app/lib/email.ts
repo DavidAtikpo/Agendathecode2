@@ -9,6 +9,9 @@ import nodemailer from 'nodemailer';
 export type SendReminderResult = { ok: true } | { ok: false; error: string };
 export type SendTaskNotificationResult = { ok: true } | { ok: false; error: string };
 export type SendPasswordResetResult = { ok: true } | { ok: false; error: string };
+export type SendStaffInvitationResult = { ok: true } | { ok: false; error: string };
+
+export type StaffInviteRole = 'formateur' | 'assessor' | 'auditeur';
 
 function getSmtpConfig() {
   const host = process.env.SMTP_HOST?.trim();
@@ -124,6 +127,161 @@ export async function sendTaskNotificationEmail(
 <p style="margin:12px 0 0;font-size:14px;color:#334155;">${intro}</p>
 ${statusLine}
 <p style="margin-top:24px;font-size:12px;color:#94a3b8;">— Agenda</p>
+</body></html>`,
+    });
+    return { ok: true };
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : String(e);
+    return { ok: false, error: msg };
+  }
+}
+
+function staffRoleLabelFr(role: StaffInviteRole): string {
+  if (role === 'formateur') return 'Formateur';
+  if (role === 'assessor') return 'Assessor';
+  return 'Auditeur';
+}
+
+function staffRoleLabelEn(role: StaffInviteRole): string {
+  if (role === 'formateur') return 'Trainer';
+  if (role === 'assessor') return 'Assessor';
+  return 'Auditor';
+}
+
+/** Nom affiché du centre / organisme (env TRAINING_CENTER_NAME ou SMTP_FROM). */
+export function getTrainingCenterDisplayName(): string {
+  return (
+    process.env.TRAINING_CENTER_NAME?.trim() ||
+    process.env.SMTP_FROM?.trim() ||
+    'Centre de formation'
+  );
+}
+
+/**
+ * Invitation intervenant (formateur / assessor / auditeur) — pas un reset mot de passe oublié.
+ */
+export async function sendStaffInvitationEmail(
+  to: string,
+  params: {
+    name: string;
+    setupPasswordUrl: string;
+    organizerName: string;
+    organizationName?: string;
+    staffRole: StaffInviteRole;
+    sessionTitle?: string | null;
+    locale?: 'fr' | 'en';
+  },
+): Promise<SendStaffInvitationResult> {
+  const transporter = getTransporter();
+  const from = buildFromHeader();
+
+  if (!transporter || !from) {
+    if (process.env.NODE_ENV === 'development') {
+      console.warn('[email] SMTP non configuré — e-mail d\'invitation intervenant non envoyé');
+      console.info('[email] Lien invitation (dev):', params.setupPasswordUrl);
+    }
+    return { ok: false, error: 'SMTP non configuré' };
+  }
+
+  const en = params.locale === 'en';
+  const safeName = escapeHtml(params.name.trim() || (en ? 'there' : 'Bonjour'));
+  const safeOrganizer = escapeHtml(params.organizerName.trim() || (en ? 'An organizer' : 'Un organisateur'));
+  const orgName = escapeHtml(params.organizationName?.trim() || getTrainingCenterDisplayName());
+  const safeUrl = escapeHtml(params.setupPasswordUrl);
+  const roleLabel = en ? staffRoleLabelEn(params.staffRole) : staffRoleLabelFr(params.staffRole);
+  const sessionTitle = params.sessionTitle?.trim();
+  const hasSession = Boolean(sessionTitle);
+  const safeSession = sessionTitle ? escapeHtml(sessionTitle) : '';
+
+  const subject = en
+    ? hasSession
+      ? `📅 Session proposal — ${safeOrganizer} (${orgName})`
+      : `👋 Your trainer account — ${orgName}`
+    : hasSession
+      ? `📅 Proposition de session — ${safeOrganizer} (${orgName})`
+      : `👋 Votre compte intervenant — ${orgName}`;
+
+  const intro = en
+    ? `<p style="margin:12px 0;font-size:14px;color:#334155;"><strong>${safeOrganizer}</strong>, organizer at <strong>${orgName}</strong>, has created your <strong>${roleLabel}</strong> account on Neurix${
+        hasSession ? ' and would like to propose the following training session:' : '.'
+      }</p>`
+    : `<p style="margin:12px 0;font-size:14px;color:#334155;"><strong>${safeOrganizer}</strong>, organisateur du centre de formation <strong>${orgName}</strong>, vous a créé un compte <strong>${roleLabel}</strong> sur Neurix${
+        hasSession ? ' et vous propose la session de formation suivante&nbsp;:' : '.'
+      }</p>`;
+
+  const sessionBlock = hasSession
+    ? `<p style="margin:16px 0;padding:14px;background:#ecfdf5;border-left:4px solid #14b8a6;border-radius:8px;font-size:15px;font-weight:600;color:#0f766e;">${safeSession}</p>`
+    : '';
+
+  const stepsTitle = en ? 'Next steps' : 'Prochaines étapes';
+  const steps = en
+    ? hasSession
+      ? [
+          'Click the button below to <strong>set your password</strong>',
+          'Sign in to Neurix and open <strong>« My proposals »</strong>',
+          'Confirm whether you are <strong>available</strong> for these dates or <strong>not available</strong>',
+        ]
+      : [
+          'Click the button below to <strong>set your password</strong>',
+          'Sign in and open your <strong>planning dashboard</strong> (« My proposals »)',
+          'You will be able to accept or decline future session proposals',
+        ]
+    : hasSession
+      ? [
+          'Cliquez sur le bouton ci-dessous pour <strong>définir votre mot de passe</strong>',
+          'Connectez-vous à Neurix et ouvrez <strong>« Mes propositions »</strong>',
+          'Indiquez si vous êtes <strong>disponible</strong> pour ces dates ou si vous <strong>n\'êtes pas libre</strong>',
+        ]
+      : [
+          'Cliquez sur le bouton ci-dessous pour <strong>définir votre mot de passe</strong>',
+          'Connectez-vous et accédez à votre <strong>tableau de planification</strong> (« Mes propositions »)',
+          'Vous pourrez valider ou refuser les propositions de sessions qui vous seront envoyées',
+        ];
+
+  const stepsHtml = steps
+    .map(
+      (s, i) =>
+        `<li style="margin:6px 0;font-size:14px;color:#334155;">${i + 1}. ${s}</li>`,
+    )
+    .join('');
+
+  const cta = en
+    ? hasSession
+      ? 'Set my password and view the proposal'
+      : 'Set my password and access my dashboard'
+    : hasSession
+      ? 'Définir mon mot de passe et voir la proposition'
+      : 'Définir mon mot de passe et accéder à mon espace';
+
+  const expiry = en
+    ? 'This link expires in 1 hour.'
+    : 'Ce lien est valable 1 heure.';
+
+  const contactEmail = 'pm@cides.tf';
+  const contact = en
+    ? `Contact the management: <a href="mailto:${contactEmail}" style="color:#0d9488;text-decoration:none;">${contactEmail}</a>`
+    : `Contactez la direction : <a href="mailto:${contactEmail}" style="color:#0d9488;text-decoration:none;">${contactEmail}</a>`;
+
+  const footer = en ? '— Neurix' : '— Neurix';
+
+  try {
+    await transporter.sendMail({
+      from,
+      to,
+      subject,
+      html: `<!DOCTYPE html><html><body style="font-family:system-ui,sans-serif;line-height:1.5;color:#0f172a;max-width:560px;">
+<p style="font-size:14px;color:#64748b;">${en ? 'Hello' : 'Bonjour'} ${safeName},</p>
+${intro}
+${sessionBlock}
+<p style="margin:16px 0 8px;font-size:13px;font-weight:600;color:#475569;">${stepsTitle}</p>
+<ol style="margin:0 0 16px;padding-left:20px;">${stepsHtml}</ol>
+<p style="margin:24px 0;">
+  <a href="${safeUrl}" style="display:inline-block;background:#0d9488;color:#fff;text-decoration:none;padding:12px 20px;border-radius:10px;font-weight:600;font-size:14px;">${cta}</a>
+</p>
+<p style="font-size:12px;color:#64748b;word-break:break-all;">${safeUrl}</p>
+<p style="margin-top:16px;font-size:12px;color:#94a3b8;">${expiry}</p>
+<p style="margin-top:20px;padding-top:16px;border-top:1px solid #e2e8f0;font-size:13px;color:#475569;">${contact}</p>
+<p style="margin-top:8px;font-size:12px;color:#94a3b8;">${footer}</p>
 </body></html>`,
     });
     return { ok: true };

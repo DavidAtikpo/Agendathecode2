@@ -16,6 +16,9 @@ export interface User {
   preferences?: UserPreferences;
   /** Présent après `/api/auth/me` ou login : compte avec mot de passe (pas Google-only). */
   hasPasswordLogin?: boolean;
+  /** Compte lié a-finpart / webirata — bouton portail. */
+  webirataLinked?: boolean;
+  webirataPortalUrl?: string | null;
   /** Crédits IA restants (1 = 1 message Claude) */
   aiCredits?: number;
   /** ISO string d'expiration, ou null */

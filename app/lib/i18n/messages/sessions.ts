@@ -122,6 +122,8 @@ export const sessionsMessages = {
       acceptOptionA: 'Disponible — option A',
       acceptOptionB: 'Disponible — option B',
       respondedAt: 'Répondu le {date}',
+      openWebirata: 'Ouvrir a-finpart',
+      openWebirataHint: 'Accédez à votre espace formation avec le même e-mail et mot de passe.',
       filters: {
         all: 'Toutes',
         pending: 'En attente',
@@ -258,6 +260,8 @@ export const sessionsMessages = {
       acceptOptionA: 'Available — option A',
       acceptOptionB: 'Available — option B',
       respondedAt: 'Responded on {date}',
+      openWebirata: 'Open a-finpart',
+      openWebirataHint: 'Access your training portal with the same email and password.',
       filters: {
         all: 'All',
         pending: 'Pending',
