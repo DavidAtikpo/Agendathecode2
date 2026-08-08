@@ -11,9 +11,9 @@ import {
   SESSION_WITH_ASSIGNMENTS_INCLUDE,
   serializeTrainingSession,
 } from '@/app/lib/session-serialize';
-import { sendPushToUser } from '@/app/lib/firebase-admin';
 import { RoleAssignmentMismatchError } from '@/app/lib/session-assign';
 import { sessionRoleMismatchMessage } from '@/app/lib/user-roles';
+import { notifySessionProposal } from '@/app/lib/session-proposal-notify';
 import { SessionAssignmentStatus } from '@prisma/client';
 
 type Ctx = { params: Promise<{ id: string }> };
@@ -132,10 +132,13 @@ export async function PATCH(request: Request, ctx: Ctx) {
         })),
         notify: async (targetId, role, isNew) => {
           if (isNew || datesChanged) {
-            await sendPushToUser(targetId, {
-              title: datesChanged ? '📅 Session modifiée' : '📅 Proposition de session',
-              body: `${creatorUser?.name ?? 'Organisateur'} : ${title}`,
-              data: { type: 'session_proposal', sessionId: id, role },
+            await notifySessionProposal({
+              userId: targetId,
+              role,
+              sessionId: id,
+              sessionTitle: title,
+              organizerName: creatorUser?.name ?? 'Organisateur',
+              datesChanged: datesChanged && !isNew,
             });
           }
         },
@@ -182,10 +185,13 @@ export async function PATCH(request: Request, ctx: Ctx) {
           where: { id: a.id },
           data: { status: SessionAssignmentStatus.pending, respondedAt: null, acceptedOption: null },
         });
-        await sendPushToUser(a.userId, {
-          title: '📅 Dates modifiées — revalidation',
-          body: `Merci de reconfirmer votre disponibilité : ${title}`,
-          data: { type: 'session_proposal', sessionId: id, role: a.role },
+        await notifySessionProposal({
+          userId: a.userId,
+          role: a.role,
+          sessionId: id,
+          sessionTitle: title,
+          organizerName: creatorUser?.name ?? 'Organisateur',
+          datesChanged: true,
         });
       }
     }

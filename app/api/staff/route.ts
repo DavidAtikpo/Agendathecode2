@@ -18,8 +18,8 @@ import {
   SESSION_WITH_ASSIGNMENTS_INCLUDE,
   serializeTrainingSession,
 } from '@/app/lib/session-serialize';
-import { sendPushToUser } from '@/app/lib/firebase-admin';
 import { syncAllWebirataStaffForOrganizer } from '@/app/lib/webirata-staff';
+import { notifySessionProposal } from '@/app/lib/session-proposal-notify';
 import { SessionAssignmentRole, SessionAssignmentStatus } from '@prisma/client';
 
 export const runtime = 'nodejs';
@@ -259,10 +259,14 @@ export async function POST(request: Request) {
     });
 
     for (const a of created.assignments) {
-      await sendPushToUser(a.userId, {
-        title: '📅 Proposition de session',
-        body: `${auth.user.name} vous propose : ${created.title}`,
-        data: { type: 'session_proposal', sessionId: created.id, role: a.role },
+      await notifySessionProposal({
+        userId: a.userId,
+        role: a.role,
+        sessionId: created.id,
+        sessionTitle: created.title,
+        organizerName: auth.user.name,
+        // L’invitation de compte contient déjà la session si e-mail d’invite envoyé
+        skipEmail: staff.inviteEmailSent,
       });
     }
 

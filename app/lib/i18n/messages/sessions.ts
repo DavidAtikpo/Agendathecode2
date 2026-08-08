@@ -69,6 +69,12 @@ export const sessionsMessages = {
       cancel: 'Annuler',
       edit: 'Modifier',
       delete: 'Supprimer',
+      remind: 'Relancer le message',
+      remindHint: 'Renvoyer l’e-mail et la notification push aux intervenants assignés',
+      remindConfirm:
+        'Renvoyer la proposition par e-mail (et push) à tous les intervenants encore concernés par cette session ?',
+      remindSuccess: 'Message renvoyé à {count} intervenant(s).',
+      remindNone: 'Aucun intervenant assigné sur cette session.',
       staff: {
         title: 'Créer un compte intervenant',
         subtitle: 'Formateur, assessor ou auditeur — l\'organisateur ou l\'admin crée le compte.',
@@ -208,6 +214,12 @@ export const sessionsMessages = {
       cancel: 'Cancel',
       edit: 'Edit',
       delete: 'Delete',
+      remind: 'Resend message',
+      remindHint: 'Resend the email and push notification to assigned staff',
+      remindConfirm:
+        'Resend the proposal by email (and push) to all staff still assigned to this session?',
+      remindSuccess: 'Message resent to {count} staff member(s).',
+      remindNone: 'No staff assigned on this session.',
       staff: {
         title: 'Create staff account',
         subtitle: 'Trainer, assessor or auditor — created by organizer or admin.',

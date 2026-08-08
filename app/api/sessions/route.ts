@@ -14,7 +14,7 @@ import {
   SESSION_WITH_ASSIGNMENTS_INCLUDE,
   serializeTrainingSession,
 } from '@/app/lib/session-serialize';
-import { sendPushToUser } from '@/app/lib/firebase-admin';
+import { notifySessionProposal } from '@/app/lib/session-proposal-notify';
 import { SessionAssignmentStatus } from '@prisma/client';
 
 export async function GET() {
@@ -145,12 +145,15 @@ export async function POST(request: Request) {
   });
 
   const creator = await prisma.user.findUnique({ where: { id: userId }, select: { name: true } });
+  const organizerName = creator?.name ?? 'Un organisateur';
 
   for (const a of session.assignments) {
-    await sendPushToUser(a.userId, {
-      title: '📅 Proposition de session',
-      body: `${creator?.name ?? 'Un organisateur'} vous propose : ${session.title}`,
-      data: { type: 'session_proposal', sessionId: session.id, role: a.role },
+    await notifySessionProposal({
+      userId: a.userId,
+      role: a.role,
+      sessionId: session.id,
+      sessionTitle: session.title,
+      organizerName,
     });
   }
 

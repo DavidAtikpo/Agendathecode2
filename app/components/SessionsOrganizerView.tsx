@@ -46,6 +46,8 @@ interface SessionsOrganizerViewProps {
     },
   ) => Promise<void>;
   onDeleteSession: (sessionId: string) => Promise<void>;
+  /** Relance e-mail + push de proposition aux intervenants assignés. */
+  onRemindSession?: (sessionId: string, userId?: string) => Promise<{ sent: number }>;
   /** Ouvre la vue « Dates de sessions » (catalogue). */
   onOpenSessionDates?: () => void;
   onCreateStaff?: (payload: {
@@ -228,6 +230,7 @@ export default function SessionsOrganizerView({
   onCreateSession,
   onUpdateSession,
   onDeleteSession,
+  onRemindSession,
   onOpenSessionDates,
   onCreateStaff,
 }: SessionsOrganizerViewProps) {
@@ -577,6 +580,26 @@ export default function SessionsOrganizerView({
     organizerEmail: currentUser.email,
     organizerSelfHint: t('sessions.errors.organizerOwnEmail'),
     onBlockedOrganizerEmail: () => setError(t('sessions.errors.organizerOwnEmail')),
+  };
+
+  const handleRemind = async (sessionId: string, assignmentCount: number) => {
+    if (busy || !onRemindSession) return;
+    if (assignmentCount === 0) {
+      setError(t('sessions.organizer.remindNone'));
+      return;
+    }
+    if (!confirm(t('sessions.organizer.remindConfirm'))) return;
+    setBusy(true);
+    setError(null);
+    setSuccess(null);
+    try {
+      const result = await onRemindSession(sessionId);
+      setSuccess(t('sessions.organizer.remindSuccess', { count: String(result.sent) }));
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : t('common.status.error'));
+    } finally {
+      setBusy(false);
+    }
   };
 
   const pad = compactLayout ? 'px-3 py-3' : 'px-4 py-4 md:px-6 md:py-5';
@@ -938,13 +961,26 @@ export default function SessionsOrganizerView({
                           </span>
                         </td>
                         <td className="px-3 py-3">
-                          <button
-                            type="button"
-                            onClick={() => (editing ? setEditId(null) : openEdit(s))}
-                            className="text-xs text-teal-400 hover:text-teal-300"
-                          >
-                            {editing ? t('sessions.organizer.cancel') : t('sessions.organizer.edit')}
-                          </button>
+                          <div className="flex flex-col items-start gap-1.5">
+                            <button
+                              type="button"
+                              onClick={() => (editing ? setEditId(null) : openEdit(s))}
+                              className="text-xs text-teal-400 hover:text-teal-300"
+                            >
+                              {editing ? t('sessions.organizer.cancel') : t('sessions.organizer.edit')}
+                            </button>
+                            {onRemindSession && s.assignments.length > 0 ? (
+                              <button
+                                type="button"
+                                disabled={busy}
+                                onClick={() => void handleRemind(s.id, s.assignments.length)}
+                                className="text-xs text-amber-400 hover:text-amber-300 disabled:opacity-50"
+                                title={t('sessions.organizer.remindHint')}
+                              >
+                                {t('sessions.organizer.remind')}
+                              </button>
+                            ) : null}
+                          </div>
                         </td>
                       </tr>
                       {editing ? (
@@ -1005,6 +1041,16 @@ export default function SessionsOrganizerView({
                                 className="rounded-lg bg-teal-600 px-3 py-1.5 text-xs text-white hover:bg-teal-500 disabled:opacity-50">
                                 {t('sessions.organizer.save')}
                               </button>
+                              {onRemindSession && s.assignments.length > 0 ? (
+                                <button
+                                  type="button"
+                                  disabled={busy}
+                                  onClick={() => void handleRemind(s.id, s.assignments.length)}
+                                  className="rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-1.5 text-xs font-medium text-amber-200 hover:bg-amber-500/20 disabled:opacity-50"
+                                >
+                                  {t('sessions.organizer.remind')}
+                                </button>
+                              ) : null}
                               <button
                                 type="button"
                                 disabled={busy}

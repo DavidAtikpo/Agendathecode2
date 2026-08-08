@@ -986,6 +986,21 @@ export default function HomePage() {
     setTrainingSessions(prev => prev.filter(s => s.id !== sessionId));
   }, [tx]);
 
+  const remindSession = useCallback(
+    async (sessionId: string, userId?: string) => {
+      const res = await fetch(`/api/sessions/${sessionId}/remind`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        ...fetchOpts,
+        body: JSON.stringify(userId ? { userId } : {}),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? tx('common.status.error'));
+      return { sent: typeof data.sent === 'number' ? data.sent : 0 };
+    },
+    [tx],
+  );
+
   const respondSession = useCallback(
     async (
       sessionId: string,
@@ -1913,6 +1928,7 @@ export default function HomePage() {
                   onCreateSession={createSession}
                   onUpdateSession={updateSession}
                   onDeleteSession={deleteSession}
+                  onRemindSession={remindSession}
                   onCreateStaff={createStaff}
                   onOpenSessionDates={
                     canManageSessionCatalog(displayUser.role)

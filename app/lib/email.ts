@@ -10,6 +10,7 @@ export type SendReminderResult = { ok: true } | { ok: false; error: string };
 export type SendTaskNotificationResult = { ok: true } | { ok: false; error: string };
 export type SendPasswordResetResult = { ok: true } | { ok: false; error: string };
 export type SendStaffInvitationResult = { ok: true } | { ok: false; error: string };
+export type SendSessionProposalResult = { ok: true } | { ok: false; error: string };
 
 export type StaffInviteRole = 'formateur' | 'assessor' | 'auditeur';
 
@@ -282,6 +283,96 @@ ${sessionBlock}
 <p style="margin-top:16px;font-size:12px;color:#94a3b8;">${expiry}</p>
 <p style="margin-top:20px;padding-top:16px;border-top:1px solid #e2e8f0;font-size:13px;color:#475569;">${contact}</p>
 <p style="margin-top:8px;font-size:12px;color:#94a3b8;">${footer}</p>
+</body></html>`,
+    });
+    return { ok: true };
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : String(e);
+    return { ok: false, error: msg };
+  }
+}
+
+/**
+ * Notification e-mail quand un organisateur propose (ou modifie) une session à un intervenant déjà créé.
+ * Distinct de l’invitation de création de compte.
+ */
+export async function sendSessionProposalEmail(
+  to: string,
+  params: {
+    name: string;
+    organizerName: string;
+    organizationName?: string;
+    staffRole: StaffInviteRole;
+    sessionTitle: string;
+    dashboardUrl: string;
+    datesChanged?: boolean;
+    locale?: 'fr' | 'en';
+  },
+): Promise<SendSessionProposalResult> {
+  const transporter = getTransporter();
+  const from = buildFromHeader();
+
+  if (!transporter || !from) {
+    if (process.env.NODE_ENV === 'development') {
+      console.warn('[email] SMTP non configuré — e-mail proposition de session non envoyé');
+    }
+    return { ok: false, error: 'SMTP non configuré' };
+  }
+
+  const en = params.locale === 'en';
+  const safeName = escapeHtml(params.name.trim() || (en ? 'there' : 'Bonjour'));
+  const safeOrganizer = escapeHtml(
+    params.organizerName.trim() || (en ? 'An organizer' : 'Un organisateur'),
+  );
+  const orgName = escapeHtml(params.organizationName?.trim() || getTrainingCenterDisplayName());
+  const roleLabel = en ? staffRoleLabelEn(params.staffRole) : staffRoleLabelFr(params.staffRole);
+  const safeSession = escapeHtml(params.sessionTitle.trim());
+  const safeUrl = escapeHtml(params.dashboardUrl);
+  const modified = Boolean(params.datesChanged);
+
+  const subject = en
+    ? modified
+      ? `📅 Session dates updated — ${safeOrganizer} (${orgName})`
+      : `📅 New session proposal — ${safeOrganizer} (${orgName})`
+    : modified
+      ? `📅 Dates de session modifiées — ${safeOrganizer} (${orgName})`
+      : `📅 Nouvelle proposition de session — ${safeOrganizer} (${orgName})`;
+
+  const intro = en
+    ? modified
+      ? `<p style="margin:12px 0;font-size:14px;color:#334155;"><strong>${safeOrganizer}</strong>, organizer at <strong>${orgName}</strong>, has <strong>updated the dates</strong> of a session proposed to you as <strong>${roleLabel}</strong>.</p>`
+      : `<p style="margin:12px 0;font-size:14px;color:#334155;"><strong>${safeOrganizer}</strong>, organizer at <strong>${orgName}</strong>, proposes a training session to you as <strong>${roleLabel}</strong>.</p>`
+    : modified
+      ? `<p style="margin:12px 0;font-size:14px;color:#334155;"><strong>${safeOrganizer}</strong>, organisateur du centre de formation <strong>${orgName}</strong>, a <strong>modifié les dates</strong> d’une session qui vous est proposée en tant que <strong>${roleLabel}</strong>.</p>`
+      : `<p style="margin:12px 0;font-size:14px;color:#334155;"><strong>${safeOrganizer}</strong>, organisateur du centre de formation <strong>${orgName}</strong>, vous propose une session de formation en tant que <strong>${roleLabel}</strong>.</p>`;
+
+  const action = en
+    ? 'Sign in to Neurix, open <strong>« My proposals »</strong>, then confirm whether you are <strong>available</strong> or <strong>not available</strong> for these dates.'
+    : 'Connectez-vous à Neurix, ouvrez <strong>« Mes propositions »</strong>, puis indiquez si vous êtes <strong>disponible</strong> ou <strong>non libre</strong> pour ces dates.';
+
+  const cta = en ? 'Open my proposals' : 'Ouvrir Mes propositions';
+
+  const contactEmail = 'pm@cides.tf';
+  const contact = en
+    ? `Contact the management: <a href="mailto:${contactEmail}" style="color:#0d9488;text-decoration:none;">${contactEmail}</a>`
+    : `Contactez la direction : <a href="mailto:${contactEmail}" style="color:#0d9488;text-decoration:none;">${contactEmail}</a>`;
+
+  try {
+    await transporter.sendMail({
+      from,
+      to,
+      subject,
+      html: `<!DOCTYPE html><html><body style="font-family:system-ui,sans-serif;line-height:1.5;color:#0f172a;max-width:560px;">
+<p style="font-size:14px;color:#64748b;">${en ? 'Hello' : 'Bonjour'} ${safeName},</p>
+${intro}
+<p style="margin:16px 0;padding:14px;background:#ecfdf5;border-left:4px solid #14b8a6;border-radius:8px;font-size:15px;font-weight:600;color:#0f766e;">${safeSession}</p>
+<p style="margin:12px 0;font-size:14px;color:#334155;">${action}</p>
+<p style="margin:24px 0;">
+  <a href="${safeUrl}" style="display:inline-block;background:#0d9488;color:#fff;text-decoration:none;padding:12px 20px;border-radius:10px;font-weight:600;font-size:14px;">${cta}</a>
+</p>
+<p style="font-size:12px;color:#64748b;word-break:break-all;">${safeUrl}</p>
+<p style="margin-top:20px;padding-top:16px;border-top:1px solid #e2e8f0;font-size:13px;color:#475569;">${contact}</p>
+<p style="margin-top:8px;font-size:12px;color:#94a3b8;">— Neurix</p>
 </body></html>`,
     });
     return { ok: true };
