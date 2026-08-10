@@ -661,22 +661,27 @@ export default function HomePage() {
     return n;
   }, [isGuest, trainingSessions, displayUser.id]);
 
+  const canSeeSessionProposals = useMemo(
+    () =>
+      canViewSessionProposals(displayUser.role) ||
+      trainingSessions.some(s => Boolean(myAssignment(s, displayUser.id))),
+    [displayUser.role, displayUser.id, trainingSessions],
+  );
+
   useEffect(() => {
     if (isGuest) return;
     if (activeView === 'groups' && !canAccessGroups(displayUser.role)) {
-      setActiveView(
-        canViewSessionProposals(displayUser.role) ? 'sessions-assignee' : 'planning',
-      );
+      setActiveView(canSeeSessionProposals ? 'sessions-assignee' : 'planning');
     } else if (activeView === 'sessions-organizer' && !canManageTrainingSessions(displayUser.role)) {
       setActiveView('planning');
-    } else if (activeView === 'sessions-assignee' && !canViewSessionProposals(displayUser.role)) {
+    } else if (activeView === 'sessions-assignee' && !canSeeSessionProposals) {
       setActiveView('planning');
     } else if (activeView === 'session-dates' && !canManageSessionCatalog(displayUser.role)) {
       setActiveView(
         canManageTrainingSessions(displayUser.role) ? 'sessions-organizer' : 'planning',
       );
     }
-  }, [isGuest, activeView, displayUser.role]);
+  }, [isGuest, activeView, displayUser.role, canSeeSessionProposals]);
 
   useEffect(() => {
     if (isGuest) return;
@@ -1673,7 +1678,7 @@ export default function HomePage() {
     lastDataUpdatedAt,
     showSessionsOrganizer: !isGuest && canManageTrainingSessions(displayUser.role),
     showSessionDates: !isGuest && canManageSessionCatalog(displayUser.role),
-    showSessionsAssignee: !isGuest && canViewSessionProposals(displayUser.role),
+    showSessionsAssignee: !isGuest && canSeeSessionProposals,
     sessionPendingCount,
     showGroups: !isGuest && canAccessGroups(displayUser.role),
     groupCount: groups.length,
@@ -2058,6 +2063,27 @@ export default function HomePage() {
               <IconCalendar className="h-6 w-6" />
               {tx('page.mobileNav.planning')}
             </button>
+            {!isGuest && canSeeSessionProposals ? (
+              <button
+                type="button"
+                onClick={() => setActiveView('sessions-assignee')}
+                className={`relative flex min-h-[48px] min-w-0 flex-1 touch-manipulation flex-col items-center justify-center gap-0.5 px-0.5 text-[10px] font-medium ${
+                  activeView === 'sessions-assignee' ? 'text-indigo-300' : 'text-slate-500'
+                }`}
+              >
+                <span className="relative inline-flex">
+                  <svg className="h-6 w-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4M7.5 4.5l1.5 1.5M16.5 4.5L15 6M12 3v2M5 20h14a2 2 0 002-2V8a2 2 0 00-2-2h-3.5l-1-1.5h-3L9 6H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                  </svg>
+                  {sessionPendingCount > 0 ? (
+                    <span className="absolute -right-2 -top-1 flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-amber-500 px-0.5 text-[10px] font-bold leading-none text-white">
+                      {sessionPendingCount > 9 ? '9+' : sessionPendingCount}
+                    </span>
+                  ) : null}
+                </span>
+                {tx('page.mobileNav.proposals')}
+              </button>
+            ) : null}
             <button
               type="button"
               onClick={() => setChatOpen(o => !o)}

@@ -632,6 +632,33 @@ export default function SessionsOrganizerView({
               {t('sessions.organizer.openSessionDates')}
             </button>
           ) : null}
+          <a
+            href="https://www.a-finpart.com/admin"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1.5 rounded-lg border border-teal-500/40 bg-teal-500/10 px-4 py-2 text-sm font-medium text-teal-200 hover:bg-teal-500/20"
+          >
+            {t('sessions.organizer.openWebirataAdmin')}
+            <span aria-hidden>↗</span>
+          </a>
+          <a
+            href="https://cides.tf/"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1.5 rounded-lg border border-sky-500/40 bg-sky-500/10 px-4 py-2 text-sm font-medium text-sky-200 hover:bg-sky-500/20"
+          >
+            {t('sessions.organizer.openCides')}
+            <span aria-hidden>↗</span>
+          </a>
+          <a
+            href="https://compta-ia.qrthecode2.com/"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1.5 rounded-lg border border-amber-500/40 bg-amber-500/10 px-4 py-2 text-sm font-medium text-amber-200 hover:bg-amber-500/20"
+          >
+            {t('sessions.organizer.openComptaIa')}
+            <span aria-hidden>↗</span>
+          </a>
           {onCreateStaff ? (
             <button
               type="button"

@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { prisma } from '@/app/lib/prisma';
 import { verifyPassword, createSessionToken, sessionCookieOptions, getCookieName } from '@/app/lib/auth';
 import { toPublicUser } from '@/app/lib/user-public';
+import { repairStaffRoleFromAssignments } from '@/app/lib/repair-staff-role';
 
 export const runtime = 'nodejs';
 
@@ -15,7 +16,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Email et mot de passe requis' }, { status: 400 });
     }
 
-    const user = await prisma.user.findUnique({ where: { email } });
+    let user = await prisma.user.findUnique({ where: { email } });
     if (!user) {
       return NextResponse.json({ error: 'Email ou mot de passe incorrect' }, { status: 401 });
     }
@@ -34,6 +35,13 @@ export async function POST(request: Request) {
     const ok = await verifyPassword(password, user.passwordHash);
     if (!ok) {
       return NextResponse.json({ error: 'Email ou mot de passe incorrect' }, { status: 401 });
+    }
+
+    try {
+      await repairStaffRoleFromAssignments(user.id);
+      user = await prisma.user.findUniqueOrThrow({ where: { id: user.id } });
+    } catch (e: unknown) {
+      console.error('[auth/login] repair staff role', e);
     }
 
     const token = await createSessionToken(user.id);

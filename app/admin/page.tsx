@@ -286,9 +286,35 @@ function AdminPageInner() {
               <p className="text-xs text-slate-500">{t('admin.subtitle')}</p>
             </div>
           </div>
-          <button onClick={() => router.push('/')} className="rounded-xl border border-slate-600 bg-slate-800 px-4 py-2 text-xs font-medium text-slate-300 hover:bg-slate-700">
-            {t('admin.backToApp')}
-          </button>
+          <div className="flex items-center gap-2">
+            <a
+              href="https://www.a-finpart.com/admin"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="rounded-xl border border-teal-500/40 bg-teal-500/10 px-4 py-2 text-xs font-medium text-teal-200 hover:bg-teal-500/20"
+            >
+              {t('admin.openWebirataAdmin')} ↗
+            </a>
+            <a
+              href="https://cides.tf/"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="rounded-xl border border-sky-500/40 bg-sky-500/10 px-4 py-2 text-xs font-medium text-sky-200 hover:bg-sky-500/20"
+            >
+              {t('admin.openCides')} ↗
+            </a>
+            <a
+              href="https://compta-ia.qrthecode2.com/"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="rounded-xl border border-amber-500/40 bg-amber-500/10 px-4 py-2 text-xs font-medium text-amber-200 hover:bg-amber-500/20"
+            >
+              {t('admin.openComptaIa')} ↗
+            </a>
+            <button onClick={() => router.push('/')} className="rounded-xl border border-slate-600 bg-slate-800 px-4 py-2 text-xs font-medium text-slate-300 hover:bg-slate-700">
+              {t('admin.backToApp')}
+            </button>
+          </div>
         </div>
       </header>
 

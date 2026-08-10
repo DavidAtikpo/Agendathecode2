@@ -12,7 +12,6 @@ import {
   type AssigneeStatusFilter,
 } from '../lib/session-labels';
 import { useI18n } from '@/app/lib/i18n';
-import { isTrainingStaffRole } from '@/app/lib/user-roles';
 
 interface SessionsAssigneeViewProps {
   sessions: TrainingSession[];
@@ -45,13 +44,11 @@ export default function SessionsAssigneeView({
   const [error, setError] = useState<string | null>(null);
   const [portalBusy, setPortalBusy] = useState(false);
 
-  const isStaff = isTrainingStaffRole(currentUser.role);
-  const portalUrl = currentUser.webirataPortalUrl ?? 'https://a-finpart.com';
-  /** Bouton toujours visible pour formateur / assessor / auditeur */
-  const showPortal = isStaff;
+  /** Intervenant dans cette vue → toujours afficher a-finpart */
+  const showPortal = true;
+  const portalUrl = currentUser.webirataPortalUrl ?? 'https://www.a-finpart.com';
 
   useEffect(() => {
-    if (!isStaff) return;
     let cancelled = false;
     void (async () => {
       try {
@@ -71,9 +68,8 @@ export default function SessionsAssigneeView({
     return () => {
       cancelled = true;
     };
-    // Sync once when opening Mes propositions as staff
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- volontairement une fois au montage staff
-  }, [isStaff]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- sync une fois à l’ouverture de Mes propositions
+  }, []);
 
   const openPortal = async () => {
     setPortalBusy(true);

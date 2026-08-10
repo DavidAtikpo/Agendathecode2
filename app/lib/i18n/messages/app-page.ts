@@ -16,6 +16,7 @@ export const pageMessages = {
       notes: 'Notes',
       tasks: 'Tâches',
       planning: 'Planning',
+      proposals: 'Propositions',
       ai: 'IA',
     },
     header: {
@@ -96,6 +97,7 @@ export const pageMessages = {
       notes: 'Notes',
       tasks: 'Tasks',
       planning: 'Planning',
+      proposals: 'Proposals',
       ai: 'AI',
     },
     header: {

@@ -2,6 +2,9 @@ export const adminMessages = {
   fr: {
     title: 'Neurix Admin',
     subtitle: 'Panneau d\'administration',
+    openWebirataAdmin: 'Admin a-finpart',
+    openCides: 'CI.DES',
+    openComptaIa: 'Compta IA',
     backToApp: '← Retour à l\'app',
     backHome: 'Retour à l\'accueil',
     loading: 'Chargement…',
@@ -115,6 +118,9 @@ export const adminMessages = {
   en: {
     title: 'Neurix Admin',
     subtitle: 'Administration panel',
+    openWebirataAdmin: 'a-finpart admin',
+    openCides: 'CI.DES',
+    openComptaIa: 'Compta IA',
     backToApp: '← Back to app',
     backHome: 'Back to home',
     loading: 'Loading…',

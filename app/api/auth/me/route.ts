@@ -4,6 +4,7 @@ import { getSessionUserId } from '@/app/lib/auth';
 import { toPublicUser } from '@/app/lib/user-public';
 import { isTrainingStaffRole } from '@/app/lib/user-roles';
 import { provisionWebirataStaffAccountIfReady } from '@/app/lib/webirata-staff';
+import { repairStaffRoleFromAssignments } from '@/app/lib/repair-staff-role';
 
 export async function GET() {
   const userId = await getSessionUserId();
@@ -16,7 +17,15 @@ export async function GET() {
     return NextResponse.json({ error: 'Session invalide' }, { status: 401 });
   }
 
-  /** Rattrapage : déjà accepté une session avant la sync a-finpart */
+  try {
+    const repaired = await repairStaffRoleFromAssignments(userId);
+    if (repaired) {
+      user = await prisma.user.findUniqueOrThrow({ where: { id: userId } });
+    }
+  } catch (e: unknown) {
+    console.error('[auth/me] repair staff role', e);
+  }
+
   if (isTrainingStaffRole(user.role) && !user.webirataUserId) {
     try {
       const ok = await provisionWebirataStaffAccountIfReady(userId);

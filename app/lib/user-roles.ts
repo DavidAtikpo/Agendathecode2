@@ -14,6 +14,18 @@ export type AppUserRole =
 const TRAINING_STAFF: AppUserRole[] = ['formateur', 'assessor', 'auditeur'];
 
 export function normalizeAppUserRole(raw: unknown): AppUserRole {
+  if (typeof raw === 'string') {
+    const key = raw.trim().toLowerCase();
+    if (
+      key === 'admin' ||
+      key === 'organizer' ||
+      key === 'formateur' ||
+      key === 'assessor' ||
+      key === 'auditeur'
+    ) {
+      return key;
+    }
+  }
   if (
     raw === 'admin' ||
     raw === 'organizer' ||

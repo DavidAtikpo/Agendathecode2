@@ -6,8 +6,8 @@ import {
   serializeTrainingSession,
 } from '@/app/lib/session-serialize';
 import { sendPushToUser } from '@/app/lib/firebase-admin';
-import { canViewSessionProposals, normalizeAppUserRole } from '@/app/lib/user-roles';
 import { provisionWebirataStaffAccountIfReady } from '@/app/lib/webirata-staff';
+import { repairStaffRoleFromAssignments } from '@/app/lib/repair-staff-role';
 import { toPublicUser } from '@/app/lib/user-public';
 import { sessionsVisibleToUser } from '@/app/lib/session-access';
 import { SessionAssignmentStatus, SessionDateOption } from '@prisma/client';
@@ -19,6 +19,12 @@ export async function POST(request: Request, ctx: Ctx) {
   const userId = await getSessionUserId();
   if (!userId) {
     return NextResponse.json({ error: 'Non autorisé' }, { status: 401 });
+  }
+
+  try {
+    await repairStaffRoleFromAssignments(userId);
+  } catch (e: unknown) {
+    console.error('[sessions/respond] repair staff role', e);
   }
 
   const { id } = await ctx.params;
@@ -37,31 +43,6 @@ export async function POST(request: Request, ctx: Ctx) {
     return NextResponse.json({ error: 'status (accepted|declined) et role requis' }, { status: 400 });
   }
 
-  const account = await prisma.user.findUnique({
-    where: { id: userId },
-    select: { role: true },
-  });
-  if (!canViewSessionProposals(account?.role)) {
-    return NextResponse.json(
-      {
-        error:
-          'Seuls les comptes Formateur, Assessor et Auditeur peuvent répondre aux propositions.',
-      },
-      { status: 403 },
-    );
-  }
-
-  const accountRole = normalizeAppUserRole(account?.role);
-  if (accountRole === 'formateur' && role !== 'formateur') {
-    return NextResponse.json({ error: 'Votre compte est Formateur uniquement.' }, { status: 403 });
-  }
-  if (accountRole === 'assessor' && role !== 'assessor') {
-    return NextResponse.json({ error: 'Votre compte est Assessor uniquement.' }, { status: 403 });
-  }
-  if (accountRole === 'auditeur' && role !== 'auditeur') {
-    return NextResponse.json({ error: 'Votre compte est Auditeur uniquement.' }, { status: 403 });
-  }
-
   const session = await prisma.trainingSession.findFirst({
     where: { id, ...sessionsVisibleToUser(userId) },
     include: SESSION_WITH_ASSIGNMENTS_INCLUDE,
@@ -70,19 +51,19 @@ export async function POST(request: Request, ctx: Ctx) {
     return NextResponse.json({ error: 'Session introuvable' }, { status: 404 });
   }
 
-  const hasAltDates = Boolean(session.altStartDate && session.altEndDate);
-  if (decision === 'accepted' && hasAltDates && !acceptedOption) {
-    return NextResponse.json(
-      { error: "Choisissez l'option A ou B pour confirmer votre disponibilité." },
-      { status: 400 },
-    );
-  }
-
   const assignment = session.assignments.find(a => a.role === role && a.userId === userId);
   if (!assignment) {
     return NextResponse.json(
       { error: "Vous n'êtes pas assigné à ce rôle pour cette session." },
       { status: 403 },
+    );
+  }
+
+  const hasAltDates = Boolean(session.altStartDate && session.altEndDate);
+  if (decision === 'accepted' && hasAltDates && !acceptedOption) {
+    return NextResponse.json(
+      { error: "Choisissez l'option A ou B pour confirmer votre disponibilité." },
+      { status: 400 },
     );
   }
 

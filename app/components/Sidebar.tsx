@@ -301,30 +301,94 @@ export default function Sidebar({
             ) : null}
 
             {showSessionsOrganizer ? (
-              <button
-                type="button"
-                onClick={() => {
-                  onViewChange('sessions-organizer');
-                  afterNav();
-                }}
-                className={navBtn(
-                  activeView === 'sessions-organizer',
-                  'bg-teal-500/20 text-teal-300',
-                )}
-                title={expanded ? undefined : t('sidebar.nav.sessionsOrganizer')}
-              >
-                <svg
-                  className={`h-5 w-5 shrink-0 ${activeView === 'sessions-organizer' ? 'text-teal-300' : 'text-slate-400'}`}
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="1.8"
-                  aria-hidden
+              <>
+                <button
+                  type="button"
+                  onClick={() => {
+                    onViewChange('sessions-organizer');
+                    afterNav();
+                  }}
+                  className={navBtn(
+                    activeView === 'sessions-organizer',
+                    'bg-teal-500/20 text-teal-300',
+                  )}
+                  title={expanded ? undefined : t('sidebar.nav.sessionsOrganizer')}
                 >
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M4 19V5m0 14h16M8 11v8m4-8v8m4-8v8M8 7V5m4 2V5m4 2V5" />
-                </svg>
-                {expanded ? <span className="min-w-0 truncate">{t('sidebar.nav.sessionsOrganizer')}</span> : null}
-              </button>
+                  <svg
+                    className={`h-5 w-5 shrink-0 ${activeView === 'sessions-organizer' ? 'text-teal-300' : 'text-slate-400'}`}
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="1.8"
+                    aria-hidden
+                  >
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M4 19V5m0 14h16M8 11v8m4-8v8m4-8v8M8 7V5m4 2V5m4 2V5" />
+                  </svg>
+                  {expanded ? <span className="min-w-0 truncate">{t('sidebar.nav.sessionsOrganizer')}</span> : null}
+                </button>
+                <a
+                  href="https://www.a-finpart.com/admin"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className={`${navBtn(false, 'bg-teal-500/20 text-teal-300')} relative`}
+                  title={expanded ? undefined : t('sidebar.nav.openWebirataAdmin')}
+                  onClick={() => afterNav()}
+                >
+                  <svg
+                    className="h-5 w-5 shrink-0 text-teal-400"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="1.8"
+                    aria-hidden
+                  >
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 6H5.25A2.25 2.25 0 003 8.25v10.5A2.25 2.25 0 005.25 21h10.5A2.25 2.25 0 0018 18.75V10.5m-10.5 6L21 3m0 0h-5.25M21 3v5.25" />
+                  </svg>
+                  {expanded ? (
+                    <span className="min-w-0 truncate">{t('sidebar.nav.openWebirataAdmin')}</span>
+                  ) : null}
+                </a>
+                <a
+                  href="https://cides.tf/"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className={`${navBtn(false, 'bg-sky-500/20 text-sky-300')} relative`}
+                  title={expanded ? undefined : t('sidebar.nav.openCides')}
+                  onClick={() => afterNav()}
+                >
+                  <svg
+                    className="h-5 w-5 shrink-0 text-sky-400"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="1.8"
+                    aria-hidden
+                  >
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 21a9.004 9.004 0 008.716-6.747M12 21a9.004 9.004 0 01-8.716-6.747M12 21c2.485 0 4.5-4.03 4.5-9S14.485 3 12 3m0 18c-2.485 0-4.5-4.03-4.5-9S9.515 3 12 3m0 0a8.997 8.997 0 017.843 4.582M12 3a8.997 8.997 0 00-7.843 4.582m15.686 0A11.953 11.953 0 0112 10.5c-2.998 0-5.74-1.1-7.843-2.918m15.686 0A8.959 8.959 0 0121 12c0 .778-.099 1.533-.284 2.253m0 0A17.919 17.919 0 0112 16.5c-3.162 0-6.133-.815-8.716-2.247m0 0A9.015 9.015 0 013 12c0-1.605.42-3.113 1.157-4.418" />
+                  </svg>
+                  {expanded ? <span className="min-w-0 truncate">{t('sidebar.nav.openCides')}</span> : null}
+                </a>
+                <a
+                  href="https://compta-ia.qrthecode2.com/"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className={`${navBtn(false, 'bg-amber-500/20 text-amber-300')} relative`}
+                  title={expanded ? undefined : t('sidebar.nav.openComptaIa')}
+                  onClick={() => afterNav()}
+                >
+                  <svg
+                    className="h-5 w-5 shrink-0 text-amber-400"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="1.8"
+                    aria-hidden
+                  >
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 18.75a60.07 60.07 0 0115.797 2.101c.727.198 1.453-.342 1.453-1.096V18.75M3.75 4.5v.75A.75.75 0 013 6h-.75m0 0v-.375c0-.621.504-1.125 1.125-1.125H20.25M2.25 6v9m18-10.5v.75c0 .414.336.75.75.75h.75m-1.5-1.5h.375c.621 0 1.125.504 1.125 1.125v9.75c0 .621-.504 1.125-1.125 1.125h-.375m1.5-1.5H21a.75.75 0 00-.75.75v.75m0 0H3.75m0 0h-.375a1.125 1.125 0 01-1.125-1.125V15m1.5 1.5v-.75A.75.75 0 003 15h-.75M15 10.5a3 3 0 11-6 0 3 3 0 016 0zm3 0h.008v.008H18V10.5zm-12 0h.008v.008H6V10.5z" />
+                  </svg>
+                  {expanded ? <span className="min-w-0 truncate">{t('sidebar.nav.openComptaIa')}</span> : null}
+                </a>
+              </>
             ) : null}
 
             {showSessionDates ? (
@@ -384,7 +448,7 @@ export default function Sidebar({
                   ) : null}
                 </button>
                 <a
-                  href={currentUser.webirataPortalUrl ?? 'https://a-finpart.com'}
+                  href={currentUser.webirataPortalUrl ?? 'https://www.a-finpart.com'}
                   target="_blank"
                   rel="noopener noreferrer"
                   className={`${navBtn(false, 'bg-teal-500/20 text-teal-300')} relative`}
