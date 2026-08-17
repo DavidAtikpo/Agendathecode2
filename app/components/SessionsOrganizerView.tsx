@@ -48,8 +48,8 @@ interface SessionsOrganizerViewProps {
   onDeleteSession: (sessionId: string) => Promise<void>;
   /** Relance e-mail + push de proposition aux intervenants assignés. */
   onRemindSession?: (sessionId: string, userId?: string) => Promise<{ sent: number }>;
-  /** Ouvre la vue « Dates de sessions » (catalogue). */
-  onOpenSessionDates?: () => void;
+  createOpen?: boolean;
+  onCreateOpenChange?: (open: boolean) => void;
   onCreateStaff?: (payload: {
     firstName: string;
     lastName: string;
@@ -231,12 +231,15 @@ export default function SessionsOrganizerView({
   onUpdateSession,
   onDeleteSession,
   onRemindSession,
-  onOpenSessionDates,
+  createOpen: createOpenProp,
+  onCreateOpenChange,
   onCreateStaff,
 }: SessionsOrganizerViewProps) {
   const { locale, t } = useI18n();
   const [filter, setFilter] = useState<OrganizerStatusFilter>('all');
-  const [showCreate, setShowCreate] = useState(false);
+  const [internalCreateOpen, setInternalCreateOpen] = useState(false);
+  const showCreate = createOpenProp ?? internalCreateOpen;
+  const setShowCreate = onCreateOpenChange ?? setInternalCreateOpen;
   const [showStaff, setShowStaff] = useState(false);
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
@@ -603,67 +606,20 @@ export default function SessionsOrganizerView({
   };
 
   const pad = compactLayout ? 'px-3 py-3' : 'px-4 py-4 md:px-6 md:py-5';
+  const toolbarPad = compactLayout ? 'px-3 py-2' : 'px-4 py-2 md:px-6 md:py-2.5';
 
   return (
     <div className="flex h-full min-h-0 flex-col bg-[#0f1419]">
-      <div className={`shrink-0 border-b border-slate-700/80 bg-slate-900/90 ${pad}`}>
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div>
-            <h2 className={`font-semibold text-white ${compactLayout ? 'text-base' : 'text-lg'}`}>
-              {t('sessions.organizer.title')}
-            </h2>
-            <p className="mt-0.5 text-xs text-slate-500">
-              {t('sessions.organizer.subtitle')}
-            </p>
-          </div>
-          <button
-            type="button"
-            onClick={() => setShowCreate(v => !v)}
-            className="rounded-lg bg-teal-600 px-4 py-2 text-sm font-medium text-white hover:bg-teal-500"
-          >
-            {showCreate ? t('sessions.organizer.closeForm') : t('sessions.organizer.newSession')}
-          </button>
-          {onOpenSessionDates ? (
-            <button
-              type="button"
-              onClick={onOpenSessionDates}
-              className="rounded-lg border border-violet-500/40 bg-violet-500/10 px-4 py-2 text-sm font-medium text-violet-200 hover:bg-violet-500/20"
-            >
-              {t('sessions.organizer.openSessionDates')}
-            </button>
-          ) : null}
-          <a
-            href="https://www.a-finpart.com/admin"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="inline-flex items-center gap-1.5 rounded-lg border border-teal-500/40 bg-teal-500/10 px-4 py-2 text-sm font-medium text-teal-200 hover:bg-teal-500/20"
-          >
-            {t('sessions.organizer.openWebirataAdmin')}
-            <span aria-hidden>↗</span>
-          </a>
-          <a
-            href="https://cides.tf/"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="inline-flex items-center gap-1.5 rounded-lg border border-sky-500/40 bg-sky-500/10 px-4 py-2 text-sm font-medium text-sky-200 hover:bg-sky-500/20"
-          >
-            {t('sessions.organizer.openCides')}
-            <span aria-hidden>↗</span>
-          </a>
-          <a
-            href="https://compta-ia.qrthecode2.com/"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="inline-flex items-center gap-1.5 rounded-lg border border-amber-500/40 bg-amber-500/10 px-4 py-2 text-sm font-medium text-amber-200 hover:bg-amber-500/20"
-          >
-            {t('sessions.organizer.openComptaIa')}
-            <span aria-hidden>↗</span>
-          </a>
+      <div className={`shrink-0 border-b border-slate-700/80 bg-slate-900/90 ${toolbarPad}`}>
+        <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
+          <p className="min-w-0 flex-1 text-xs leading-snug text-slate-500">
+            {t('sessions.organizer.subtitle')}
+          </p>
           {onCreateStaff ? (
             <button
               type="button"
               onClick={() => setShowStaff(v => !v)}
-              className="rounded-lg border border-slate-600 px-4 py-2 text-sm font-medium text-slate-200 hover:bg-slate-800"
+              className="shrink-0 rounded-lg border border-slate-600 px-3 py-1.5 text-xs font-medium text-slate-200 hover:bg-slate-800"
             >
               {showStaff ? t('sessions.organizer.closeForm') : t('sessions.organizer.staff.title')}
             </button>
@@ -671,7 +627,7 @@ export default function SessionsOrganizerView({
         </div>
 
         {showStaff && onCreateStaff ? (
-          <form onSubmit={handleCreateStaff} className="mt-4 rounded-xl border border-slate-700 bg-slate-800/50 p-4 space-y-3">
+          <form onSubmit={handleCreateStaff} className="mt-3 rounded-xl border border-slate-700 bg-slate-800/50 p-4 space-y-3">
             <p className="text-xs text-slate-500">{t('sessions.organizer.staff.subtitle')}</p>
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
               <label className="block text-xs text-slate-400">
@@ -739,7 +695,7 @@ export default function SessionsOrganizerView({
         ) : null}
 
         {showCreate ? (
-          <form onSubmit={handleCreate} className="mt-4 rounded-xl border border-slate-700 bg-slate-800/50 p-4 space-y-3">
+          <form onSubmit={handleCreate} className="mt-3 rounded-xl border border-slate-700 bg-slate-800/50 p-4 space-y-3">
             <p className="text-xs text-slate-500">{t('sessions.organizer.autoTitleHint')}</p>
             <CatalogSessionPicker
               options={catalogOptions}
@@ -799,7 +755,7 @@ export default function SessionsOrganizerView({
           </form>
         ) : null}
 
-        <div className="mt-4 flex flex-wrap gap-1.5" role="tablist" aria-label={t('sessions.organizer.filterAria')}>
+        <div className="mt-2 flex flex-wrap gap-1.5" role="tablist" aria-label={t('sessions.organizer.filterAria')}>
           {ORGANIZER_FILTER_KEYS.map(key => (
             <button
               key={key}
@@ -807,7 +763,7 @@ export default function SessionsOrganizerView({
               role="tab"
               aria-selected={filter === key}
               onClick={() => setFilter(key)}
-              className={`rounded-lg px-3 py-1.5 text-xs font-medium transition-colors ${
+              className={`rounded-lg px-2.5 py-1 text-xs font-medium transition-colors ${
                 filter === key
                   ? 'bg-teal-500/25 text-teal-200'
                   : 'bg-slate-800 text-slate-400 hover:text-slate-200'

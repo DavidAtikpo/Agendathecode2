@@ -490,6 +490,70 @@ async function loadAppData(locale: AppLocale): Promise<{
   };
 }
 
+function OrganizerHeaderActions({
+  tx,
+  createOpen,
+  onToggleCreate,
+  onOpenSessionDates,
+  className = '',
+}: {
+  tx: (key: string, params?: Record<string, string | number>) => string;
+  createOpen: boolean;
+  onToggleCreate: () => void;
+  onOpenSessionDates?: () => void;
+  className?: string;
+}) {
+  const link =
+    'inline-flex shrink-0 items-center gap-1 rounded-lg border px-2.5 py-1.5 text-xs font-medium whitespace-nowrap';
+  return (
+    <div className={`flex items-center gap-1.5 overflow-x-auto ${className}`.trim()}>
+      <a
+        href="https://cides.tf/"
+        target="_blank"
+        rel="noopener noreferrer"
+        className={`${link} border-sky-500/40 bg-sky-500/10 text-sky-200 hover:bg-sky-500/20`}
+      >
+        {tx('sessions.organizer.openCides')}
+        <span aria-hidden>↗</span>
+      </a>
+      <a
+        href="https://www.a-finpart.com/admin"
+        target="_blank"
+        rel="noopener noreferrer"
+        className={`${link} border-teal-500/40 bg-teal-500/10 text-teal-200 hover:bg-teal-500/20`}
+      >
+        {tx('sessions.organizer.openWebirataAdmin')}
+        <span aria-hidden>↗</span>
+      </a>
+      <a
+        href="https://compta-ia.qrthecode2.com/"
+        target="_blank"
+        rel="noopener noreferrer"
+        className={`${link} border-amber-500/40 bg-amber-500/10 text-amber-200 hover:bg-amber-500/20`}
+      >
+        {tx('sessions.organizer.openComptaIa')}
+        <span aria-hidden>↗</span>
+      </a>
+      <button
+        type="button"
+        onClick={onToggleCreate}
+        className="inline-flex shrink-0 items-center rounded-lg bg-teal-600 px-2.5 py-1.5 text-xs font-medium whitespace-nowrap text-white hover:bg-teal-500"
+      >
+        {createOpen ? tx('sessions.organizer.closeForm') : tx('sessions.organizer.newSession')}
+      </button>
+      {onOpenSessionDates ? (
+        <button
+          type="button"
+          onClick={onOpenSessionDates}
+          className={`${link} border-violet-500/40 bg-violet-500/10 text-violet-200 hover:bg-violet-500/20`}
+        >
+          {tx('sessions.organizer.openSessionDates')}
+        </button>
+      ) : null}
+    </div>
+  );
+}
+
 export default function HomePage() {
   const router = useRouter();
   const [activeView, setActiveView] = useState<AppView>('planning');
@@ -502,6 +566,7 @@ export default function HomePage() {
     openCreate?: boolean;
   } | null>(null);
   const [trainingSessions, setTrainingSessions] = useState<TrainingSession[]>([]);
+  const [organizerCreateOpen, setOrganizerCreateOpen] = useState(false);
   /** null = mode essai (données locales) */
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [authModalOpen, setAuthModalOpen] = useState(false);
@@ -682,6 +747,23 @@ export default function HomePage() {
       );
     }
   }, [isGuest, activeView, displayUser.role, canSeeSessionProposals]);
+
+  useEffect(() => {
+    if (activeView !== 'sessions-organizer') setOrganizerCreateOpen(false);
+  }, [activeView]);
+
+  const handleOrganizerToggleCreate = useCallback(() => {
+    if (activeView === 'planning') {
+      setActiveView('sessions-organizer');
+      setOrganizerCreateOpen(true);
+    } else {
+      setOrganizerCreateOpen(v => !v);
+    }
+  }, [activeView]);
+
+  const handleOpenSessionDates = useCallback(() => {
+    setActiveView('session-dates');
+  }, []);
 
   useEffect(() => {
     if (isGuest) return;
@@ -1677,12 +1759,16 @@ export default function HomePage() {
     onOpenSettings: () => setSettingsModalOpen(true),
     lastDataUpdatedAt,
     showSessionsOrganizer: !isGuest && canManageTrainingSessions(displayUser.role),
-    showSessionDates: !isGuest && canManageSessionCatalog(displayUser.role),
     showSessionsAssignee: !isGuest && canSeeSessionProposals,
     sessionPendingCount,
     showGroups: !isGuest && canAccessGroups(displayUser.role),
     groupCount: groups.length,
   };
+
+  const showOrganizerHeaderActions =
+    !isGuest &&
+    canManageTrainingSessions(displayUser.role) &&
+    (activeView === 'planning' || activeView === 'sessions-organizer');
 
   const activeViewTitle =
     activeView === 'notes'
@@ -1794,10 +1880,23 @@ export default function HomePage() {
               activeView === 'tasks' || activeView === 'groups' ? 'hidden' : 'hidden md:flex'
             }`}
           >
-            <h2 className="text-sm font-medium text-slate-300">
+            <h2 className="shrink-0 text-sm font-medium text-slate-300">
               {activeViewTitle}
             </h2>
-            <div className="flex items-center gap-2">
+            {showOrganizerHeaderActions ? (
+              <OrganizerHeaderActions
+                tx={tx}
+                createOpen={organizerCreateOpen}
+                onToggleCreate={handleOrganizerToggleCreate}
+                onOpenSessionDates={
+                  canManageSessionCatalog(displayUser.role) ? handleOpenSessionDates : undefined
+                }
+                className="mx-2 min-w-0 flex-1"
+              />
+            ) : (
+              <div className="min-w-0 flex-1" />
+            )}
+            <div className="flex shrink-0 items-center gap-2">
               {/* Credit widget — desktop */}
               {!isGuest && (
                 <button
@@ -1903,6 +2002,19 @@ export default function HomePage() {
             </button>
           </header>
 
+          {showOrganizerHeaderActions ? (
+            <div className="shrink-0 border-b border-slate-800 bg-slate-900/95 px-3 py-2 md:hidden">
+              <OrganizerHeaderActions
+                tx={tx}
+                createOpen={organizerCreateOpen}
+                onToggleCreate={handleOrganizerToggleCreate}
+                onOpenSessionDates={
+                  canManageSessionCatalog(displayUser.role) ? handleOpenSessionDates : undefined
+                }
+              />
+            </div>
+          ) : null}
+
           <main className="flex min-h-0 flex-1 flex-col overflow-hidden pb-[calc(4rem+env(safe-area-inset-bottom))] md:pb-0">
             <ProPlanBanner
               isGuest={isGuest}
@@ -1949,16 +2061,13 @@ export default function HomePage() {
                   sessions={trainingSessions}
                   currentUser={displayUser}
                   compactLayout={layoutPreferences.density === 'compact'}
+                  createOpen={organizerCreateOpen}
+                  onCreateOpenChange={setOrganizerCreateOpen}
                   onCreateSession={createSession}
                   onUpdateSession={updateSession}
                   onDeleteSession={deleteSession}
                   onRemindSession={remindSession}
                   onCreateStaff={createStaff}
-                  onOpenSessionDates={
-                    canManageSessionCatalog(displayUser.role)
-                      ? () => setActiveView('session-dates')
-                      : undefined
-                  }
                 />
               ) : activeView === 'sessions-assignee' ? (
                 <SessionsAssigneeView

@@ -42,6 +42,19 @@ function addDays(ms: number, days: number) {
 }
 
 const DAY_MS = PLANNING_DAY_MS;
+const MIN_PX_PER_DAY = 1;
+const MAX_PX_PER_DAY = 56;
+const ZOOM_STEP = 1.25;
+
+function daysInYear(year: number) {
+  return (new Date(year + 1, 0, 1).getTime() - new Date(year, 0, 1).getTime()) / DAY_MS;
+}
+
+function yearRangeMs(year: number) {
+  const rangeMin = startOfDay(new Date(year, 0, 1).getTime());
+  const rangeMax = startOfDay(new Date(year + 1, 0, 1).getTime());
+  return { rangeMin, rangeMax, spanMs: rangeMax - rangeMin };
+}
 
 function clampDateOrder(startMs: number, endMs: number) {
   if (endMs >= startMs) return { startMs, endMs };
@@ -639,8 +652,13 @@ export default function PlanningView({
   const [narrowViewport, setNarrowViewport] = useState(false);
   /** Colonnes Tâche / Début / Fin / … — masquables pour n’afficher que la frise Gantt */
   const [taskGridVisible, setTaskGridVisible] = useState(true);
+  const [zoomMultiplier, setZoomMultiplier] = useState(1);
+  const [rangeMode, setRangeMode] = useState<'auto' | 'year'>('auto');
+  const [focusYear, setFocusYear] = useState(() => new Date().getFullYear());
+  const [timelineViewportWidth, setTimelineViewportWidth] = useState(0);
   const leftBodyRef = useRef<HTMLDivElement>(null);
   const rightBodyRef = useRef<HTMLDivElement>(null);
+  const timelinePaneRef = useRef<HTMLDivElement>(null);
   const topHeaderScrollRef = useRef<HTMLDivElement>(null);
   const syncingVertical = useRef(false);
   const syncingHorizontal = useRef(false);
@@ -698,7 +716,17 @@ export default function PlanningView({
     return () => mq.removeEventListener('change', apply);
   }, []);
 
-  const { rangeMin, rangeMax, spanMs } = useMemo(() => {
+  useEffect(() => {
+    const el = timelinePaneRef.current;
+    if (!el) return;
+    const apply = () => setTimelineViewportWidth(el.clientWidth);
+    apply();
+    const ro = new ResizeObserver(apply);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [rows.length, taskGridVisible]);
+
+  const dataRange = useMemo(() => {
     if (rows.length === 0) {
       const now = Date.now();
       const min = startOfDay(addDays(now, -7));
@@ -717,16 +745,70 @@ export default function PlanningView({
     return { rangeMin, rangeMax, spanMs: Math.max(DAY_MS, rangeMax - rangeMin) };
   }, [rows]);
 
-  const totalDays = Math.max(1, spanMs / DAY_MS);
+  const { rangeMin, rangeMax } = useMemo(() => {
+    if (rangeMode === 'year') return yearRangeMs(focusYear);
+    return dataRange;
+  }, [rangeMode, focusYear, dataRange]);
+
+  const basePxPerDay = narrowViewport ? 12 : 14;
+
   const pxPerDay = useMemo(() => {
-    const ideal = narrowViewport ? 12 : 14;
-    const minW = narrowViewport ? 320 : 640;
-    const maxW = 4200;
-    const w = totalDays * ideal;
-    if (w < minW) return minW / totalDays;
-    if (w > maxW) return maxW / totalDays;
-    return ideal;
-  }, [totalDays, narrowViewport]);
+    const raw = basePxPerDay * zoomMultiplier;
+    return Math.min(MAX_PX_PER_DAY, Math.max(MIN_PX_PER_DAY, raw));
+  }, [basePxPerDay, zoomMultiplier]);
+
+  const zoomPercent = Math.round(zoomMultiplier * 100);
+
+  const applyFitYearZoom = useCallback(
+    (year: number, viewportWidth: number) => {
+      const days = daysInYear(year);
+      const width = Math.max(280, viewportWidth);
+      const targetPxPerDay = width / days;
+      setZoomMultiplier(
+        Math.min(8, Math.max(0.05, targetPxPerDay / basePxPerDay)),
+      );
+    },
+    [basePxPerDay],
+  );
+
+  const fitYearToScreen = useCallback(() => {
+    setFocusYear(new Date().getFullYear());
+    setRangeMode('year');
+  }, []);
+
+  const resetZoom = useCallback(() => {
+    setRangeMode('auto');
+    setFocusYear(new Date().getFullYear());
+    setZoomMultiplier(1);
+  }, []);
+
+  const zoomIn = useCallback(() => {
+    setZoomMultiplier(z => Math.min(8, z * ZOOM_STEP));
+  }, []);
+
+  const zoomOut = useCallback(() => {
+    setZoomMultiplier(z => Math.max(0.05, z / ZOOM_STEP));
+  }, []);
+
+  const shiftFocusYear = useCallback((delta: number) => {
+    setRangeMode('year');
+    setFocusYear(y => y + delta);
+  }, []);
+
+  useEffect(() => {
+    if (rangeMode !== 'year' || timelineViewportWidth <= 0) return;
+    applyFitYearZoom(focusYear, timelineViewportWidth);
+  }, [rangeMode, focusYear, timelineViewportWidth, applyFitYearZoom]);
+
+  const onTimelineWheel = useCallback(
+    (event: React.WheelEvent) => {
+      if (!event.ctrlKey && !event.metaKey) return;
+      event.preventDefault();
+      if (event.deltaY > 0) zoomOut();
+      else if (event.deltaY < 0) zoomIn();
+    },
+    [zoomIn, zoomOut],
+  );
 
   const monthSegments = useMemo((): MonthSegment[] => {
     const segs: MonthSegment[] = [];
@@ -852,6 +934,74 @@ export default function PlanningView({
               {taskGridVisible ? t('planning.toggleGridHideShort') : t('planning.toggleGridShowShort')}
             </span>
           </button>
+          <div
+            className="flex shrink-0 items-center gap-1 rounded-lg border border-slate-600/60 bg-slate-800/90 p-0.5"
+            role="group"
+            aria-label={t('planning.zoom.aria')}
+          >
+            <button
+              type="button"
+              onClick={zoomOut}
+              className="rounded-md px-2 py-1 text-xs font-medium text-slate-300 hover:bg-slate-700/80 hover:text-white touch-manipulation"
+              title={t('planning.zoom.out')}
+              aria-label={t('planning.zoom.out')}
+            >
+              −
+            </button>
+            <span className="min-w-[2.75rem] px-1 text-center text-[11px] tabular-nums text-slate-400">
+              {zoomPercent}%
+            </span>
+            <button
+              type="button"
+              onClick={zoomIn}
+              className="rounded-md px-2 py-1 text-xs font-medium text-slate-300 hover:bg-slate-700/80 hover:text-white touch-manipulation"
+              title={t('planning.zoom.in')}
+              aria-label={t('planning.zoom.in')}
+            >
+              +
+            </button>
+            <button
+              type="button"
+              onClick={fitYearToScreen}
+              className="rounded-md border-l border-slate-600/60 px-2 py-1 text-xs font-medium text-indigo-200 hover:bg-indigo-500/15 touch-manipulation"
+              title={t('planning.zoom.fitYearTitle')}
+            >
+              {t('planning.zoom.fitYear')}
+            </button>
+            {(rangeMode === 'year' || zoomMultiplier !== 1) && (
+              <button
+                type="button"
+                onClick={resetZoom}
+                className="rounded-md px-2 py-1 text-xs font-medium text-slate-400 hover:bg-slate-700/80 hover:text-slate-200 touch-manipulation"
+                title={t('planning.zoom.reset')}
+              >
+                ↺
+              </button>
+            )}
+          </div>
+          {rangeMode === 'year' ? (
+            <div className="flex shrink-0 items-center gap-0.5 rounded-lg border border-slate-600/60 bg-slate-800/90 p-0.5">
+              <button
+                type="button"
+                onClick={() => shiftFocusYear(-1)}
+                className="rounded-md px-2 py-1 text-xs text-slate-300 hover:bg-slate-700/80 touch-manipulation"
+                aria-label={t('planning.zoom.yearPrev')}
+              >
+                ‹
+              </button>
+              <span className="px-1.5 text-[11px] font-medium tabular-nums text-slate-300">
+                {t('planning.zoom.yearLabel', { year: focusYear })}
+              </span>
+              <button
+                type="button"
+                onClick={() => shiftFocusYear(1)}
+                className="rounded-md px-2 py-1 text-xs text-slate-300 hover:bg-slate-700/80 touch-manipulation"
+                aria-label={t('planning.zoom.yearNext')}
+              >
+                ›
+              </button>
+            </div>
+          ) : null}
           <div
             className="ml-auto flex shrink-0 rounded-lg border border-slate-600/60 bg-slate-800/90 p-0.5 shadow-inner"
             role="group"
@@ -996,7 +1146,11 @@ export default function PlanningView({
           )}
 
           {/* Frise temporelle (style Gantt SaaS) — min-w-0 + flex-1 pour que la zone reste visible sur mobile */}
-          <div className="flex min-h-0 min-w-0 flex-1 flex-col bg-[#121820]">
+          <div
+            ref={timelinePaneRef}
+            className="flex min-h-0 min-w-0 flex-1 flex-col bg-[#121820]"
+            onWheel={onTimelineWheel}
+          >
             <div
               ref={topHeaderScrollRef}
               className="shrink-0 overflow-x-auto overflow-y-hidden border-b border-slate-700/80 bg-slate-800/90"
@@ -1009,7 +1163,11 @@ export default function PlanningView({
                     className="flex shrink-0 items-end border-r border-slate-600/40 pb-1 pl-2 text-[11px] font-medium capitalize text-slate-400"
                     style={{ width: seg.widthPx }}
                   >
-                    {seg.label}
+                    {seg.widthPx >= 36
+                      ? seg.label
+                      : seg.widthPx >= 18
+                        ? new Date(seg.startMs).toLocaleDateString(dateLocale, { month: 'short' })
+                        : null}
                   </div>
                 ))}
               </div>

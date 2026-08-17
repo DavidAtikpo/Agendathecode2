@@ -465,7 +465,8 @@ function AdminPageInner() {
                   <th className="px-4 py-3 text-right">{t('admin.table.groups')}</th>
                   <th className="px-4 py-3 text-right">{t('admin.table.sessions')}</th>
                   <th className="px-4 py-3">{t('admin.table.joined')}</th>
-                  <th className="px-4 py-3 text-right">{t('admin.table.actions')}</th>                </tr>
+                  <th className="px-4 py-3 text-right">{t('admin.table.actions')}</th>
+                </tr>
               </thead>
               <tbody className="divide-y divide-slate-700/50">
                 {filtered.map(u => (
@@ -478,7 +479,8 @@ function AdminPageInner() {
                           <span className="text-[10px] text-amber-500/90">{t('admin.table.stripe')}</span>
                         )}
                       </div>
-                    </td>                    <td className="px-4 py-3">
+                    </td>
+                    <td className="px-4 py-3">
                       <button
                         onClick={() => void toggleActive(u)}
                         title={u.active ? t('admin.status.deactivateTitle') : t('admin.status.activateTitle')}
@@ -505,7 +507,8 @@ function AdminPageInner() {
                           exp. {formatDate(u.aiCreditsExpiresAt, dateLocale)}
                         </div>
                       )}
-                    </td>                    <td className="px-4 py-3 text-right">
+                    </td>
+                    <td className="px-4 py-3 text-right">
                       {u.notesCount > 0 ? (
                         <button onClick={() => void openNotes(u)} className="tabular-nums text-indigo-400 hover:text-indigo-300 underline underline-offset-2 transition-colors">
                           {u.notesCount}
@@ -526,7 +529,8 @@ function AdminPageInner() {
                     </td>
                     <td className="px-4 py-3 text-xs text-slate-500 whitespace-nowrap">
                       {formatDate(u.createdAt, dateLocale)}
-                    </td>                    <td className="px-4 py-3 text-right">
+                    </td>
+                    <td className="px-4 py-3 text-right">
                       <div className="flex items-center justify-end gap-1">
                         <button onClick={() => openEdit(u)} className="rounded-lg bg-slate-700 px-2.5 py-1.5 text-xs font-medium text-slate-300 hover:bg-slate-600 transition-colors">
                           {t('admin.actions.edit')}
@@ -547,7 +551,8 @@ function AdminPageInner() {
                 ))}
                 {filtered.length === 0 && (
                   <tr><td colSpan={11} className="px-4 py-8 text-center text-sm text-slate-500">{t('admin.table.empty')}</td></tr>
-                )}              </tbody>
+                )}
+              </tbody>
             </table>
           </div>
         </section>
