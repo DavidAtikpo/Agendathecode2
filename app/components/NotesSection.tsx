@@ -13,6 +13,11 @@ import {
 import type { UploadProgress } from '../lib/upload-with-progress';
 import { normalizeWhatsAppPhone } from '../lib/whatsappReminder';
 import {
+  isMeetingCloudRecorderAvailable,
+  startMeetingCloudRecorder,
+  type MeetingCloudRecorderStop,
+} from '@/app/lib/meeting-cloud-recorder';
+import {
   IconBell,
   IconCamera,
   IconChevronDown,
@@ -404,6 +409,7 @@ export default function NotesSection({
   const [meetingError, setMeetingError] = useState<string | null>(null);
   const [meetingNoCredits, setMeetingNoCredits] = useState(false);
   const meetingRecRef = useRef<SpeechRecognitionInstance | null>(null);
+  const meetingCloudStopRef = useRef<MeetingCloudRecorderStop | null>(null);
   const meetingBaseRef = useRef('');   // finalized text from all recognition sessions
   const meetingActiveRef = useRef(false);
 
@@ -425,6 +431,8 @@ export default function NotesSection({
 
   const closeMeetingModal = useCallback(() => {
     meetingActiveRef.current = false;
+    meetingCloudStopRef.current?.();
+    meetingCloudStopRef.current = null;
     meetingRecRef.current?.stop();
     setMeetingRecording(false);
     setMeetingOpen(false);
@@ -470,17 +478,43 @@ export default function NotesSection({
     try { rec.start(); } catch { /* already started */ }
   }, [dateLocale]);
 
-  const toggleMeetingRecording = useCallback(() => {
+  const toggleMeetingRecording = useCallback(async () => {
     if (meetingRecording) {
       meetingActiveRef.current = false;
+      meetingCloudStopRef.current?.();
+      meetingCloudStopRef.current = null;
       meetingRecRef.current?.stop();
       setMeetingRecording(false);
-    } else {
-      meetingActiveRef.current = true;
-      setMeetingRecording(true);
-      startMeetingSegment();
+      return;
     }
-  }, [meetingRecording, startMeetingSegment]);
+
+    meetingActiveRef.current = true;
+    setMeetingRecording(true);
+    meetingBaseRef.current = meetingTranscript.trim();
+
+    const cloudOk = await isMeetingCloudRecorderAvailable();
+    if (cloudOk) {
+      const lang = dateLocale.toLowerCase().startsWith('en') ? 'en-US' : 'fr-FR';
+      try {
+        const stop = await startMeetingCloudRecorder({
+          languageCode: lang,
+          onTranscript: (display, committed) => {
+            meetingBaseRef.current = committed;
+            setMeetingTranscript(display);
+          },
+          onError: msg => setMeetingError(msg),
+        });
+        if (stop) {
+          meetingCloudStopRef.current = stop;
+          return;
+        }
+      } catch {
+        /* fallback Web Speech */
+      }
+    }
+
+    startMeetingSegment();
+  }, [meetingRecording, startMeetingSegment, meetingTranscript, dateLocale]);
 
   const analyzeMeeting = useCallback(async () => {
     if (!meetingTranscript.trim()) return;
