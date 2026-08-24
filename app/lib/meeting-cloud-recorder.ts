@@ -9,8 +9,8 @@ function floatTo16BitPCM(input: Float32Array): Int16Array {
   return out;
 }
 
-function arrayBufferToBase64(buffer: ArrayBuffer): string {
-  const bytes = new Uint8Array(buffer);
+function arrayBufferToBase64(view: ArrayBufferView): string {
+  const bytes = new Uint8Array(view.buffer, view.byteOffset, view.byteLength);
   let binary = '';
   const chunk = 0x8000;
   for (let i = 0; i < bytes.length; i += chunk) {
@@ -28,7 +28,7 @@ async function transcribePcmChunk(
     headers: { 'Content-Type': 'application/json' },
     credentials: 'include',
     body: JSON.stringify({
-      audio: arrayBufferToBase64(pcm.buffer),
+      audio: arrayBufferToBase64(pcm),
       encoding: 'LINEAR16',
       sampleRateHertz: 16000,
       languageCode,

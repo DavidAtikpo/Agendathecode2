@@ -140,7 +140,8 @@ function extractTranscript(
 
   for (const r of data.results ?? []) {
     const alt = r.alternatives?.[0];
-    const transcript = alt?.transcript?.trim();
+    if (!alt) continue;
+    const transcript = alt.transcript?.trim();
     if (!transcript) continue;
 
     if (typeof alt.confidence === 'number' && alt.confidence < 0.35) {
