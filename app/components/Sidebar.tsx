@@ -325,62 +325,40 @@ export default function Sidebar({
             ) : null}
 
             {showSessionsAssignee ? (
-              <>
-                <button
-                  type="button"
-                  onClick={() => {
-                    onViewChange('sessions-assignee');
-                    afterNav();
-                  }}
-                  className={navBtn(
-                    activeView === 'sessions-assignee',
-                    'bg-indigo-500/20 text-indigo-300',
-                  )}
-                  title={expanded ? undefined : t('sidebar.nav.sessionsAssignee')}
+              <button
+                type="button"
+                onClick={() => {
+                  onViewChange('sessions-assignee');
+                  afterNav();
+                }}
+                className={navBtn(
+                  activeView === 'sessions-assignee',
+                  'bg-indigo-500/20 text-indigo-300',
+                )}
+                title={expanded ? undefined : t('sidebar.nav.sessionsAssignee')}
+              >
+                <svg
+                  className={`h-5 w-5 shrink-0 ${activeView === 'sessions-assignee' ? 'text-indigo-300' : 'text-slate-400'}`}
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.8"
+                  aria-hidden
                 >
-                  <svg
-                    className={`h-5 w-5 shrink-0 ${activeView === 'sessions-assignee' ? 'text-indigo-300' : 'text-slate-400'}`}
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="1.8"
-                    aria-hidden
-                  >
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4M7.5 4.5l1.5 1.5M16.5 4.5L15 6M12 3v2M5 20h14a2 2 0 002-2V8a2 2 0 00-2-2h-3.5l-1-1.5h-3L9 6H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
-                  </svg>
-                  {expanded ? <span className="min-w-0 truncate">{t('sidebar.nav.sessionsAssignee')}</span> : null}
-                  {expanded && sessionPendingCount > 0 ? (
-                    <span className="ml-auto min-w-[1.25rem] rounded-full bg-amber-500/25 px-2 py-0.5 text-center text-xs font-semibold tabular-nums text-amber-200">
-                      {sessionPendingCount > 99 ? '99+' : sessionPendingCount}
-                    </span>
-                  ) : null}
-                  {!expanded && sessionPendingCount > 0 ? (
-                    <span className="absolute right-0.5 top-1.5 flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-amber-500 px-0.5 text-[10px] font-bold leading-none text-white">
-                      {sessionPendingCount > 9 ? '9+' : sessionPendingCount}
-                    </span>
-                  ) : null}
-                </button>
-                <a
-                  href={currentUser.webirataPortalUrl ?? 'https://www.a-finpart.com'}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className={`${navBtn(false, 'bg-teal-500/20 text-teal-300')} relative`}
-                  title={expanded ? undefined : t('sidebar.nav.openWebirata')}
-                  onClick={() => afterNav()}
-                >
-                  <svg
-                    className="h-5 w-5 shrink-0 text-teal-400"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="1.8"
-                    aria-hidden
-                  >
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 6H5.25A2.25 2.25 0 003 8.25v10.5A2.25 2.25 0 005.25 21h10.5A2.25 2.25 0 0018 18.75V10.5m-10.5 6L21 3m0 0h-5.25M21 3v5.25" />
-                  </svg>
-                  {expanded ? <span className="min-w-0 truncate">{t('sidebar.nav.openWebirata')}</span> : null}
-                </a>
-              </>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4M7.5 4.5l1.5 1.5M16.5 4.5L15 6M12 3v2M5 20h14a2 2 0 002-2V8a2 2 0 00-2-2h-3.5l-1-1.5h-3L9 6H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                </svg>
+                {expanded ? <span className="min-w-0 truncate">{t('sidebar.nav.sessionsAssignee')}</span> : null}
+                {expanded && sessionPendingCount > 0 ? (
+                  <span className="ml-auto min-w-[1.25rem] rounded-full bg-amber-500/25 px-2 py-0.5 text-center text-xs font-semibold tabular-nums text-amber-200">
+                    {sessionPendingCount > 99 ? '99+' : sessionPendingCount}
+                  </span>
+                ) : null}
+                {!expanded && sessionPendingCount > 0 ? (
+                  <span className="absolute right-0.5 top-1.5 flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-amber-500 px-0.5 text-[10px] font-bold leading-none text-white">
+                    {sessionPendingCount > 9 ? '9+' : sessionPendingCount}
+                  </span>
+                ) : null}
+              </button>
             ) : null}
 
             <button

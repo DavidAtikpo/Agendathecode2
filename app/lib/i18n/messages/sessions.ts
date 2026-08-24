@@ -131,6 +131,7 @@ export const sessionsMessages = {
       acceptOptionA: 'Disponible — option A',
       acceptOptionB: 'Disponible — option B',
       respondedAt: 'Répondu le {date}',
+      filterAria: 'Filtrer les propositions',
       openWebirata: 'Ouvrir a-finpart',
       openWebirataHint: 'Accédez à votre espace formation avec le même e-mail et mot de passe.',
       webirataReady:
@@ -284,6 +285,7 @@ export const sessionsMessages = {
       acceptOptionA: 'Available — option A',
       acceptOptionB: 'Available — option B',
       respondedAt: 'Responded on {date}',
+      filterAria: 'Filter proposals',
       openWebirata: 'Open a-finpart',
       openWebirataHint: 'Access your training portal with the same email and password.',
       webirataReady:

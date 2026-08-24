@@ -18,6 +18,8 @@ import { IconCalendar } from './icons';
 
 type PlanningKind = 'task' | 'note' | 'session';
 
+export type PlanningFilter = 'all' | 'tasks' | 'notes' | 'sessions';
+
 type NoteStatusKey = 'ideaNote' | 'reminderOverdue' | 'reminderUpcoming';
 type SessionStatusKey =
   | 'noAssignees'
@@ -272,6 +274,7 @@ interface PlanningViewProps {
   users?: import('../types').User[];
   currentUserId?: string;
   compactLayout?: boolean;
+  filter: PlanningFilter;
   onRespondSession?: (
     sessionId: string,
     role: SessionAssignmentRole,
@@ -643,15 +646,18 @@ export default function PlanningView({
   users = [],
   currentUserId,
   compactLayout,
+  filter,
   onRespondSession,
 }: PlanningViewProps) {
   const { t, dateLocale, locale } = useI18n();
-  const [filter, setFilter] = useState<'all' | 'tasks' | 'notes' | 'sessions'>('all');
   const [selectedId, setSelectedId] = useState<string | null>(null);
   /** Frise un peu plus compacte sur mobile pour que les barres tiennent mieux en largeur utile */
   const [narrowViewport, setNarrowViewport] = useState(false);
   /** Colonnes Tâche / Début / Fin / … — masquables pour n’afficher que la frise Gantt */
-  const [taskGridVisible, setTaskGridVisible] = useState(true);
+  const [taskGridVisible, setTaskGridVisible] = useState(() => {
+    if (typeof window === 'undefined') return true;
+    return window.matchMedia('(min-width: 640px)').matches;
+  });
   const [zoomMultiplier, setZoomMultiplier] = useState(1);
   const [rangeMode, setRangeMode] = useState<'auto' | 'year'>('auto');
   const [focusYear, setFocusYear] = useState(() => new Date().getFullYear());
@@ -710,7 +716,11 @@ export default function PlanningView({
 
   useEffect(() => {
     const mq = window.matchMedia('(max-width: 639px)');
-    const apply = () => setNarrowViewport(mq.matches);
+    const apply = () => {
+      const narrow = mq.matches;
+      setNarrowViewport(narrow);
+      if (narrow) setTaskGridVisible(false);
+    };
     apply();
     mq.addEventListener('change', apply);
     return () => mq.removeEventListener('change', apply);
@@ -894,16 +904,16 @@ export default function PlanningView({
     <div className="flex h-full min-h-0 flex-col bg-[#0f1419]">
       {/* Barre d'outils */}
       <div
-        className={`shrink-0 border-b border-slate-700/80 bg-slate-900/90 ${compactLayout ? 'px-3 py-2' : 'px-4 py-3'}`}
+        className={`shrink-0 border-b border-slate-700/80 bg-slate-900/90 ${compactLayout ? 'px-3 py-2' : 'px-4 py-3 md:py-3'}`}
       >
         <div className="flex flex-wrap items-center gap-2 sm:gap-3">
-          <div className="flex min-w-0 items-center gap-2">
+          <div className="flex min-w-0 flex-1 items-center gap-2 sm:flex-none">
             <IconCalendar className="h-5 w-5 shrink-0 text-indigo-400" />
             <div className="min-w-0">
               <h2 className={`font-semibold tracking-tight text-white ${compactLayout ? 'text-sm' : 'text-base'}`}>
                 {t('planning.title')}
               </h2>
-              <p className="text-[11px] text-slate-500">{t('planning.subtitle')}</p>
+              <p className="hidden text-[11px] text-slate-500 sm:block">{t('planning.subtitle')}</p>
             </div>
           </div>
           <button
@@ -911,7 +921,7 @@ export default function PlanningView({
             onClick={() => setTaskGridVisible(v => !v)}
             aria-pressed={taskGridVisible}
             title={taskGridVisible ? t('planning.toggleGridHide') : t('planning.toggleGridShowTitle')}
-            className={`flex shrink-0 items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-medium transition-colors touch-manipulation sm:ml-0 ${
+            className={`hidden shrink-0 items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-medium transition-colors touch-manipulation sm:flex ${
               taskGridVisible
                 ? 'border-slate-600/60 bg-slate-800/90 text-slate-200 hover:bg-slate-800'
                 : 'border-indigo-500/40 bg-indigo-500/15 text-indigo-200 hover:bg-indigo-500/25'
@@ -1002,31 +1012,6 @@ export default function PlanningView({
               </button>
             </div>
           ) : null}
-          <div
-            className="ml-auto flex shrink-0 rounded-lg border border-slate-600/60 bg-slate-800/90 p-0.5 shadow-inner"
-            role="group"
-            aria-label={t('planning.filterAria')}
-          >
-            {(
-              [
-                ['all', 'planning.filters.all'],
-                ['tasks', 'planning.filters.tasks'],
-                ['notes', 'planning.filters.notes'],
-                ['sessions', 'planning.filters.sessions'],
-              ] as const
-            ).map(([key, labelKey]) => (
-              <button
-                key={key}
-                type="button"
-                onClick={() => setFilter(key)}
-                className={`rounded-md px-2.5 py-1 text-xs font-medium transition-colors touch-manipulation ${
-                  filter === key ? 'bg-indigo-500/30 text-indigo-100 shadow-sm' : 'text-slate-400 hover:text-slate-200'
-                }`}
-              >
-                {t(labelKey)}
-              </button>
-            ))}
-          </div>
         </div>
       </div>
 
@@ -1038,6 +1023,59 @@ export default function PlanningView({
       ) : (
         <div className="relative flex min-h-0 min-w-0 flex-1 border-t border-slate-800/80">
           {taskGridVisible ? (
+            narrowViewport ? (
+              <div className="flex w-[9.5rem] shrink-0 flex-col border-r border-slate-700/80 bg-slate-900/95 shadow-[4px_0_12px_-4px_rgba(0,0,0,0.35)]">
+                <div
+                  className={`flex shrink-0 items-center border-b border-slate-700/80 bg-slate-800/90 px-2 ${th} font-semibold uppercase tracking-wider text-slate-400`}
+                  style={{ minHeight: compactLayout ? 52 : 56 }}
+                >
+                  <span className="truncate">{t('planning.grid.task')}</span>
+                </div>
+                <div
+                  ref={leftBodyRef}
+                  className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain"
+                  onScroll={onLeftScroll}
+                >
+                  {rows.map((r, i) => {
+                    const rowTitle = r.title || t('planning.labels.untitled');
+                    return (
+                      <button
+                        key={r.id}
+                        type="button"
+                        onClick={() => setSelectedId(prev => (prev === r.id ? null : r.id))}
+                        className={`flex w-full items-center gap-1.5 border-b border-slate-800/90 px-2 text-left transition-colors touch-manipulation ${
+                          selectedId === r.id
+                            ? 'bg-indigo-500/15 ring-inset ring-1 ring-indigo-500/40'
+                            : i % 2 === 1
+                              ? 'bg-slate-900/50 hover:bg-slate-800/60'
+                              : 'bg-slate-900/30 hover:bg-slate-800/50'
+                        }`}
+                        style={{ height: rowH }}
+                      >
+                        <span
+                          className={`shrink-0 rounded px-1 py-0.5 text-[8px] font-bold uppercase leading-none ${
+                            r.kind === 'task'
+                              ? 'bg-indigo-500/25 text-indigo-200'
+                              : r.kind === 'session'
+                                ? 'bg-teal-500/25 text-teal-200'
+                                : 'bg-sky-500/20 text-sky-200'
+                          }`}
+                        >
+                          {r.kind === 'task'
+                            ? t('planning.grid.taskBadge')
+                            : r.kind === 'session'
+                              ? t('planning.grid.sessionBadge')
+                              : t('planning.grid.noteBadge')}
+                        </span>
+                        <span className="min-w-0 truncate text-[11px] font-medium leading-tight text-slate-200" title={rowTitle}>
+                          {rowTitle}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            ) : (
             <div
               className={`flex w-[min(9.75rem,36vw)] shrink-0 flex-col border-r border-slate-300 bg-white shadow-[4px_0_12px_-4px_rgba(0,0,0,0.08)] sm:max-w-[min(100%,380px)] ${
                 compactLayout ? 'sm:w-[min(100%,280px)]' : 'sm:w-[min(100%,340px)]'
@@ -1128,7 +1166,8 @@ export default function PlanningView({
                 })}
               </div>
             </div>
-          ) : (
+            )
+          ) : narrowViewport ? null : (
             <button
               type="button"
               onClick={() => setTaskGridVisible(true)}

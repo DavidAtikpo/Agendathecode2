@@ -26,6 +26,7 @@ export const planningMessages = {
       state: 'État',
       taskBadge: 'T',
       noteBadge: 'N',
+      sessionBadge: 'S',
     },
     types: {
       task: 'Tâche',
@@ -106,6 +107,7 @@ export const planningMessages = {
       state: 'Status',
       taskBadge: 'T',
       noteBadge: 'N',
+      sessionBadge: 'S',
     },
     types: {
       task: 'Task',

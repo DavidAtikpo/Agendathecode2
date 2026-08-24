@@ -22,6 +22,8 @@ export const pageMessages = {
     header: {
       collaborators: 'Collaborateurs',
       collaboratorsCount: 'Collaborateurs ({count})',
+      proposals: 'Propositions',
+      proposalsAria: 'Ouvrir mes propositions',
       creditsTitle: 'Crédits IA · Cliquez pour en acheter',
       creditsAria: 'Crédits IA',
       openMenu: 'Ouvrir le menu',
@@ -103,6 +105,8 @@ export const pageMessages = {
     header: {
       collaborators: 'Collaborators',
       collaboratorsCount: 'Collaborators ({count})',
+      proposals: 'Proposals',
+      proposalsAria: 'Open my proposals',
       creditsTitle: 'AI credits · Click to buy more',
       creditsAria: 'AI credits',
       openMenu: 'Open menu',

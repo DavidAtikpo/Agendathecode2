@@ -18,7 +18,7 @@ import {
   IconSparkles,
 } from './components/icons';
 import NotesSection from './components/NotesSection';
-import PlanningView from './components/PlanningView';
+import PlanningView, { type PlanningFilter } from './components/PlanningView';
 import TaskBoard from './components/TaskBoard';
 import ChatPanel from './components/ChatPanel';
 import ProPlanBanner from './components/ProPlanBanner';
@@ -37,12 +37,14 @@ import {
   canManageTrainingSessions,
   canManageSessionCatalog,
   canViewSessionProposals,
+  isTrainingStaffRole,
 } from './lib/user-roles';
 import SettingsModal from './components/SettingsModal';
 import BuyCreditsModal from './components/BuyCreditsModal';
 import { PRO_SUBSCRIPTION_SALES_ENABLED } from './lib/feature-flags';
 import { countUnreadAssignedTasks } from './lib/assigned-task-badge';
 import { myAssignment } from './lib/session-labels';
+import type { AssigneeStatusFilter } from './lib/session-labels';
 import { I18nProvider, useI18n, messages, t as translate } from './lib/i18n';
 import type { AppLocale } from './lib/i18n/types';
 
@@ -554,6 +556,224 @@ function OrganizerHeaderActions({
   );
 }
 
+const ASSIGNEE_FILTER_KEYS: AssigneeStatusFilter[] = ['all', 'pending', 'accepted', 'declined'];
+
+const PLANNING_FILTER_KEYS: PlanningFilter[] = ['all', 'tasks', 'notes', 'sessions'];
+
+function PlanningFilterDropdown({
+  tx,
+  filter,
+  onFilterChange,
+  compact = false,
+  className = '',
+}: {
+  tx: (key: string, params?: Record<string, string | number>) => string;
+  filter: PlanningFilter;
+  onFilterChange: (filter: PlanningFilter) => void;
+  compact?: boolean;
+  className?: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const rootRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const onDoc = (event: MouseEvent) => {
+      if (rootRef.current && !rootRef.current.contains(event.target as Node)) {
+        setOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', onDoc);
+    return () => document.removeEventListener('mousedown', onDoc);
+  }, [open]);
+
+  return (
+    <div ref={rootRef} className={`relative shrink-0 ${className}`.trim()}>
+      <button
+        type="button"
+        onClick={() => setOpen(o => !o)}
+        aria-expanded={open}
+        aria-haspopup="listbox"
+        aria-label={tx('planning.filterAria')}
+        className={`inline-flex items-center rounded-xl border border-slate-600 bg-slate-800 font-medium text-slate-200 hover:bg-slate-700 touch-manipulation ${
+          compact ? 'gap-1 rounded-lg px-2 py-1.5 text-[11px]' : 'gap-1.5 px-3 py-2 text-xs'
+        }`}
+      >
+        {tx(`planning.filters.${filter}`)}
+        <svg
+          className={`shrink-0 text-slate-400 transition-transform ${open ? 'rotate-180' : ''} ${
+            compact ? 'h-3 w-3' : 'h-3.5 w-3.5'
+          }`}
+          viewBox="0 0 16 16"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          aria-hidden
+        >
+          <path strokeLinecap="round" strokeLinejoin="round" d="M4 6l4 4 4-4" />
+        </svg>
+      </button>
+      {open ? (
+        <div
+          role="listbox"
+          aria-label={tx('planning.filterAria')}
+          className={`absolute top-[calc(100%+0.25rem)] z-50 min-w-[9.5rem] overflow-hidden rounded-xl border border-slate-600/80 bg-slate-800 py-1 shadow-xl ${
+            compact ? 'left-0' : 'right-0'
+          }`}
+        >
+          {PLANNING_FILTER_KEYS.map(key => (
+            <button
+              key={key}
+              type="button"
+              role="option"
+              aria-selected={filter === key}
+              onClick={() => {
+                onFilterChange(key);
+                setOpen(false);
+              }}
+              className={`flex w-full items-center px-3 py-2 text-left text-xs touch-manipulation ${
+                filter === key
+                  ? 'bg-indigo-500/20 font-medium text-indigo-100'
+                  : 'text-slate-300 hover:bg-slate-700/80 hover:text-slate-100'
+              }`}
+            >
+              {tx(`planning.filters.${key}`)}
+            </button>
+          ))}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function ProposalsHeaderButton({
+  tx,
+  sessionPendingCount,
+  onClick,
+  compact = false,
+  className = '',
+}: {
+  tx: (key: string, params?: Record<string, string | number>) => string;
+  sessionPendingCount: number;
+  onClick: () => void;
+  compact?: boolean;
+  className?: string;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-label={tx('page.header.proposalsAria')}
+      className={`inline-flex shrink-0 items-center rounded-xl border border-slate-600 bg-slate-800 font-medium text-slate-200 hover:bg-slate-700 touch-manipulation ${
+        compact ? 'gap-1 rounded-lg px-2 py-1.5 text-[11px]' : 'gap-2 px-3 py-2 text-xs'
+      } ${className}`.trim()}
+    >
+      <svg
+        className={`shrink-0 text-slate-400 ${compact ? 'h-3.5 w-3.5' : 'h-4 w-4'}`}
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        aria-hidden
+      >
+        <path
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          d="M9 12l2 2 4-4M7.5 4.5l1.5 1.5M16.5 4.5L15 6M12 3v2M5 20h14a2 2 0 002-2V8a2 2 0 00-2-2h-3.5l-1-1.5h-3L9 6H5a2 2 0 00-2 2v10a2 2 0 002 2z"
+        />
+      </svg>
+      {tx('page.header.proposals')}
+      {sessionPendingCount > 0 ? (
+        <span className="rounded-full bg-amber-500/25 px-1.5 py-0.5 text-[10px] font-semibold tabular-nums text-amber-200">
+          {sessionPendingCount > 99 ? '99+' : sessionPendingCount}
+        </span>
+      ) : null}
+    </button>
+  );
+}
+
+function AssigneeHeaderActions({
+  tx,
+  currentUser,
+  onUserUpdated,
+  filter,
+  onFilterChange,
+  filterCounts,
+  className = '',
+}: {
+  tx: (key: string, params?: Record<string, string | number>) => string;
+  currentUser: User;
+  onUserUpdated?: (user: User) => void;
+  filter?: AssigneeStatusFilter;
+  onFilterChange?: (filter: AssigneeStatusFilter) => void;
+  filterCounts?: Record<AssigneeStatusFilter, number>;
+  className?: string;
+}) {
+  const [portalBusy, setPortalBusy] = useState(false);
+  const portalUrl = currentUser.webirataPortalUrl ?? 'https://www.a-finpart.com';
+  const link =
+    'inline-flex shrink-0 items-center gap-1 rounded-lg border px-2.5 py-1.5 text-xs font-medium whitespace-nowrap';
+
+  const openPortal = async () => {
+    setPortalBusy(true);
+    try {
+      const res = await fetch('/api/user/webirata-sync', {
+        method: 'POST',
+        credentials: 'include',
+      });
+      const data = await res.json().catch(() => ({}));
+      if (data?.user && onUserUpdated) onUserUpdated(data.user as User);
+      const url =
+        typeof data?.portalUrl === 'string' && data.portalUrl ? data.portalUrl : portalUrl;
+      window.open(url, '_blank', 'noopener,noreferrer');
+    } catch {
+      window.open(portalUrl, '_blank', 'noopener,noreferrer');
+    } finally {
+      setPortalBusy(false);
+    }
+  };
+
+  return (
+    <div className={`flex min-w-0 items-center gap-1.5 ${className}`.trim()}>
+      {filter && onFilterChange && filterCounts ? (
+        <div
+          className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto"
+          role="tablist"
+          aria-label={tx('sessions.assignee.filterAria')}
+        >
+          {ASSIGNEE_FILTER_KEYS.map(key => (
+            <button
+              key={key}
+              type="button"
+              role="tab"
+              aria-selected={filter === key}
+              onClick={() => onFilterChange(key)}
+              className={`shrink-0 rounded-lg px-2 py-1 text-[11px] font-medium transition-colors touch-manipulation md:px-3 md:py-1.5 md:text-xs ${
+                filter === key
+                  ? 'bg-indigo-500/30 text-indigo-100 md:bg-indigo-500/25 md:text-indigo-200'
+                  : 'bg-slate-800 text-slate-400 hover:text-slate-200'
+              }`}
+            >
+              {tx(`sessions.assignee.filters.${key}`)}
+              <span className="ml-0.5 tabular-nums opacity-70">({filterCounts[key]})</span>
+            </button>
+          ))}
+        </div>
+      ) : null}
+      <button
+        type="button"
+        disabled={portalBusy}
+        onClick={() => void openPortal()}
+        className={`${link} shrink-0 border-teal-500/40 bg-teal-500/10 text-teal-200 hover:bg-teal-500/20 disabled:opacity-60`}
+        title={tx('sessions.assignee.openWebirataHint')}
+      >
+        {portalBusy ? tx('sessions.assignee.webirataOpening') : tx('sidebar.nav.openWebirata')}
+        <span aria-hidden>↗</span>
+      </button>
+    </div>
+  );
+}
+
 export default function HomePage() {
   const router = useRouter();
   const [activeView, setActiveView] = useState<AppView>('planning');
@@ -567,6 +787,8 @@ export default function HomePage() {
   } | null>(null);
   const [trainingSessions, setTrainingSessions] = useState<TrainingSession[]>([]);
   const [organizerCreateOpen, setOrganizerCreateOpen] = useState(false);
+  const [assigneeFilter, setAssigneeFilter] = useState<AssigneeStatusFilter>('all');
+  const [planningFilter, setPlanningFilter] = useState<PlanningFilter>('all');
   /** null = mode essai (données locales) */
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [authModalOpen, setAuthModalOpen] = useState(false);
@@ -752,6 +974,32 @@ export default function HomePage() {
     if (activeView !== 'sessions-organizer') setOrganizerCreateOpen(false);
   }, [activeView]);
 
+  useEffect(() => {
+    if (activeView !== 'sessions-assignee') setAssigneeFilter('all');
+  }, [activeView]);
+
+  useEffect(() => {
+    if (activeView !== 'planning') setPlanningFilter('all');
+  }, [activeView]);
+
+  const assigneeFilterCounts = useMemo(() => {
+    const c: Record<AssigneeStatusFilter, number> = {
+      all: 0,
+      pending: 0,
+      accepted: 0,
+      declined: 0,
+    };
+    for (const s of trainingSessions) {
+      const mine = myAssignment(s, displayUser.id);
+      if (!mine) continue;
+      c.all += 1;
+      if (mine.status === 'pending') c.pending += 1;
+      if (mine.status === 'accepted') c.accepted += 1;
+      if (mine.status === 'declined') c.declined += 1;
+    }
+    return c;
+  }, [trainingSessions, displayUser.id]);
+
   const handleOrganizerToggleCreate = useCallback(() => {
     if (activeView === 'planning') {
       setActiveView('sessions-organizer');
@@ -763,6 +1011,10 @@ export default function HomePage() {
 
   const handleOpenSessionDates = useCallback(() => {
     setActiveView('session-dates');
+  }, []);
+
+  const handleAssigneeUserUpdated = useCallback((user: User) => {
+    setCurrentUser(prev => (prev ? { ...prev, ...user } : user));
   }, []);
 
   useEffect(() => {
@@ -1770,6 +2022,18 @@ export default function HomePage() {
     canManageTrainingSessions(displayUser.role) &&
     (activeView === 'planning' || activeView === 'sessions-organizer');
 
+  const showAssigneeHeaderActions =
+    !isGuest &&
+    isTrainingStaffRole(displayUser.role) &&
+    activeView === 'sessions-assignee';
+
+  const showPlanningProposalsAction =
+    !isGuest &&
+    canSeeSessionProposals &&
+    activeView === 'planning';
+
+  const showPlanningHeaderActions = activeView === 'planning';
+
   const activeViewTitle =
     activeView === 'notes'
       ? tx('page.views.notes')
@@ -1883,7 +2147,32 @@ export default function HomePage() {
             <h2 className="shrink-0 text-sm font-medium text-slate-300">
               {activeViewTitle}
             </h2>
-            {showOrganizerHeaderActions ? (
+            {showPlanningHeaderActions ? (
+              <div className="mx-2 flex min-w-0 flex-1 items-center justify-end gap-2">
+                <PlanningFilterDropdown
+                  tx={tx}
+                  filter={planningFilter}
+                  onFilterChange={setPlanningFilter}
+                />
+                {showOrganizerHeaderActions ? (
+                  <OrganizerHeaderActions
+                    tx={tx}
+                    createOpen={organizerCreateOpen}
+                    onToggleCreate={handleOrganizerToggleCreate}
+                    onOpenSessionDates={
+                      canManageSessionCatalog(displayUser.role) ? handleOpenSessionDates : undefined
+                    }
+                    className="min-w-0 overflow-x-auto"
+                  />
+                ) : showPlanningProposalsAction ? (
+                  <ProposalsHeaderButton
+                    tx={tx}
+                    sessionPendingCount={sessionPendingCount}
+                    onClick={() => setActiveView('sessions-assignee')}
+                  />
+                ) : null}
+              </div>
+            ) : showOrganizerHeaderActions ? (
               <OrganizerHeaderActions
                 tx={tx}
                 createOpen={organizerCreateOpen}
@@ -1891,6 +2180,16 @@ export default function HomePage() {
                 onOpenSessionDates={
                   canManageSessionCatalog(displayUser.role) ? handleOpenSessionDates : undefined
                 }
+                className="mx-2 min-w-0 flex-1"
+              />
+            ) : showAssigneeHeaderActions ? (
+              <AssigneeHeaderActions
+                tx={tx}
+                currentUser={displayUser}
+                onUserUpdated={handleAssigneeUserUpdated}
+                filter={assigneeFilter}
+                onFilterChange={setAssigneeFilter}
+                filterCounts={assigneeFilterCounts}
                 className="mx-2 min-w-0 flex-1"
               />
             ) : (
@@ -1941,10 +2240,10 @@ export default function HomePage() {
             </div>
           </header>
 
-          <header className="flex shrink-0 items-center gap-2 border-b border-slate-800 bg-slate-900/95 px-3 py-3 pt-[max(0.75rem,env(safe-area-inset-top))] md:hidden">
+          <header className="flex shrink-0 items-center gap-1.5 border-b border-slate-800 bg-slate-900/95 px-2 py-2 pt-[max(0.75rem,env(safe-area-inset-top))] md:hidden">
             <button
               type="button"
-              className="-ml-1 touch-manipulation rounded-xl p-2.5 text-slate-300 hover:bg-slate-800 active:bg-slate-700"
+              className="-ml-0.5 shrink-0 touch-manipulation rounded-xl p-2 text-slate-300 hover:bg-slate-800 active:bg-slate-700"
               aria-label={tx('page.header.openMenu')}
               onClick={() => setMobileMenuOpen(true)}
             >
@@ -1952,7 +2251,28 @@ export default function HomePage() {
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
               </svg>
             </button>
-            <span className="min-w-0 flex-1 truncate font-semibold text-white">{BRAND_NAME}</span>
+            <div className="flex min-w-0 items-center gap-1.5">
+              <span className="shrink-0 font-semibold text-white">{BRAND_NAME}</span>
+              {showPlanningHeaderActions ? (
+                <>
+                  <PlanningFilterDropdown
+                    tx={tx}
+                    filter={planningFilter}
+                    onFilterChange={setPlanningFilter}
+                    compact
+                  />
+                  {showPlanningProposalsAction && !showOrganizerHeaderActions ? (
+                    <ProposalsHeaderButton
+                      tx={tx}
+                      sessionPendingCount={sessionPendingCount}
+                      onClick={() => setActiveView('sessions-assignee')}
+                      compact
+                    />
+                  ) : null}
+                </>
+              ) : null}
+            </div>
+            <div className="min-w-0 flex-1" />
 
             {/* Credit widget — mobile */}
             {!isGuest && (
@@ -2011,6 +2331,18 @@ export default function HomePage() {
                 onOpenSessionDates={
                   canManageSessionCatalog(displayUser.role) ? handleOpenSessionDates : undefined
                 }
+                className="overflow-x-auto"
+              />
+            </div>
+          ) : showAssigneeHeaderActions ? (
+            <div className="shrink-0 border-b border-slate-800 bg-slate-900/95 px-3 py-2 md:hidden">
+              <AssigneeHeaderActions
+                tx={tx}
+                currentUser={displayUser}
+                onUserUpdated={handleAssigneeUserUpdated}
+                filter={assigneeFilter}
+                onFilterChange={setAssigneeFilter}
+                filterCounts={assigneeFilterCounts}
               />
             </div>
           ) : null}
@@ -2054,6 +2386,7 @@ export default function HomePage() {
                   users={assignableUsers}
                   currentUserId={isGuest ? undefined : displayUser.id}
                   compactLayout={layoutPreferences.density === 'compact'}
+                  filter={planningFilter}
                   onRespondSession={isGuest ? undefined : respondSession}
                 />
               ) : activeView === 'sessions-organizer' ? (
@@ -2074,6 +2407,7 @@ export default function HomePage() {
                   sessions={trainingSessions}
                   currentUser={displayUser}
                   compactLayout={layoutPreferences.density === 'compact'}
+                  filter={assigneeFilter}
                   onRespondSession={respondSession}
                   onRefreshUser={refreshCurrentUser}
                   onUserUpdated={u => setCurrentUser(prev => (prev ? { ...prev, ...u } : u))}
